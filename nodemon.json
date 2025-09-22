@@ -1,0 +1,19 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "dist/**/*",
+    "node_modules/**/*",
+    "coverage/**/*",
+    "logs/**/*"
+  ],
+  "exec": "ts-node -r dotenv/config src/app.ts",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": "1000",
+  "verbose": true,
+  "colours": true
+}
