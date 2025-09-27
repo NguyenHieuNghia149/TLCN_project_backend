@@ -9,7 +9,7 @@
     "coverage/**/*",
     "logs/**/*"
   ],
-  "exec": "ts-node -r dotenv/config src/app.ts",
+  "exec": "ts-node -r dotenv/config src/index.ts",
   "env": {
     "NODE_ENV": "development"
   },
