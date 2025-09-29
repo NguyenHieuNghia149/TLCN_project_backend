@@ -1,15 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '@/services/auth.service';
-import { AuthException, ErrorHandler } from '@/exceptions/auth.exceptions';
+import { AuthException, ErrorHandler, ValidationException } from '@/exceptions/auth.exceptions';
 import {
   ChangePasswordInput,
   LoginInput,
   RefreshTokenInput,
   RegisterInput,
 } from '@/validations/auth.validation';
+import { UserService } from '@/services/user.service';
+import { EMailService } from '@/services/email.service';
+import { PasswordUtils } from '@/utils/security';
 
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly userService: UserService,
+    private readonly emailService: EMailService
+  ) {}
 
   async register(req: Request, res: Response, next: NextFunction) {
     try {
@@ -105,7 +112,7 @@ export class AuthController {
         });
       }
 
-      await this.authService.changePassword(userId, req.body as ChangePasswordInput);
+      await this.userService.changePassword(userId, req.body as ChangePasswordInput);
 
       res.status(200).json({
         success: true,
@@ -127,7 +134,7 @@ export class AuthController {
         });
       }
 
-      const profile = await this.authService.getProfile(userId);
+      const profile = await this.userService.getProfile(userId);
 
       res.status(200).json({
         success: true,
@@ -150,7 +157,7 @@ export class AuthController {
       }
 
       const updateData = req.body;
-      const profile = await this.authService.updateProfile(userId, updateData);
+      const profile = await this.userService.updateProfile(userId, updateData);
 
       res.status(200).json({
         success: true,
@@ -188,5 +195,42 @@ export class AuthController {
       code: 'INTERNAL_ERROR',
       timestamp: new Date().toISOString(),
     });
+  }
+
+  async sendVerificationCode(req: Request, res: Response): Promise<void | Response> {
+    try {
+      const { email } = req.body;
+
+      await this.emailService.sendVerificationCode(email, req);
+
+      res.status(200).json({
+        success: true,
+        message: 'Verification code sent to your email.',
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  }
+
+  async resetPassword(req: Request, res: Response): Promise<void | Response> {
+    try {
+      const { email, otp, newPassword } = req.body;
+      await this.authService.resetPassword(email, otp, newPassword, req);
+
+      res.status(200).json({
+        success: true,
+        message: 'Password has been reset successfully. You can now log in with your new password.',
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 }

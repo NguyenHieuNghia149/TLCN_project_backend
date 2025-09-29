@@ -3,10 +3,13 @@ import crypto from 'crypto';
 import { z } from 'zod';
 
 // Password validation schema
-export const passwordSchema = z.string()
+export const passwordSchema = z
+  .string()
   .min(8, 'Password must be at least 8 characters')
-  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, 
-    'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character');
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
+    'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+  );
 
 // Password hashing utilities
 export class PasswordUtils {
@@ -22,30 +25,30 @@ export class PasswordUtils {
 
   static validatePasswordStrength(password: string): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
-    
+
     if (password.length < 8) {
       errors.push('Password must be at least 8 characters long');
     }
-    
+
     if (!/[a-z]/.test(password)) {
       errors.push('Password must contain at least one lowercase letter');
     }
-    
+
     if (!/[A-Z]/.test(password)) {
       errors.push('Password must contain at least one uppercase letter');
     }
-    
+
     if (!/\d/.test(password)) {
       errors.push('Password must contain at least one number');
     }
-    
+
     if (!/[@$!%*?&]/.test(password)) {
       errors.push('Password must contain at least one special character (@$!%*?&)');
     }
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 }
@@ -73,7 +76,11 @@ export class TokenUtils {
 export class RateLimitUtils {
   private static attempts: Map<string, { count: number; resetTime: number }> = new Map();
 
-  static checkRateLimit(key: string, maxAttempts: number, windowMs: number): {
+  static checkRateLimit(
+    key: string,
+    maxAttempts: number,
+    windowMs: number
+  ): {
     allowed: boolean;
     remaining: number;
     resetTime: number;
@@ -85,13 +92,13 @@ export class RateLimitUtils {
       // Reset or create new attempt
       this.attempts.set(key, {
         count: 1,
-        resetTime: now + windowMs
+        resetTime: now + windowMs,
       });
-      
+
       return {
         allowed: true,
         remaining: maxAttempts - 1,
-        resetTime: now + windowMs
+        resetTime: now + windowMs,
       };
     }
 
@@ -99,7 +106,7 @@ export class RateLimitUtils {
       return {
         allowed: false,
         remaining: 0,
-        resetTime: attempt.resetTime
+        resetTime: attempt.resetTime,
       };
     }
 
@@ -107,7 +114,7 @@ export class RateLimitUtils {
     return {
       allowed: true,
       remaining: maxAttempts - attempt.count,
-      resetTime: attempt.resetTime
+      resetTime: attempt.resetTime,
     };
   }
 
@@ -137,7 +144,7 @@ export class AccountLockoutUtils {
   static resetLoginAttempts(): { loginAttempts: number; lockedUntil: Date | null } {
     return {
       loginAttempts: 0,
-      lockedUntil: null
+      lockedUntil: null,
     };
   }
 }
@@ -150,10 +157,6 @@ export class SanitizationUtils {
 
   static sanitizeName(name: string): string {
     return name.trim().replace(/[<>]/g, '');
-  }
-
-  static sanitizePhone(phone: string): string {
-    return phone.replace(/[^\d+\-\(\)\s]/g, '').trim();
   }
 }
 
@@ -170,16 +173,24 @@ export class DeviceUtils {
     device: string;
   } {
     // Simple device detection (in production, use a library like ua-parser-js)
-    const browser = userAgent.includes('Chrome') ? 'Chrome' : 
-                   userAgent.includes('Firefox') ? 'Firefox' : 
-                   userAgent.includes('Safari') ? 'Safari' : 'Unknown';
-    
-    const os = userAgent.includes('Windows') ? 'Windows' :
-               userAgent.includes('Mac') ? 'macOS' :
-               userAgent.includes('Linux') ? 'Linux' : 'Unknown';
-    
+    const browser = userAgent.includes('Chrome')
+      ? 'Chrome'
+      : userAgent.includes('Firefox')
+        ? 'Firefox'
+        : userAgent.includes('Safari')
+          ? 'Safari'
+          : 'Unknown';
+
+    const os = userAgent.includes('Windows')
+      ? 'Windows'
+      : userAgent.includes('Mac')
+        ? 'macOS'
+        : userAgent.includes('Linux')
+          ? 'Linux'
+          : 'Unknown';
+
     const device = userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
-    
+
     return { browser, os, device };
   }
 }

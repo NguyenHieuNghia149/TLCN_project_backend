@@ -17,14 +17,17 @@ import {
   ValidationException,
 } from '@/exceptions/auth.exceptions';
 import { Request } from 'express';
+import { EStatus } from '@/enums/EStatus';
+import { EMailService, otpStore } from './email.service';
 
 export class AuthService {
   private userRepository: UserRepository;
   private tokenRepository: TokenRepository;
-
+  private emailService: EMailService;
   constructor() {
     this.userRepository = new UserRepository();
     this.tokenRepository = new TokenRepository();
+    this.emailService = new EMailService();
   }
 
   async register(dto: RegisterInput, req: Request): Promise<AuthResponse> {
@@ -32,6 +35,10 @@ export class AuthService {
     const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
     if (!rateLimit.allowed) {
       throw new RateLimitExceededException();
+    }
+    const existingUser = await this.userRepository.findByEmail(dto.email);
+    if (existingUser) {
+      throw new UserAlreadyExistsException(`User with email ${dto.email} already exists`);
     }
 
     const passwordValidation = PasswordUtils.validatePasswordStrength(dto.password);
@@ -44,7 +51,7 @@ export class AuthService {
     const userData = {
       ...dto,
       password: hashedPassword,
-      status: 'active',
+      status: EStatus.ACTIVE,
     } as any;
 
     const user = await this.userRepository.createUser(userData);
@@ -95,7 +102,7 @@ export class AuthService {
     }
 
     // Check if account is active
-    if (user.status !== 'active') {
+    if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
@@ -155,7 +162,7 @@ export class AuthService {
 
     const user = await this.userRepository.findByIdOrThrow(payload.userId);
 
-    if (user.status !== 'active') {
+    if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
@@ -198,75 +205,70 @@ export class AuthService {
     await this.tokenRepository.revokeAllUserTokens(userId);
   }
 
-  async changePassword(userId: string, dto: ChangePasswordInput): Promise<void> {
-    const passwordValidation = PasswordUtils.validatePasswordStrength(dto.newPassword);
+  async cleanupExpiredTokens(): Promise<void> {
+    await this.tokenRepository.cleanupExpiredTokens();
+  }
+
+  // async sendVerificationCode(email: string, req: Request): Promise<void> {
+  //   const rateLimitKey = `sendVeriCode:${req.ip}`;
+  //   const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 20, 15 * 60 * 1000);
+  //   if (!rateLimit.allowed) {
+  //     throw new RateLimitExceededException();
+  //   }
+
+  //   const user = await this.userRepository.findByEmail(email);
+
+  //   if (!user) {
+  //     throw new InvalidCredentialsException("User with this email doesn't exist");
+  //   }
+
+  //   const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  //   otpStore.set(email, {
+  //     otp,
+  //     expires: new Date(Date.now() + 10 * 60 * 1000),
+  //     userData: { email },
+  //   });
+
+  //   await transporter.sendMail({
+  //     from: process.env.EMAIL,
+  //     to: email,
+  //     subject: 'Your Verification Code',
+  //     text: `Your verification code is ${otp}. It will expire in 10 minutes.`,
+  //   });
+  // }
+
+  async resetPassword(
+    email: string,
+    newPassword: string,
+    otp: string,
+    req: Request
+  ): Promise<void> {
+    const rateLimitKey = `resetPassword:${req.ip}`;
+    const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
+    if (!rateLimit.allowed) {
+      throw new RateLimitExceededException();
+    }
+    const isOTPValid = await this.emailService.verifyOTP(email, otp!);
+    if (!isOTPValid) {
+      throw new ValidationException('Invalid or expired OTP');
+    }
+
+    const user = await this.userRepository.findByEmail(email);
+
+    if (!user) {
+      throw new InvalidCredentialsException("User with this email doesn't exist");
+    }
+
+    const passwordValidation = PasswordUtils.validatePasswordStrength(newPassword);
+
     if (!passwordValidation.isValid) {
       throw new ValidationException(passwordValidation.errors.join(', '));
     }
 
-    const user = await this.userRepository.findByIdOrThrow(userId);
-
-    const isCurrentPasswordValid = await PasswordUtils.comparePassword(
-      dto.currentPassword,
-      user.password
-    );
-    if (!isCurrentPasswordValid) {
-      throw new InvalidCredentialsException('Current password is incorrect');
-    }
-
-    const hashedPassword = await PasswordUtils.hashPassword(dto.newPassword);
-    await this.userRepository.updatePassword(userId, hashedPassword);
-    await this.tokenRepository.revokeAllUserTokens(userId);
-  }
-
-  // forgotPassword/resetPassword/verifyEmail/resendVerification removed per requirements
-
-  async getProfile(userId: string) {
-    const user = await this.userRepository.findByIdOrThrow(userId);
-
-    return {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      avatar: user.avatar,
-      gender: user.gender,
-      dateOfBirth: user.dateOfBirth,
-      role: user.role,
-      status: user.status,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-  }
-
-  async updateProfile(
-    userId: string,
-    updateData: {
-      firstName?: string;
-      lastName?: string;
-      gender?: string;
-      dateOfBirth?: Date;
-      avatar?: string;
-    }
-  ) {
-    const user = await this.userRepository.updateUser(userId, updateData);
-
-    return {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      avatar: user.avatar,
-      gender: user.gender,
-      dateOfBirth: user.dateOfBirth,
-      role: user.role,
-      status: user.status,
-      updatedAt: user.updatedAt,
-    };
-  }
-
-  async cleanupExpiredTokens(): Promise<void> {
-    await this.tokenRepository.cleanupExpiredTokens();
+    const hashedPassword = await PasswordUtils.hashPassword(newPassword);
+    await this.userRepository.updatePassword(user.id, hashedPassword);
+    otpStore.delete(email);
+    await this.tokenRepository.revokeAllUserTokens(user.id);
   }
 }
