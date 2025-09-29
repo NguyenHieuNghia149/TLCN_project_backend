@@ -55,7 +55,7 @@ router.post(
   validate(ChangePasswordSchema),
   authController.changePassword.bind(authController)
 );
-router.get('/profile', authenticationToken, authController.getProfile.bind(authController));
+router.get('/me', authenticationToken, authController.getProfile.bind(authController));
 router.put('/profile', authenticationToken, authController.updateProfile.bind(authController));
 
 router.post(

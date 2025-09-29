@@ -64,6 +64,8 @@ export class AuthService {
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
+    console.log('User registered:', user);
+
     return {
       user: {
         id: user.id,
@@ -92,13 +94,13 @@ export class AuthService {
 
     const user = await this.userRepository.findByEmail(dto.email);
     if (!user) {
-      throw new InvalidCredentialsException();
+      throw new InvalidCredentialsException('User with this email does not exist');
     }
 
     // Verify password
     const isPasswordValid = await PasswordUtils.comparePassword(dto.password, user.password);
     if (!isPasswordValid) {
-      throw new InvalidCredentialsException();
+      throw new InvalidCredentialsException('Invalid email or password');
     }
 
     // Check if account is active

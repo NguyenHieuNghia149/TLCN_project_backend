@@ -68,7 +68,7 @@ export class JWTUtils {
     const decoded = jwt.decode(accessToken) as JWTPayload;
     const expiresIn = decoded.exp
       ? (decoded.exp - Math.floor(Date.now() / 1000)) * 1000
-      : 15 * 60 * 1000;
+      : 15 * 60 * 10000;
 
     return {
       accessToken,

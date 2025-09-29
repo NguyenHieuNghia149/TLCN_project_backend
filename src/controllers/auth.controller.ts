@@ -23,10 +23,24 @@ export class AuthController {
       console.log(req.body);
       const result = await this.authService.register(req.body as RegisterInput, req);
 
+      console.log(result);
+      res.cookie('refreshToken', result.tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/api/auth/refresh-token',
+      });
+
+      const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
+
       res.status(201).json({
         success: true,
         message: 'User registered successfully.',
-        data: result,
+        data: {
+          user: result.user,
+          tokens: tokensWithoutRefresh,
+        },
       });
     } catch (error) {
       next(error);
@@ -37,24 +51,63 @@ export class AuthController {
     try {
       const result = await this.authService.login(req.body as LoginInput, req);
 
+      res.cookie('refreshToken', result.tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/api/auth/refresh-token',
+      });
+
+      const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
+
       res.status(200).json({
         success: true,
         message: 'Login successful',
-        data: result,
+        data: {
+          user: result.user,
+          tokens: tokensWithoutRefresh,
+        },
       });
     } catch (error) {
       next(error);
     }
   }
 
-  async refreshToken(req: Request, res: Response, next: NextFunction) {
+  async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const result = await this.authService.refreshToken(req.body as RefreshTokenInput, req);
+      // Get refresh token from cookie instead of request body
+      const refreshToken = req.cookies.refreshToken;
+
+      if (!refreshToken) {
+        return res.status(401).json({
+          success: false,
+          message: 'Refresh token not found',
+          code: 'NO_REFRESH_TOKEN',
+        });
+      }
+
+      const result = await this.authService.refreshToken({ refreshToken }, req);
+
+      // Set new refresh token in HttpOnly cookie
+      res.cookie('refreshToken', result.tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/api/auth/refresh-token',
+      });
+
+      // Remove refresh token from response body for security
+      const { refreshToken: newRefreshToken, ...tokensWithoutRefresh } = result.tokens;
 
       res.status(200).json({
         success: true,
         message: 'Token refreshed successfully',
-        data: result,
+        data: {
+          user: result.user,
+          tokens: tokensWithoutRefresh,
+        },
       });
     } catch (error) {
       next(error);
@@ -63,12 +116,17 @@ export class AuthController {
 
   async logout(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const { refreshToken } = req.body as { refreshToken?: string };
-      if (!refreshToken) {
-        return res.status(400).json({ success: false, message: 'Refresh token is required' });
+      // Get refresh token from cookie
+      const refreshToken = req.cookies.refreshToken;
+
+      if (refreshToken) {
+        await this.authService.logout(refreshToken);
       }
 
-      await this.authService.logout(refreshToken);
+      // Clear the refresh token cookie
+      res.clearCookie('refreshToken', {
+        path: '/api/auth/refresh-token',
+      });
 
       res.status(200).json({
         success: true,
