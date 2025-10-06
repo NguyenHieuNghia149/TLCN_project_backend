@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, boolean, real } from 'drizzle-orm/pg-core';
-import { submissions } from './submission';
-import { testcases } from './testcase';
+import { submission } from './submission';
+import { testcase } from './testcase';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
@@ -11,10 +11,10 @@ export const resultSubmission = pgTable('result_submissions', {
   executionTime: real('execution_time'),
   memoryUse: real('memory_use'),
   testcaseId: uuid('testcase_id')
-    .references(() => testcases.id)
+    .references(() => testcase.id)
     .notNull(),
   submissionId: uuid('submission_id')
-    .references(() => submissions.id)
+    .references(() => submission.id)
     .notNull(),
 });
 
