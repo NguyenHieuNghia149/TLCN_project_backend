@@ -43,7 +43,7 @@ router.post(
 router.post(
   '/refresh-token',
   authRateLimit,
-  validate(RefreshTokenSchema),
+  // validate(RefreshTokenSchema),
   authController.refreshToken.bind(authController)
 );
 
@@ -67,15 +67,19 @@ router.post(
 
 router.post(
   '/send-verification-email',
+  authRateLimit,
   validate(SendVerificationEmailSchema),
   authController.sendVerificationCode.bind(authController)
 );
 
 // Route kiểm tra trạng thái xác thực
-router.get('/me', authenticationToken, (req: any, res) => {
-  res.status(200).json({ user: req.user });
-});
+// router.get('/me', authenticationToken, (req: any, res) => {
+//   res.status(200).json({ user: req.user });
+// });
 
+router.get('/heath', authRateLimit, (res, req) => {
+  req.json('helo');
+});
 // Error handling middleware
 router.use(AuthController.errorHandler);
 

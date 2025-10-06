@@ -4,6 +4,7 @@ import {
   LoginInput,
   RefreshTokenInput,
   RegisterInput,
+  RegisterResponseSchema,
 } from '@/validations/auth.validation';
 import { TokenRepository } from '@/repositories/token.repository';
 import { UserRepository } from '@/repositories/user.repository';
@@ -30,12 +31,19 @@ export class AuthService {
     this.emailService = new EMailService();
   }
 
-  async register(dto: RegisterInput, req: Request): Promise<AuthResponse> {
+  async register(dto: RegisterInput, req: Request): Promise<RegisterResponseSchema> {
     const rateLimitKey = `register:${req.ip}`;
     const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
     if (!rateLimit.allowed) {
       throw new RateLimitExceededException();
     }
+
+    const isOTPValid = this.emailService.verifyOTP(dto.email, dto.otp);
+
+    if (!isOTPValid) {
+      throw new ValidationException('Invalid or expired OTP');
+    }
+
     const existingUser = await this.userRepository.findByEmail(dto.email);
     if (existingUser) {
       throw new UserAlreadyExistsException(`User with email ${dto.email} already exists`);
@@ -56,13 +64,13 @@ export class AuthService {
 
     const user = await this.userRepository.createUser(userData);
 
-    const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
+    //const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
-    await this.tokenRepository.createRefreshToken({
-      token: tokens.refreshToken,
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
+    // await this.tokenRepository.createRefreshToken({
+    //   token: tokens.refreshToken,
+    //   userId: user.id,
+    //   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    // });
 
     console.log('User registered:', user);
 
@@ -77,11 +85,11 @@ export class AuthService {
         status: user.status,
         createdAt: user.createdAt.toISOString(),
       },
-      tokens: {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        expiresIn: tokens.expiresIn,
-      },
+      // tokens: {
+      //   accessToken: tokens.accessToken,
+      //   refreshToken: tokens.refreshToken,
+      //   expiresIn: tokens.expiresIn,
+      // },
     };
   }
 

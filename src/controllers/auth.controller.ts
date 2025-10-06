@@ -24,22 +24,22 @@ export class AuthController {
       const result = await this.authService.register(req.body as RegisterInput, req);
 
       console.log(result);
-      res.cookie('refreshToken', result.tokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: '/api/auth/refresh-token',
-      });
+      // res.cookie('refreshToken', result.tokens.refreshToken, {
+      //   httpOnly: true,
+      //   secure: process.env.NODE_ENV === 'production',
+      //   sameSite: 'strict',
+      //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      //   path: '/api/auth/refresh-token',
+      // });
 
-      const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
+      //const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
 
       res.status(201).json({
         success: true,
         message: 'User registered successfully.',
         data: {
           user: result.user,
-          tokens: tokensWithoutRefresh,
+          //tokens: tokensWithoutRefresh,
         },
       });
     } catch (error) {
@@ -79,6 +79,7 @@ export class AuthController {
       // Get refresh token from cookie instead of request body
       const refreshToken = req.cookies.refreshToken;
 
+      console.log(refreshToken);
       if (!refreshToken) {
         return res.status(401).json({
           success: false,
