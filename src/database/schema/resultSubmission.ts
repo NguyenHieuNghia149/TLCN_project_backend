@@ -1,27 +1,29 @@
-import { pgTable, uuid, text, boolean, real } from 'drizzle-orm/pg-core';
-import { submission } from './submission';
-import { testcase } from './testcase';
+import { pgTable, uuid, text, boolean, real, timestamp } from 'drizzle-orm/pg-core';
+import { submissions } from './submission';
+import { testcases } from './testcase';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
-export const resultSubmission = pgTable('result_submissions', {
+export const resultSubmissions = pgTable('result_submissions', {
   id: uuid('id').defaultRandom().primaryKey(),
   actualOutput: text('actual_output'),
   isPassed: boolean('is_passed').default(false).notNull(),
   executionTime: real('execution_time'),
   memoryUse: real('memory_use'),
   testcaseId: uuid('testcase_id')
-    .references(() => testcase.id)
+    .references(() => testcases.id)
     .notNull(),
   submissionId: uuid('submission_id')
-    .references(() => submission.id)
+    .references(() => submissions.id)
     .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export type ResultSubmissionEntity = typeof resultSubmission.$inferSelect;
-export type ResultSubmissionInsert = typeof resultSubmission.$inferInsert;
+export type ResultSubmissionEntity = typeof resultSubmissions.$inferSelect;
+export type ResultSubmissionInsert = typeof resultSubmissions.$inferInsert;
 
-export const insertResultSubmissionSchema = createInsertSchema(resultSubmission, {
+export const insertResultSubmissionSchema = createInsertSchema(resultSubmissions, {
   actualOutput: z.string().optional(),
   isPassed: z.boolean().optional(),
   executionTime: z.number().optional(),
@@ -30,4 +32,4 @@ export const insertResultSubmissionSchema = createInsertSchema(resultSubmission,
   submissionId: z.string().uuid(),
 });
 
-export const selectResultSubmissionSchema = createSelectSchema(resultSubmission);
+export const selectResultSubmissionSchema = createSelectSchema(resultSubmissions);

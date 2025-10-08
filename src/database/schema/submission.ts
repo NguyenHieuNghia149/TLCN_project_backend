@@ -1,10 +1,10 @@
 import { pgTable, uuid, text, varchar, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './user';
-import { problem } from './problem';
+import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
-export const submission = pgTable('submissions', {
+export const submissions = pgTable('submissions', {
   id: uuid('id').defaultRandom().primaryKey(),
   sourceCode: text('source_code').notNull(),
   status: varchar('status', { length: 50 }).notNull().default('PENDING'),
@@ -14,14 +14,14 @@ export const submission = pgTable('submissions', {
     .references(() => users.id)
     .notNull(),
   problemId: uuid('problem_id')
-    .references(() => problem.id)
+    .references(() => problems.id)
     .notNull(),
 });
 
-export type SubmissionEntity = typeof submission.$inferSelect;
-export type SubmissionInsert = typeof submission.$inferInsert;
+export type SubmissionEntity = typeof submissions.$inferSelect;
+export type SubmissionInsert = typeof submissions.$inferInsert;
 
-export const insertSubmissionSchema = createInsertSchema(submission, {
+export const insertSubmissionSchema = createInsertSchema(submissions, {
   sourceCode: z.string().min(1),
   status: z
     .enum([
@@ -41,4 +41,4 @@ export const insertSubmissionSchema = createInsertSchema(submission, {
   problemId: z.string().uuid(),
 });
 
-export const selectSubmissionSchema = createSelectSchema(submission);
+export const selectSubmissionSchema = createSelectSchema(submissions);

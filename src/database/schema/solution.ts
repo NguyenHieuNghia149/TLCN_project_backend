@@ -1,9 +1,9 @@
-import { pgTable, uuid, varchar, text } from 'drizzle-orm/pg-core';
-import { problem } from './problem';
+import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
-export const solution = pgTable('solutions', {
+export const solutions = pgTable('solutions', {
   id: uuid('id').defaultRandom().primaryKey(),
   title: varchar('title', { length: 255 }).notNull(),
   videoUrl: varchar('video_url', { length: 1024 }),
@@ -11,14 +11,16 @@ export const solution = pgTable('solutions', {
   sourceCode: text('source_code'),
   description: text('description'),
   problemId: uuid('problem_id')
-    .references(() => problem.id)
+    .references(() => problems.id)
     .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export type SolutionEntity = typeof solution.$inferSelect;
-export type SolutionInsert = typeof solution.$inferInsert;
+export type SolutionEntity = typeof solutions.$inferSelect;
+export type SolutionInsert = typeof solutions.$inferInsert;
 
-export const insertSolutionSchema = createInsertSchema(solution, {
+export const insertSolutionSchema = createInsertSchema(solutions, {
   title: z.string().min(1),
   videoUrl: z.string().url().optional(),
   imageUrl: z.string().url().optional(),
@@ -27,4 +29,4 @@ export const insertSolutionSchema = createInsertSchema(solution, {
   problemId: z.string().uuid(),
 });
 
-export const selectSolutionSchema = createSelectSchema(solution);
+export const selectSolutionSchema = createSelectSchema(solutions);

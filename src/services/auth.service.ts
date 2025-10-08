@@ -9,11 +9,10 @@ import {
 import { TokenRepository } from '@/repositories/token.repository';
 import { UserRepository } from '@/repositories/user.repository';
 import { JWTUtils } from '@/utils/jwt';
-import { PasswordUtils, RateLimitUtils } from '@/utils/security';
+import { PasswordUtils } from '@/utils/security';
 import {
   UserAlreadyExistsException,
   InvalidCredentialsException,
-  RateLimitExceededException,
   TokenExpiredException,
   ValidationException,
 } from '@/exceptions/auth.exceptions';
@@ -31,13 +30,7 @@ export class AuthService {
     this.emailService = new EMailService();
   }
 
-  async register(dto: RegisterInput, req: Request): Promise<RegisterResponseSchema> {
-    const rateLimitKey = `register:${req.ip}`;
-    const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
-    if (!rateLimit.allowed) {
-      throw new RateLimitExceededException();
-    }
-
+  async register(dto: RegisterInput): Promise<RegisterResponseSchema> {
     const isOTPValid = this.emailService.verifyOTP(dto.email, dto.otp);
 
     if (!isOTPValid) {
@@ -93,13 +86,7 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginInput, req: Request): Promise<AuthResponse> {
-    const rateLimitKey = `login:${req.ip}`;
-    const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 10, 15 * 60 * 1000);
-    if (!rateLimit.allowed) {
-      throw new RateLimitExceededException();
-    }
-
+  async login(dto: LoginInput): Promise<AuthResponse> {
     const user = await this.userRepository.findByEmail(dto.email);
     if (!user) {
       throw new InvalidCredentialsException('User with this email does not exist');
@@ -118,7 +105,7 @@ export class AuthService {
 
     await this.userRepository.updateLastLogin(user.id);
 
-    // Generate tokens
+    // Generate tokens (no sessionId)
     const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
     await this.tokenRepository.createRefreshToken({
@@ -146,42 +133,31 @@ export class AuthService {
     };
   }
 
-  async refreshToken(dto: RefreshTokenInput, req: Request): Promise<AuthResponse> {
-    const rateLimitKey = `refresh:${req.ip}`;
-    const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 20, 15 * 60 * 1000);
-    if (!rateLimit.allowed) {
-      throw new RateLimitExceededException();
+  async refreshToken(dto: RefreshTokenInput): Promise<AuthResponse> {
+    const payload = JWTUtils.verifyRefreshToken(dto.refreshToken);
+
+    const storedToken = await this.tokenRepository.findByToken(dto.refreshToken);
+    if (!storedToken) {
+      throw new TokenExpiredException('Refresh token not found or revoked');
     }
 
-    let payload;
-    try {
-      payload = JWTUtils.verifyRefreshToken(dto.refreshToken);
-    } catch (error) {
-      throw new TokenExpiredException();
-    }
-
-    const refreshToken = await this.tokenRepository.findByToken(dto.refreshToken);
-    if (!refreshToken) {
-      throw new TokenExpiredException();
-    }
-
-    if (refreshToken.expiresAt < new Date()) {
+    if (storedToken.expiresAt < new Date()) {
       await this.tokenRepository.revokeToken(dto.refreshToken);
-      throw new TokenExpiredException();
+      throw new TokenExpiredException('Refresh token expired');
     }
+
+    // No session binding
 
     const user = await this.userRepository.findByIdOrThrow(payload.userId);
-
     if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
-    await this.tokenRepository.updateLastUsed(dto.refreshToken);
-
-    const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
+    // Token rotation: rotate tokens (no sessionId)
+    const rotated = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
     await this.tokenRepository.createRefreshToken({
-      token: tokens.refreshToken,
+      token: rotated.refreshToken,
       userId: user.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
@@ -200,9 +176,9 @@ export class AuthService {
         createdAt: user.createdAt.toISOString(),
       },
       tokens: {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        expiresIn: tokens.expiresIn,
+        accessToken: rotated.accessToken,
+        refreshToken: rotated.refreshToken,
+        expiresIn: rotated.expiresIn,
       },
     };
   }
@@ -214,6 +190,8 @@ export class AuthService {
   async logoutAll(userId: string): Promise<void> {
     await this.tokenRepository.revokeAllUserTokens(userId);
   }
+
+  // Removed session-based revoke
 
   async cleanupExpiredTokens(): Promise<void> {
     await this.tokenRepository.cleanupExpiredTokens();
@@ -248,17 +226,7 @@ export class AuthService {
   //   });
   // }
 
-  async resetPassword(
-    email: string,
-    newPassword: string,
-    otp: string,
-    req: Request
-  ): Promise<void> {
-    const rateLimitKey = `resetPassword:${req.ip}`;
-    const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
-    if (!rateLimit.allowed) {
-      throw new RateLimitExceededException();
-    }
+  async resetPassword(email: string, newPassword: string, otp: string): Promise<void> {
     const isOTPValid = await this.emailService.verifyOTP(email, otp!);
     if (!isOTPValid) {
       throw new ValidationException('Invalid or expired OTP');

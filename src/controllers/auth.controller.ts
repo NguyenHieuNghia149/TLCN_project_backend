@@ -10,6 +10,8 @@ import {
 import { UserService } from '@/services/user.service';
 import { EMailService } from '@/services/email.service';
 import { PasswordUtils } from '@/utils/security';
+import { fa } from 'zod/v4/locales';
+// Removed session revoke validation
 
 export class AuthController {
   constructor(
@@ -21,7 +23,7 @@ export class AuthController {
   async register(req: Request, res: Response, next: NextFunction) {
     try {
       console.log(req.body);
-      const result = await this.authService.register(req.body as RegisterInput, req);
+      const result = await this.authService.register(req.body as RegisterInput);
 
       console.log(result);
       // res.cookie('refreshToken', result.tokens.refreshToken, {
@@ -47,15 +49,24 @@ export class AuthController {
     }
   }
 
+  // Removed revokeSession handler
+
   async login(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await this.authService.login(req.body as LoginInput, req);
+      const result = await this.authService.login(req.body as LoginInput);
+
+      if (!result) {
+        res.status(401).json({
+          success: false,
+          message: 'User with this email does not exist',
+        });
+      }
 
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         path: '/api/auth/refresh-token',
       });
 
@@ -76,10 +87,8 @@ export class AuthController {
 
   async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      // Get refresh token from cookie instead of request body
       const refreshToken = req.cookies.refreshToken;
 
-      console.log(refreshToken);
       if (!refreshToken) {
         return res.status(401).json({
           success: false,
@@ -88,9 +97,9 @@ export class AuthController {
         });
       }
 
-      const result = await this.authService.refreshToken({ refreshToken }, req);
+      const result = await this.authService.refreshToken({ refreshToken });
 
-      // Set new refresh token in HttpOnly cookie
+      // Set rotated refresh token cookie
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -99,8 +108,8 @@ export class AuthController {
         path: '/api/auth/refresh-token',
       });
 
-      // Remove refresh token from response body for security
-      const { refreshToken: newRefreshToken, ...tokensWithoutRefresh } = result.tokens;
+      // Return only access token to client
+      const { refreshToken: _rt, ...tokensWithoutRefresh } = result.tokens as any;
 
       res.status(200).json({
         success: true,
@@ -277,7 +286,7 @@ export class AuthController {
   async resetPassword(req: Request, res: Response): Promise<void | Response> {
     try {
       const { email, otp, newPassword } = req.body;
-      await this.authService.resetPassword(email, otp, newPassword, req);
+      await this.authService.resetPassword(email, otp, newPassword);
 
       res.status(200).json({
         success: true,

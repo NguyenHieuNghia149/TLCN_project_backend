@@ -13,17 +13,17 @@ export * from './resultSubmission';
 import { relations } from 'drizzle-orm';
 import { users } from './user';
 import { refreshTokens } from './token';
-import { topic } from './topic';
-import { lesson } from './lesson';
-import { problem } from './problem';
-import { testcase } from './testcase';
-import { solution } from './solution';
-import { submission } from './submission';
-import { resultSubmission } from './resultSubmission';
+import { topics } from './topic';
+import { lessons } from './lesson';
+import { problems } from './problem';
+import { testcases } from './testcase';
+import { solutions } from './solution';
+import { submissions } from './submission';
+import { resultSubmissions } from './resultSubmission';
 
 export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
-  submissions: many(submission),
+  submissions: many(submissions),
 }));
 
 export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
@@ -33,66 +33,66 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
   }),
 }));
 
-export const topicsRelations = relations(topic, ({ many }) => ({
-  lessons: many(lesson),
-  problems: many(problem),
+export const topicsRelations = relations(topics, ({ many }) => ({
+  lessons: many(lessons),
+  problems: many(problems),
 }));
 
-export const lessonsRelations = relations(lesson, ({ many, one }) => ({
-  topic: one(topic, {
-    fields: [lesson.topicId],
-    references: [topic.id],
+export const lessonsRelations = relations(lessons, ({ many, one }) => ({
+  topic: one(topics, {
+    fields: [lessons.topicId],
+    references: [topics.id],
   }),
-  problems: many(problem),
+  problems: many(problems),
 }));
 
-export const problemsRelations = relations(problem, ({ one, many }) => ({
-  lesson: one(lesson, {
-    fields: [problem.lessonId],
-    references: [lesson.id],
+export const problemsRelations = relations(problems, ({ one, many }) => ({
+  lesson: one(lessons, {
+    fields: [problems.lessonId],
+    references: [lessons.id],
   }),
-  topic: one(topic, {
-    fields: [problem.topicId],
-    references: [topic.id],
+  topic: one(topics, {
+    fields: [problems.topicId],
+    references: [topics.id],
   }),
-  testcases: many(testcase),
-  solutions: many(solution),
-  submissions: many(submission),
+  testcases: many(testcases),
+  solutions: many(solutions),
+  submissions: many(submissions),
 }));
 
-export const testcasesRelations = relations(testcase, ({ one }) => ({
-  problem: one(problem, {
-    fields: [testcase.problemId],
-    references: [problem.id],
-  }),
-}));
-
-export const solutionsRelations = relations(solution, ({ one }) => ({
-  problem: one(problem, {
-    fields: [solution.problemId],
-    references: [problem.id],
+export const testcasesRelations = relations(testcases, ({ one }) => ({
+  problem: one(problems, {
+    fields: [testcases.problemId],
+    references: [problems.id],
   }),
 }));
 
-export const submissionsRelations = relations(submission, ({ one, many }) => ({
+export const solutionsRelations = relations(solutions, ({ one }) => ({
+  problem: one(problems, {
+    fields: [solutions.problemId],
+    references: [problems.id],
+  }),
+}));
+
+export const submissionsRelations = relations(submissions, ({ one, many }) => ({
   user: one(users, {
-    fields: [submission.userId],
+    fields: [submissions.userId],
     references: [users.id],
   }),
-  problem: one(problem, {
-    fields: [submission.problemId],
-    references: [problem.id],
+  problem: one(problems, {
+    fields: [submissions.problemId],
+    references: [problems.id],
   }),
-  results: many(resultSubmission),
+  results: many(resultSubmissions),
 }));
 
-export const resultSubmissionsRelations = relations(resultSubmission, ({ one }) => ({
-  submission: one(submission, {
-    fields: [resultSubmission.submissionId],
-    references: [submission.id],
+export const resultSubmissionsRelations = relations(resultSubmissions, ({ one }) => ({
+  submission: one(submissions, {
+    fields: [resultSubmissions.submissionId],
+    references: [submissions.id],
   }),
-  testcase: one(testcase, {
-    fields: [resultSubmission.testcaseId],
-    references: [testcase.id],
+  testcase: one(testcases, {
+    fields: [resultSubmissions.testcaseId],
+    references: [testcases.id],
   }),
 }));

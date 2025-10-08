@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AuthController } from '@/controllers/auth.controller';
 import { AuthService } from '@/services/auth.service';
-import { authenticationToken } from '@/middlewares/auth.middleware';
+import { authenticationToken, requireTeacher } from '@/middlewares/auth.middleware';
 import {
   authLimiter,
   rateLimitMiddleware,
@@ -11,7 +11,6 @@ import { validate } from '@/middlewares/validate.middleware';
 import {
   LoginSchema,
   RegisterSchema,
-  RefreshTokenSchema,
   ChangePasswordSchema,
   PasswordResetSchema,
   SendVerificationEmailSchema,
@@ -40,14 +39,9 @@ router.post(
   validate(LoginSchema),
   authController.login.bind(authController)
 );
-router.post(
-  '/refresh-token',
-  authRateLimit,
-  // validate(RefreshTokenSchema),
-  authController.refreshToken.bind(authController)
-);
+router.post('/refresh-token', authRateLimit, authController.refreshToken.bind(authController));
 
-router.post('/logout', authenticationToken, authController.logout.bind(authController));
+router.post('/logout', authController.logout.bind(authController));
 
 router.post(
   '/change-password',
@@ -59,7 +53,7 @@ router.get('/me', authenticationToken, authController.getProfile.bind(authContro
 router.put('/profile', authenticationToken, authController.updateProfile.bind(authController));
 
 router.post(
-  'reset-password',
+  '/reset-password',
   authRateLimit,
   validate(PasswordResetSchema),
   authController.resetPassword.bind(authController)
@@ -72,13 +66,15 @@ router.post(
   authController.sendVerificationCode.bind(authController)
 );
 
+// Removed revoke-session route
+
 // Route kiểm tra trạng thái xác thực
 // router.get('/me', authenticationToken, (req: any, res) => {
 //   res.status(200).json({ user: req.user });
 // });
 
-router.get('/heath', authRateLimit, (res, req) => {
-  req.json('helo');
+router.get('/health', authRateLimit, (req, res) => {
+  res.json({ status: 'ok' });
 });
 // Error handling middleware
 router.use(AuthController.errorHandler);

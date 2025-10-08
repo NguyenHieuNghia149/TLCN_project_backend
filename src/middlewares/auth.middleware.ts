@@ -93,10 +93,10 @@ export const requireRole = (roles: string | string[]) => {
 };
 
 // Admin only middleware
-export const requireAdmin = requireRole('admin');
+export const requireTeacher = requireRole('teacher');
 
 // User or Admin middleware
-export const requireUserOrAdmin = requireRole(['user', 'admin']);
+export const requireTeacherOrOwner = requireRole(['owner', 'teacher']);
 
 // Optional authentication middleware (doesn't fail if no token)
 export const optionalAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {

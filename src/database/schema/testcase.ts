@@ -1,23 +1,25 @@
-import { pgTable, uuid, text, boolean, integer } from 'drizzle-orm/pg-core';
-import { problem } from './problem';
+import { pgTable, uuid, text, boolean, integer, timestamp } from 'drizzle-orm/pg-core';
+import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
-export const testcase = pgTable('testcases', {
+export const testcases = pgTable('testcases', {
   id: uuid('id').defaultRandom().primaryKey(),
   input: text('input').notNull(),
   output: text('output').notNull(),
   isPublic: boolean('is_public').default(false).notNull(),
   point: integer('point').default(0).notNull(),
   problemId: uuid('problem_id')
-    .references(() => problem.id)
+    .references(() => problems.id)
     .notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export type TestcaseEntity = typeof testcase.$inferSelect;
-export type TestcaseInsert = typeof testcase.$inferInsert;
+export type TestcaseEntity = typeof testcases.$inferSelect;
+export type TestcaseInsert = typeof testcases.$inferInsert;
 
-export const insertTestcaseSchema = createInsertSchema(testcase, {
+export const insertTestcaseSchema = createInsertSchema(testcases, {
   input: z.string().min(0),
   output: z.string().min(0),
   isPublic: z.boolean().optional(),
@@ -25,4 +27,4 @@ export const insertTestcaseSchema = createInsertSchema(testcase, {
   problemId: z.string().uuid(),
 });
 
-export const selectTestcaseSchema = createSelectSchema(testcase);
+export const selectTestcaseSchema = createSelectSchema(testcases);

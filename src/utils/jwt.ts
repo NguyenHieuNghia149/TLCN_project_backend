@@ -1,5 +1,6 @@
 import jwt, { JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { config } from 'dotenv';
+import { InvalidTokenException, TokenExpiredException } from '@/exceptions/auth.exceptions';
 
 config();
 
@@ -68,7 +69,7 @@ export class JWTUtils {
     const decoded = jwt.decode(accessToken) as JWTPayload;
     const expiresIn = decoded.exp
       ? (decoded.exp - Math.floor(Date.now() / 1000)) * 1000
-      : 15 * 60 * 10000;
+      : 15 * 60 * 1000;
 
     return {
       accessToken,
@@ -82,9 +83,9 @@ export class JWTUtils {
       return jwt.verify(token, ACCESS_SECRET) as JWTPayload;
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
-        throw new Error('Access token has expired');
+        throw new TokenExpiredException('Access token has expired');
       } else if (error instanceof jwt.JsonWebTokenError) {
-        throw new Error('Invalid access token');
+        throw new InvalidTokenException('Invalid access token');
       }
       throw error;
     }
@@ -95,9 +96,9 @@ export class JWTUtils {
       return jwt.verify(token, REFRESH_SECRET) as JWTPayload;
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
-        throw new Error('Refresh token has expired');
+        throw new TokenExpiredException('Refresh token has expired');
       } else if (error instanceof jwt.JsonWebTokenError) {
-        throw new Error('Invalid refresh token');
+        throw new InvalidTokenException('Invalid refresh token');
       }
       throw error;
     }

@@ -97,3 +97,5 @@ export const RegisterResponseSchema = z.object({
 });
 
 export type RegisterResponseSchema = z.infer<typeof RegisterResponseSchema>;
+
+// Removed RevokeSessionSchema
