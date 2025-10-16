@@ -29,3 +29,7 @@ ALTER TABLE "result_submissions" ADD COLUMN "created_at" timestamp DEFAULT now()
 ALTER TABLE "result_submissions" ADD COLUMN "updated_at" timestamp DEFAULT now() NOT NULL;--> statement-breakpoint
 ALTER TABLE "solution_approaches" ADD CONSTRAINT "solution_approaches_solution_id_solutions_id_fk" FOREIGN KEY ("solution_id") REFERENCES "public"."solutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "solutions" DROP COLUMN "source_code";
+--> statement-breakpoint
+-- Ensure unique topic name case-insensitively
+CREATE UNIQUE INDEX IF NOT EXISTS topics_topic_name_ci_unique
+ON public."topics" (LOWER("topic_name"));

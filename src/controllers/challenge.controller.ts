@@ -44,7 +44,8 @@ export class ChallengeController {
     next: NextFunction
   ): Promise<void | Response> {
     try {
-      const { topicId, limit, cursor } = req.query;
+      const { topicId } = req.params;
+      const { limit, cursor } = req.query;
 
       if (!topicId) {
         return res.status(400).json({
@@ -55,7 +56,7 @@ export class ChallengeController {
       }
 
       const result = await this.challengeService.listProblemsByTopicInfinite({
-        topicId: topicId as string,
+        topicId,
         limit: limit ? parseInt(limit as string) : 10,
         cursor: cursor ? JSON.parse(cursor as string) : null,
       });
