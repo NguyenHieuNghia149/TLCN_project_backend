@@ -18,6 +18,7 @@ import { lessons } from './lesson';
 import { problems } from './problem';
 import { testcases } from './testcase';
 import { solutions } from './solution';
+import { solutionApproaches } from './solutionApproaches';
 import { submissions } from './submission';
 import { resultSubmissions } from './resultSubmission';
 
@@ -56,7 +57,7 @@ export const problemsRelations = relations(problems, ({ one, many }) => ({
     references: [topics.id],
   }),
   testcases: many(testcases),
-  solutions: many(solutions),
+  solutions: one(solutions),
   submissions: many(submissions),
 }));
 
@@ -67,10 +68,18 @@ export const testcasesRelations = relations(testcases, ({ one }) => ({
   }),
 }));
 
-export const solutionsRelations = relations(solutions, ({ one }) => ({
+export const solutionsRelations = relations(solutions, ({ one, many }) => ({
   problem: one(problems, {
     fields: [solutions.problemId],
     references: [problems.id],
+  }),
+  approaches: many(solutionApproaches),
+}));
+
+export const solutionApproachesRelations = relations(solutionApproaches, ({ one }) => ({
+  solution: one(solutions, {
+    fields: [solutionApproaches.solutionId],
+    references: [solutions.id],
   }),
 }));
 

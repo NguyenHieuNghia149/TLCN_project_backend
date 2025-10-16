@@ -1,6 +1,7 @@
 import jwt, { JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { config } from 'dotenv';
 import { InvalidTokenException, TokenExpiredException } from '@/exceptions/auth.exceptions';
+import crypto from 'crypto';
 
 config();
 
@@ -23,6 +24,7 @@ export interface JWTPayload extends JwtPayload {
   type: 'access' | 'refresh';
   iat?: number;
   exp?: number;
+  nonce?: string;
 }
 
 export interface TokenPair {
@@ -57,6 +59,7 @@ export class JWTUtils {
       email,
       role,
       type: 'refresh',
+      nonce: crypto.randomBytes(16).toString('hex'),
     };
 
     return jwt.sign(payload, REFRESH_SECRET, this.REFRESH_TOKEN_OPTIONS);

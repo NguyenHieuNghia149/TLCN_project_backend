@@ -5,6 +5,7 @@ import { authenticationToken, requireTeacher } from '@/middlewares/auth.middlewa
 import {
   authLimiter,
   rateLimitMiddleware,
+  refreshLimiter,
   strictLimiter,
 } from '@/middlewares/ratelimit.middleware';
 import { validate } from '@/middlewares/validate.middleware';
@@ -26,6 +27,7 @@ const authController = new AuthController(authService, userService, emailService
 
 const authRateLimit = authLimiter;
 const strictRateLimit = strictLimiter;
+const refreshLimit = refreshLimiter;
 
 router.post(
   '/register',
@@ -54,7 +56,7 @@ router.put('/profile', authenticationToken, authController.updateProfile.bind(au
 
 router.post(
   '/reset-password',
-  authRateLimit,
+  refreshLimit,
   validate(PasswordResetSchema),
   authController.resetPassword.bind(authController)
 );

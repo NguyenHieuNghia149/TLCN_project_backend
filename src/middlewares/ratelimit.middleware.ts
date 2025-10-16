@@ -41,6 +41,12 @@ export const authLimiter = rateLimitMiddleware({
   message: 'Too many authentication attempts, please try again later.',
 });
 
+export const refreshLimiter = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: 'Too many refresh attempts, please try again later.',
+});
+
 export const generalLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '@/services/auth.service';
-import { AuthException, ErrorHandler, ValidationException } from '@/exceptions/auth.exceptions';
+import { BaseException, ErrorHandler, ValidationException } from '@/exceptions/auth.exceptions';
 import {
   ChangePasswordInput,
   LoginInput,
@@ -61,6 +61,7 @@ export class AuthController {
           message: 'User with this email does not exist',
         });
       }
+      console.log(result);
 
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,
@@ -244,7 +245,7 @@ export class AuthController {
     res: Response,
     next: NextFunction
   ): void | Response {
-    if (error instanceof AuthException) {
+    if (error instanceof BaseException) {
       const errorResponse = ErrorHandler.getErrorResponse(error);
       return res.status(errorResponse.statusCode).json({
         success: false,

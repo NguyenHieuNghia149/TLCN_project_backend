@@ -7,7 +7,6 @@ export const validate =
   (schema: z.ZodSchema, segment: Segments = 'body') =>
   (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req[segment]);
-    console.log(result);
     if (!result.success) {
       res.status(400).json({
         message: 'Validation error',
