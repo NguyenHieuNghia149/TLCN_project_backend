@@ -3,6 +3,7 @@ import { BaseRepository } from './base.repository';
 import { SanitizationUtils } from '@/utils/security';
 import { eq, sql } from 'drizzle-orm';
 import { TopicAlreadyExistsException } from '@/exceptions/topic.exception';
+import { TopicResponse } from '@/validations/topic.validation';
 
 export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, TopicInsert> {
   constructor() {
@@ -31,5 +32,13 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
       .limit(1);
 
     return selectedTopic || null;
+  }
+
+  async getAllTopics(): Promise<TopicResponse[]> {
+    const topicSelect = await this.db
+      .select({ id: topics.id, topicName: topics.topicName })
+      .from(topics);
+
+    return topicSelect;
   }
 }

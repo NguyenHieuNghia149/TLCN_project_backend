@@ -11,63 +11,43 @@ export class TopicController {
   constructor(private readonly topicService: TopicService) {}
 
   async create(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { topicName } = CreateTopicSchema.parse(req.body);
-      const result = await this.topicService.createTopic({ topicName });
-      res.status(201).json({ success: true, message: 'Topic created', data: result });
-    } catch (error) {
-      next(error);
-    }
+    const { topicName } = CreateTopicSchema.parse(req.body);
+    const result = await this.topicService.createTopic({ topicName });
+    res.status(201).json({ success: true, message: 'Topic created', data: result });
   }
 
   async getById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const topicId = req.params.topicId;
+    const topicId = req.params.topicId;
 
-      if (!topicId) {
-        return res.status(400).json({ success: false, message: 'Topic ID is required' });
-      }
-      const result = await this.topicService.getTopicById(topicId);
-      res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
+    if (!topicId) {
+      return res.status(400).json({ success: false, message: 'Topic ID is required' });
     }
+    const result = await this.topicService.getTopicById(topicId);
+    res.status(200).json({ success: true, data: result });
   }
 
   async list(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await this.topicService.getAllTopics();
-      res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
+    const result = await this.topicService.getAllTopics();
+    res.status(200).json({ success: true, data: result });
   }
 
   async update(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { topicId } = req.params;
-      if (!topicId) {
-        return res.status(400).json({ success: false, message: 'Topic ID is required' });
-      }
-      const { topicName } = req.body;
-      const result = await this.topicService.updateTopic(topicId, { topicName });
-      res.status(200).json({ success: true, message: 'Topic updated', data: result });
-    } catch (error) {
-      next(error);
+    const { topicId } = req.params;
+    if (!topicId) {
+      return res.status(400).json({ success: false, message: 'Topic ID is required' });
     }
+    const { topicName } = req.body;
+    const result = await this.topicService.updateTopic(topicId, { topicName });
+    res.status(200).json({ success: true, message: 'Topic updated', data: result });
   }
 
   async delete(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { topicId } = req.params;
-      if (!topicId) {
-        return res.status(400).json({ success: false, message: 'Topic ID is required' });
-      }
-      await this.topicService.deleteTopic(topicId);
-      res.status(200).json({ success: true, message: 'Topic deleted' });
-    } catch (error) {
-      next(error);
+    const { topicId } = req.params;
+    if (!topicId) {
+      return res.status(400).json({ success: false, message: 'Topic ID is required' });
     }
+    await this.topicService.deleteTopic(topicId);
+    res.status(200).json({ success: true, message: 'Topic deleted' });
   }
 
   static errorHandler(
