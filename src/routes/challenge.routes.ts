@@ -35,7 +35,7 @@ const createChallengeRateLimit = rateLimitMiddleware({
 router.get(
   '/problems/topic/:topicId',
   challengeRateLimit,
-  validate(ListProblemsByTopicSchema),
+  //validate(ListProblemsByTopicSchema),
   challengeController.listProblemsByTopic.bind(challengeController)
 );
 

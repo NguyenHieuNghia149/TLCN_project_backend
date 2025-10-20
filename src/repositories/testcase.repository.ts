@@ -1,5 +1,5 @@
 import { TestcaseEntity, TestcaseInsert, testcases } from '@/database/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.repository';
 
 export class TestcaseRepository extends BaseRepository<
@@ -36,5 +36,21 @@ export class TestcaseRepository extends BaseRepository<
       .returning();
 
     return !!result;
+  }
+
+  async sumPointsByProblemIds(problemIds: string[]): Promise<Record<string, number>> {
+    if (problemIds.length === 0) return {};
+
+    const rows = await this.db
+      .select({ problemId: this.table.problemId, total: sql<number>`SUM(${this.table.point})` })
+      .from(this.table)
+      .where(inArray(this.table.problemId, problemIds))
+      .groupBy(this.table.problemId);
+
+    const map: Record<string, number> = {};
+    for (const row of rows as any[]) {
+      map[row.problemId] = Number(row.total ?? 0);
+    }
+    return map;
   }
 }

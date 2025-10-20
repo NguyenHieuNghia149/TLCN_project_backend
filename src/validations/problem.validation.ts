@@ -53,6 +53,7 @@ export const ProblemResponseSchema = z.object({
   tags: z.array(z.string()),
   lessonId: z.string(),
   topicId: z.string(),
+  totalPoints: z.number().default(0),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

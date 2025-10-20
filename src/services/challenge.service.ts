@@ -11,6 +11,8 @@ import {
 } from '@/database/schema';
 import { ChallengeResponse, ProblemInput } from '@/validations/problem.validation';
 import { LessonRepository } from '@/repositories/lesson.repository';
+import { SolutionApproachRepository } from '@/repositories/solutionApproach.repository';
+import { SolutionResponse } from '@/validations/solution.validation';
 
 export class ChallengeService {
   private topicRepository: TopicRepository;
@@ -18,6 +20,7 @@ export class ChallengeService {
   private testcaseRepository: TestcaseRepository;
   private solutionRepository: SolutionRepository;
   private lessonRepository: LessonRepository;
+  private solutionApproachRepository: SolutionApproachRepository;
 
   constructor() {
     this.topicRepository = new TopicRepository();
@@ -25,6 +28,7 @@ export class ChallengeService {
     this.testcaseRepository = new TestcaseRepository();
     this.solutionRepository = new SolutionRepository();
     this.lessonRepository = new LessonRepository();
+    this.solutionApproachRepository = new SolutionApproachRepository();
   }
 
   async createChallenge(challengeData: ProblemInput): Promise<ChallengeResponse> {
@@ -58,6 +62,10 @@ export class ChallengeService {
 
   private mapToChallengeResponse(result: any): ChallengeResponse {
     const { problem, testcases, solution } = result;
+    const totalPoints = (testcases || []).reduce((sum: number, tc: any) => {
+      const point = typeof tc.point === 'number' ? tc.point : 0;
+      return sum + point;
+    }, 0);
 
     return {
       problem: {
@@ -69,6 +77,7 @@ export class ChallengeService {
         tags: (problem.tags ?? '').split(',').filter(Boolean),
         lessonId: problem.lessonId ?? '',
         topicId: problem.topicId ?? '',
+        totalPoints,
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
@@ -150,7 +159,11 @@ export class ChallengeService {
     limit?: number;
     cursor?: { createdAt: string; id: string } | null;
   }): Promise<{
-    items: Array<Pick<ProblemEntity, 'id' | 'title' | 'description' | 'difficult' | 'createdAt'>>;
+    items: Array<
+      Pick<ProblemEntity, 'id' | 'title' | 'description' | 'difficult' | 'createdAt'> & {
+        totalPoints: number;
+      }
+    >;
     nextCursor: { createdAt: string; id: string } | null;
   }> {
     const { topicId, limit = 10, cursor } = params;
@@ -166,6 +179,9 @@ export class ChallengeService {
       cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
     });
 
+    // Batch sum points
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(items.map(p => p.id));
+
     return {
       items: items.map(p => ({
         id: p.id,
@@ -173,6 +189,7 @@ export class ChallengeService {
         description: p.description,
         difficult: p.difficult,
         createdAt: p.createdAt,
+        totalPoints: pointsMap[p.id] ?? 0,
       })),
       nextCursor: nextCursor
         ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
@@ -194,7 +211,11 @@ export class ChallengeService {
     limit?: number;
     cursor?: { createdAt: string; id: string } | null;
   }): Promise<{
-    items: Array<Pick<ProblemEntity, 'id' | 'title' | 'description' | 'difficult' | 'createdAt'>>;
+    items: Array<
+      Pick<ProblemEntity, 'id' | 'title' | 'description' | 'difficult' | 'createdAt'> & {
+        totalPoints: number;
+      }
+    >;
     nextCursor: { createdAt: string; id: string } | null;
   }> {
     const { topicId, tags, limit = 10, cursor } = params;
@@ -211,6 +232,9 @@ export class ChallengeService {
       cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
     });
 
+    // Batch sum points
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(items.map(p => p.id));
+
     return {
       items: items.map(p => ({
         id: p.id,
@@ -218,6 +242,7 @@ export class ChallengeService {
         description: p.description,
         difficult: p.difficult,
         createdAt: p.createdAt,
+        totalPoints: pointsMap[p.id] ?? 0,
       })),
       nextCursor: nextCursor
         ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
@@ -232,14 +257,21 @@ export class ChallengeService {
     }
 
     const testcases = await this.testcaseRepository.findPublicByProblemId(challengeId);
-
-    const visibleSolution = await this.solutionRepository.findByProblemId(challengeId, true);
-
+    const visibleSolution = await this.fetchVisibleSolutionWithApproaches(challengeId);
     return this.mapToChallengeResponse({
       problem,
       testcases: testcases,
       solution: visibleSolution,
     });
+  }
+
+  private async fetchVisibleSolutionWithApproaches(
+    problemId: string
+  ): Promise<SolutionResponse | null> {
+    const solution = await this.solutionRepository.findByProblemId(problemId, true);
+    if (!solution) return null;
+    const approaches = await this.solutionApproachRepository.findBySolutionId(solution.id);
+    return { ...(solution as any), solutionApproaches: approaches } as any;
   }
 
   async updateChallenge(
