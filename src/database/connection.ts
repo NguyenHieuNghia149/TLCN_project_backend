@@ -20,8 +20,10 @@ const pool = new Pool({
   // Connection pool settings
   min: process.env.DB_POOL_MIN ? parseInt(process.env.DB_POOL_MIN) : 2,
   max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX) : 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  idleTimeoutMillis: 300000,
+  connectionTimeoutMillis: 100000, // Tăng từ 2s lên 100s
+  keepAlive: true, // Giữ kết nối sống
+  keepAliveInitialDelayMillis: 10000, // Delay trước khi bắt đầu keep-alive
 });
 
 // Create Drizzle instance
@@ -32,6 +34,11 @@ export type DatabaseType = typeof db;
 export type TransactionType = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Database connection utilities
+
+pool.on('error', error => {
+  console.error('Database connection pool error:', error);
+});
+
 export class DatabaseService {
   static async connect(): Promise<void> {
     try {
