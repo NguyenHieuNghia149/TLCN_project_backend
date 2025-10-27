@@ -10,6 +10,7 @@ export const resultSubmissions = pgTable('result_submissions', {
   isPassed: boolean('is_passed').default(false).notNull(),
   executionTime: real('execution_time'),
   memoryUse: real('memory_use'),
+  error: text('error'),
   testcaseId: uuid('testcase_id')
     .references(() => testcases.id)
     .notNull(),
@@ -28,6 +29,7 @@ export const insertResultSubmissionSchema = createInsertSchema(resultSubmissions
   isPassed: z.boolean().optional(),
   executionTime: z.number().optional(),
   memoryUse: z.number().optional(),
+  error: z.string().optional(),
   testcaseId: z.string().uuid(),
   submissionId: z.string().uuid(),
 });

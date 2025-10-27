@@ -4,10 +4,14 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { config } from 'dotenv';
 import compression from 'compression';
+import { createServer } from 'http';
 import { DatabaseService } from './database/connection';
 import route from './routes';
+import { initializeWebSocket } from './services/websocket.service';
+import { queueService } from './services/queue.service';
 
 const app = express();
+const server = createServer(app);
 
 config();
 
@@ -82,6 +86,15 @@ DatabaseService.connect()
   .then(() => DatabaseService.runMigrations())
   .catch(console.error);
 
+// Initialize WebSocket
+initializeWebSocket(server);
+
+// Connect to Redis
+queueService
+  .connect()
+  .then(() => console.log('Connected to Redis'))
+  .catch(console.error);
+
 // Routes
 route(app);
 
@@ -106,13 +119,13 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // 404 handler
-// app.use('/api/*', (req: Request, res: Response) => {
-//   res.status(404).json({
-//     success: false,
-//     message: 'API endpoint not found',
-//     code: 'NOT_FOUND',
-//   });
-// });
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    message: 'API endpoint not found',
+    code: 'NOT_FOUND',
+  });
+});
 
 const PORT = process.env.PORT || 3001;
 

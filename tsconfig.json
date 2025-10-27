@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -42,6 +42,10 @@
   },
   "include": [
     "src/**/*",
+    "sandbox/**/*",
+    "worker/**/*",
+    "config/**/*",
+    "scripts/**/*",
     "tests/**/*"
   ],
   "exclude": [

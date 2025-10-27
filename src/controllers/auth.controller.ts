@@ -206,7 +206,38 @@ export class AuthController {
     });
   }
 
-  // Error handling middleware
+  async sendVerificationCode(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const { email } = req.body;
+
+      await this.emailService.sendVerificationCode(email, req);
+
+      res.status(200).json({
+        success: true,
+        message: 'Verification code sent to your email.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    try {
+      const { email, otp, newPassword } = req.body;
+      await this.authService.resetPassword(email, otp, newPassword);
+      res.status(200).json({
+        success: true,
+        message: 'Password has been reset successfully. You can now log in with your new password.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static errorHandler(
     error: Error,
     req: Request,
@@ -242,31 +273,6 @@ export class AuthController {
       message: 'Internal server error',
       code: 'INTERNAL_ERROR',
       timestamp: new Date().toISOString(),
-    });
-  }
-
-  async sendVerificationCode(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void | Response> {
-    const { email } = req.body;
-
-    await this.emailService.sendVerificationCode(email, req);
-
-    res.status(200).json({
-      success: true,
-      message: 'Verification code sent to your email.',
-    });
-  }
-
-  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    const { email, otp, newPassword } = req.body;
-    await this.authService.resetPassword(email, otp, newPassword);
-
-    res.status(200).json({
-      success: true,
-      message: 'Password has been reset successfully. You can now log in with your new password.',
     });
   }
 }

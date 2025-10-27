@@ -11,6 +11,8 @@ export const problems = pgTable('problems', {
   difficult: varchar('difficult', { length: 20 }).notNull().default('easy'),
   constraint: text('constraint'),
   tags: text('tags'),
+  timeLimit: integer('time_limit').default(1000), // milliseconds
+  memoryLimit: varchar('memory_limit', { length: 20 }).default('128m'),
   lessonId: uuid('lesson_id').references(() => lessons.id),
   topicId: uuid('topic_id').references(() => topics.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),

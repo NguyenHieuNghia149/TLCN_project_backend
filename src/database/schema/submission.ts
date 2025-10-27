@@ -3,13 +3,15 @@ import { users } from './user';
 import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
+import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
 
 export const submissions = pgTable('submissions', {
   id: uuid('id').defaultRandom().primaryKey(),
   sourceCode: text('source_code').notNull(),
-  status: varchar('status', { length: 50 }).notNull().default('PENDING'),
+  status: varchar('status', { length: 50 }).notNull().default(ESubmissionStatus.PENDING.toString()),
   language: varchar('language', { length: 50 }).notNull(),
   submittedAt: timestamp('submitted_at').defaultNow().notNull(),
+  judgedAt: timestamp('judged_at'),
   userId: uuid('user_id')
     .references(() => users.id)
     .notNull(),
@@ -37,6 +39,7 @@ export const insertSubmissionSchema = createInsertSchema(submissions, {
     .default('PENDING'),
   language: z.string().min(1),
   submittedAt: z.string().optional(),
+  judgedAt: z.string().optional(),
   userId: z.string().uuid(),
   problemId: z.string().uuid(),
 });
