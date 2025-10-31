@@ -165,18 +165,29 @@ export class SandboxService {
   }
 
   private async createIsolatedWorkspace(jobDir: string, config: ExecutionConfig): Promise<void> {
-    // Create job directory
-    fs.mkdirSync(jobDir, { recursive: true });
+    try {
+      // Create job directory
+      fs.mkdirSync(jobDir, { recursive: true });
 
-    // Get language configuration
-    const langConfig = this.getLanguageConfig(config.language);
-    const filePath = path.join(jobDir, langConfig.fileName);
+      // Get language configuration
+      const langConfig = this.getLanguageConfig(config.language);
+      const filePath = path.join(jobDir, langConfig.fileName);
 
-    // Write code to file
-    fs.writeFileSync(filePath, config.code, 'utf8');
+      // Write code to file
+      fs.writeFileSync(filePath, config.code, 'utf8');
 
-    // Set proper permissions
-    fs.chmodSync(filePath, 0o644);
+      // Set proper permissions
+      fs.chmodSync(filePath, 0o755);
+      fs.chmodSync(jobDir, 0o755);
+
+      // Log directory contents for debugging
+      console.log(`Created workspace at ${jobDir}`);
+      console.log('Directory contents:', fs.readdirSync(jobDir));
+      console.log('File contents:', fs.readFileSync(filePath, 'utf8'));
+    } catch (error) {
+      console.error('Error creating workspace:', error);
+      throw error;
+    }
   }
 
   private async executeInSandbox(jobDir: string, config: ExecutionConfig): Promise<any> {
@@ -186,7 +197,30 @@ export class SandboxService {
 
     // Compile if needed
     if (langConfig.needsCompilation) {
-      await this.compileCode(jobDir, langConfig, config.memoryLimit);
+      try {
+        await this.compileCode(jobDir, langConfig, config.memoryLimit);
+      } catch (compileError: any) {
+        // Return compilation error for all test cases
+        return {
+          summary: {
+            passed: 0,
+            total: config.testcases.length,
+            successRate: '0.00',
+            status: 'compilation_error',
+          },
+          results: config.testcases.map(testcase => ({
+            testcaseId: testcase.id,
+            input: testcase.input || '',
+            expectedOutput: testcase.output || '',
+            actualOutput: '',
+            isPassed: false,
+            executionTime: 0,
+            memoryUse: null,
+            error: compileError.message,
+            stderr: compileError.message,
+          })),
+        };
+      }
     }
 
     // Execute each test case
@@ -243,22 +277,48 @@ export class SandboxService {
   }
 
   private async compileCode(jobDir: string, langConfig: any, memoryLimit?: string): Promise<void> {
-    const absJobDir = path.resolve(jobDir).replace(/\\/g, '/');
-    const dockerPath = absJobDir.replace(/^([A-Z]):/, (match, drive) => `/${drive.toLowerCase()}`);
+    // Prefer local compilation inside the sandbox container (no nested docker mounts)
+    return new Promise((resolve, reject) => {
+      try {
+        const cwd = jobDir;
+        // Determine compile command for local execution (split into args)
+        // For C/C++ we expect compileCmd to reference workspace paths; convert to local args
+        if (langConfig.compileCmd && langConfig.compileCmd.startsWith('g++')) {
+          // Build args like: g++ -std=c++17 -O2 -Wall -o solution main.cpp
+          const args = [] as string[];
+          // crude parsing, prefer explicit config
+          // If compileCmd contains /workspace paths, use filenames in cwd
+          args.push('-std=c++17', '-O2', '-Wall', '-o', 'solution', langConfig.fileName);
 
-    const dockerArgs = securityService.generateSecureDockerArgs(
-      langConfig.image,
-      langConfig.compileCmd,
-      memoryLimit || '128m',
-      30, // 30 seconds timeout
-      dockerPath
-    );
-
-    const result = await this.runDocker(dockerArgs, '', 30000);
-
-    if (result.exitCode !== 0) {
-      throw new Error(`Compilation failed: ${result.stderr}`);
-    }
+          const proc = spawn('g++', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+          let stderr = '';
+          proc.stderr.on('data', d => (stderr += d.toString()));
+          proc.on('close', code => {
+            if (code === 0) return resolve();
+            return reject(new Error(`Compilation failed: ${stderr.trim()}`));
+          });
+          proc.on('error', err => reject(err));
+        } else if (langConfig.compileCmd) {
+          // Fallback: run the compile command in a shell inside cwd
+          const proc = spawn('sh', ['-c', langConfig.compileCmd], {
+            cwd,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          let stderr = '';
+          proc.stderr.on('data', d => (stderr += d.toString()));
+          proc.on('close', code => {
+            if (code === 0) return resolve();
+            return reject(new Error(`Compilation failed: ${stderr.trim()}`));
+          });
+          proc.on('error', err => reject(err));
+        } else {
+          // Nothing to compile
+          return resolve();
+        }
+      } catch (err) {
+        return reject(err);
+      }
+    });
   }
 
   private async runTestCase(
@@ -267,28 +327,106 @@ export class SandboxService {
     testcase: any,
     config: ExecutionConfig
   ): Promise<ExecutionResult> {
-    const absJobDir = path.resolve(jobDir).replace(/\\/g, '/');
-    const dockerPath = absJobDir.replace(/^([A-Z]):/, (match, drive) => `/${drive.toLowerCase()}`);
-
-    // Create input file
-    if (testcase.input) {
-      const inputFile = path.join(jobDir, 'input.txt');
-      fs.writeFileSync(inputFile, testcase.input, 'utf8');
+    // Local execution path (run compiled binary or interpreter in the sandbox container)
+    // Convert JSON-style judge inputs like {"nums": [...], "target": x} into plain-text
+    let inputContent = testcase.input || '';
+    try {
+      const trimmed = String(inputContent).trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || trimmed.includes('"nums"')) {
+        const obj = JSON.parse(trimmed);
+        const nums = obj.nums || obj.numbers || obj.array;
+        const target = obj.target;
+        if (Array.isArray(nums) && typeof target !== 'undefined') {
+          inputContent = `${nums.length}\n${nums.join(' ')}\n${target}\n`;
+        }
+      }
+    } catch (e) {
+      // fallback to raw input
     }
 
-    const runCommand = testcase.input
-      ? `${langConfig.runCmd} < /work/input.txt`
-      : langConfig.runCmd;
+    const inputFile = path.join(jobDir, 'input.txt');
+    fs.writeFileSync(inputFile, inputContent, 'utf8');
 
-    const dockerArgs = securityService.generateSecureDockerArgs(
-      langConfig.image,
-      runCommand,
-      config.memoryLimit,
-      config.timeLimit,
-      dockerPath
-    );
+    return new Promise<ExecutionResult>((resolve, reject) => {
+      try {
+        const cwd = jobDir;
+        let cmd: string;
+        let args: string[] = [];
 
-    return await this.runDocker(dockerArgs, '', (config.timeLimit + 2) * 1000);
+        if (langConfig.needsCompilation) {
+          // run the produced binary
+          cmd = path.join(cwd, 'solution');
+          args = [];
+        } else {
+          // interpreter run (python, node, java etc.)
+          const parts = langConfig.runCmd.split(' ');
+          cmd = parts[0];
+          args = parts
+            .slice(1)
+            .map((p: string) => p.replace('/work/', `${cwd}/`).replace('/workspace/', `${cwd}/`));
+        }
+
+        const proc = spawn(cmd, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        let killed = false;
+
+        const timer = setTimeout(
+          () => {
+            killed = true;
+            proc.kill('SIGKILL');
+          },
+          (config.timeLimit + 2) * 1000
+        );
+
+        proc.stdout.on('data', d => (stdout += d.toString()));
+        proc.stderr.on('data', d => (stderr += d.toString()));
+
+        proc.on('close', code => {
+          clearTimeout(timer);
+          if (killed) {
+            return reject(new Error(`Execution timeout exceeded ${config.timeLimit}ms`));
+          }
+
+          // Check for runtime errors
+          if (code !== 0) {
+            const errorMsg = stderr.trim() || `Process exited with code ${code}`;
+            return reject(new Error(`Runtime Error: ${errorMsg}`));
+          }
+
+          // Check for empty output
+          if (!stdout.trim()) {
+            return reject(
+              new Error('No output generated. Make sure your program prints the result.')
+            );
+          }
+
+          // Validate output format
+          const output = stdout.trim();
+          if (!output.startsWith('[') || !output.endsWith(']')) {
+            return reject(new Error('Invalid output format. Expected JSON array format [i,j].'));
+          }
+
+          resolve({
+            stdout: output,
+            stderr: stderr.trim(),
+            exitCode: code,
+            executionTime: 0,
+          });
+        });
+
+        proc.on('error', err => {
+          clearTimeout(timer);
+          reject(new Error(`Execution error: ${err.message}`));
+        });
+
+        // Pipe input directly with converted content
+        proc.stdin.write(inputContent);
+        proc.stdin.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   private runDocker(
@@ -366,10 +504,10 @@ export class SandboxService {
   private getLanguageConfig(language: string): any {
     const languages = {
       cpp: {
-        image: 'gcc:latest',
+        image: 'gcc:11.3.0',
         fileName: 'main.cpp',
-        compileCmd: 'g++ -std=c++17 -O2 -static -s -o /work/solution /work/main.cpp',
-        runCmd: '/work/solution',
+        compileCmd: 'g++ -std=c++17 -O2 -Wall -o /workspace/solution /workspace/main.cpp',
+        runCmd: '/workspace/solution',
         needsCompilation: true,
       },
       python: {

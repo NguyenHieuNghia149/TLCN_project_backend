@@ -21,6 +21,7 @@ export const LessonResponseSchema = z.object({
   title: z.string(),
   content: z.string().nullable(),
   topicId: z.string(),
+  topicName: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

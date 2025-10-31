@@ -7,6 +7,9 @@ import topicRoutes from './topic.routes';
 import submissionRoutes from './submission.routes';
 import securityRoutes from './security.routes';
 import sandboxRoutes from '../../sandbox/sandbox.routes';
+import lessonRoutes from './lesson.routes';
+import lessonDetailRoutes from './lessonDetail.routes';
+import profileRoutes from './profile.routes';
 import { generalLimiter } from '../middlewares/ratelimit.middleware';
 
 function route(app: Application): void {
@@ -18,6 +21,9 @@ function route(app: Application): void {
   app.use('/api/submissions', submissionRoutes);
   app.use('/api/security', securityRoutes);
   app.use('/api/sandbox', sandboxRoutes);
+  app.use('/api/lessons', lessonRoutes);
+  app.use('/api/lesson-details', lessonDetailRoutes);
+  app.use('/api/profile', profileRoutes);
 
   app.use('/api/health', async (req, res) => {
     const dbHealth = await DatabaseUtils.getHealthInfo();

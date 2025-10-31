@@ -81,54 +81,69 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Connect to database
-DatabaseService.connect()
-  .then(() => DatabaseService.runMigrations())
-  .catch(console.error);
+// Initialize application
+async function startServer() {
+  try {
+    // Connect to database
+    console.log('Connecting to database...');
+    await DatabaseService.connect();
 
-// Initialize WebSocket
-initializeWebSocket(server);
+    // Run migrations
+    console.log('Running migrations...');
+    await DatabaseService.runMigrations();
 
-// Connect to Redis
-queueService
-  .connect()
-  .then(() => console.log('Connected to Redis'))
-  .catch(console.error);
+    // Initialize WebSocket
+    initializeWebSocket(server);
 
-// Routes
-route(app);
+    // Connect to Redis
+    queueService
+      .connect()
+      .then(() => console.log('Connected to Redis'))
+      .catch(error =>
+        console.error('Redis connection failed (continuing without it):', error.message)
+      );
 
-// Global error handler
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('Global error handler:', err);
+    // Routes
+    route(app);
 
-  if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({
-      success: false,
-      message: 'CORS error: Origin not allowed',
-      code: 'CORS_ERROR',
+    // Global error handler
+    app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+      console.error('Global error handler:', err);
+
+      if (err.message === 'Not allowed by CORS') {
+        return res.status(403).json({
+          success: false,
+          message: 'CORS error: Origin not allowed',
+          code: 'CORS_ERROR',
+        });
+      }
+
+      return res.status(500).json({
+        status: 'error',
+        message: 'Internal Server Error',
+        code: 'INTERNAL_ERROR',
+        timestamp: new Date().toISOString(),
+      });
     });
+
+    // 404 handler
+    app.use((req: Request, res: Response) => {
+      res.status(404).json({
+        success: false,
+        message: 'API endpoint not found',
+        code: 'NOT_FOUND',
+      });
+    });
+
+    const PORT = process.env.PORT || 3001;
+
+    server.listen(PORT, () => {
+      console.log(`server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   }
+}
 
-  return res.status(500).json({
-    status: 'error',
-    message: 'Internal Server Error',
-    code: 'INTERNAL_ERROR',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    message: 'API endpoint not found',
-    code: 'NOT_FOUND',
-  });
-});
-
-const PORT = process.env.PORT || 3001;
-
-app.listen(PORT, () => {
-  console.log(`server is running on port ${PORT}`);
-});
+startServer();

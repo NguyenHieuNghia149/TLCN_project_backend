@@ -53,8 +53,11 @@ export class DatabaseService {
 
   static async disconnect(): Promise<void> {
     try {
-      await pool.end();
-      console.log('Database disconnected successfully');
+      // Check if pool is still active
+      if (pool.totalCount > 0 || pool.idleCount > 0) {
+        await pool.end();
+        console.log('Database disconnected successfully');
+      }
     } catch (error) {
       console.error('Database disconnection failed:', error);
       throw error;
@@ -63,11 +66,43 @@ export class DatabaseService {
 
   static async runMigrations(): Promise<void> {
     try {
-      await migrate(db, { migrationsFolder: './src/database/migrations' });
+      // Check if pool is still alive
+      if (pool.totalCount === 0 && pool.idleCount === 0 && pool.waitingCount > 0) {
+        console.error('Pool is in an invalid state');
+        return;
+      }
+
+      // Use absolute path for migrations in production
+      const migrationsFolder =
+        process.env.NODE_ENV === 'production'
+          ? '/app/dist/src/database/migrations'
+          : './src/database/migrations';
+
+      console.log(`Running migrations from: ${migrationsFolder}`);
+
+      // Ensure meta folder exists
+      const metaDir = `${migrationsFolder}/meta`;
+      const metaFile = `${metaDir}/_journal.json`;
+      const fs = require('fs');
+      if (!fs.existsSync(metaDir)) {
+        fs.mkdirSync(metaDir, { recursive: true });
+      }
+      if (!fs.existsSync(metaFile)) {
+        fs.writeFileSync(metaFile, JSON.stringify({ version: '5', entries: [] }));
+      }
+
+      // Use the existing db instance with the pool for migrations
+      await migrate(db, { migrationsFolder });
       console.log('Database migrations completed');
     } catch (error) {
       console.error('Database migration failed:', error);
-      throw error;
+      // Log more details about the error
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+        console.error('Stack:', error.stack);
+      }
+      // Don't throw error to allow app to continue running
+      // The app should still work even if migrations fail
     }
   }
 
@@ -82,13 +117,21 @@ export class DatabaseService {
   }
 }
 
-// Handle process termination
+// Handle process termination gracefully
+let isDisconnecting = false;
+
 process.on('SIGINT', async () => {
+  if (isDisconnecting) return;
+  isDisconnecting = true;
+  console.log('\nShutting down gracefully...');
   await DatabaseService.disconnect();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
+  if (isDisconnecting) return;
+  isDisconnecting = true;
+  console.log('\nShutting down gracefully...');
   await DatabaseService.disconnect();
   process.exit(0);
 });

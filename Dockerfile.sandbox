@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:20.9.0-bullseye-slim AS builder
 
 WORKDIR /app
 
@@ -17,9 +17,25 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:20.9.0-bullseye-slim
 
 WORKDIR /app
+
+# Install necessary packages for code compilation and execution
+RUN apt-get update && apt-get install -y \
+    curl \
+    docker.io \
+    build-essential \
+    gcc \
+    g++ \
+    gdb \
+    python3 \
+    openjdk-17-jdk \
+    libc6-dev \
+    linux-libc-dev \
+    libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /lib/x86_64-linux-gnu/libstdc++.so.6 /lib/x86_64-linux-gnu/libstdc++.so
 
 # Copy package files and install production dependencies
 COPY package*.json ./
@@ -38,6 +54,9 @@ RUN mkdir -p workspace
 ENV NODE_ENV=production
 ENV SANDBOX_PORT=4000
 ENV WORKSPACE_DIR=/app/workspace
+ENV LD_LIBRARY_PATH=/lib/x86_64-linux-gnu
+ENV GLIBC_TUNABLES=glibc.pthread.rseq=0
+ENV MALLOC_ARENA_MAX=4
 
 # Default command
 CMD ["npm", "run", "start:sandbox"]
