@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
 import { ChallengeService } from '@/services/challenge.service';
 import { BaseException, ErrorHandler } from '@/exceptions/auth.exceptions';
 import {
@@ -39,7 +40,7 @@ export class ChallengeController {
   }
 
   async listProblemsByTopic(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
@@ -53,6 +54,7 @@ export class ChallengeController {
         topicId,
         limit: limit ? parseInt(limit as string) : 10,
         cursor: cursor ? JSON.parse(cursor as string) : null,
+        userId: req.user?.userId,
       });
 
       return res
@@ -104,7 +106,7 @@ export class ChallengeController {
   }
 
   async listProblemsByTopicAndTags(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
@@ -129,6 +131,7 @@ export class ChallengeController {
         tags: tagsArray,
         limit: limit ? parseInt(limit as string) : 10,
         cursor: cursor ? JSON.parse(cursor as string) : null,
+        userId: req.user?.userId,
       });
 
       return res.status(200).json({ success: true, data: result }).send();
@@ -138,7 +141,7 @@ export class ChallengeController {
   }
 
   async getChallengeById(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
@@ -149,7 +152,7 @@ export class ChallengeController {
         throw new BaseException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
       }
 
-      const result = await this.challengeService.getChallengeById(challengeId);
+      const result = await this.challengeService.getChallengeById(challengeId, req.user?.userId);
 
       res.status(200).json({
         success: true,

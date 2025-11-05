@@ -54,6 +54,7 @@ export const ProblemResponseSchema = z.object({
   lessonId: z.string(),
   topicId: z.string(),
   totalPoints: z.number().default(0),
+  isSolved: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

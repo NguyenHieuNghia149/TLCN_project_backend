@@ -10,6 +10,7 @@ import {
   authenticationToken,
   requireTeacher,
   requireTeacherOrOwner,
+  optionalAuth,
 } from '@/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
 import { validate } from '@/middlewares/validate.middleware';
@@ -35,6 +36,7 @@ const createChallengeRateLimit = rateLimitMiddleware({
 router.get(
   '/problems/topic/:topicId',
   challengeRateLimit,
+  optionalAuth,
   //validate(ListProblemsByTopicSchema),
   challengeController.listProblemsByTopic.bind(challengeController)
 );
@@ -42,12 +44,14 @@ router.get(
 router.get(
   '/topics/:topicId/tags',
   challengeRateLimit,
+  optionalAuth,
   challengeController.getTopicTags.bind(challengeController)
 );
 
 router.get(
   '/topics/:topicId/problems',
   challengeRateLimit,
+  optionalAuth,
   challengeController.listProblemsByTopicAndTags.bind(challengeController)
 );
 
@@ -64,6 +68,7 @@ router.post(
 router.get(
   '/:challengeId',
   challengeRateLimit,
+  optionalAuth,
   challengeController.getChallengeById.bind(challengeController)
 );
 

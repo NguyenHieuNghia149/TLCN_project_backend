@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, count, sql, inArray } from 'drizzle-orm';
 import { BaseRepository, PaginationOptions, PaginationResult } from './base.repository';
 import { submissions, SubmissionEntity, SubmissionInsert } from '@/database/schema';
 import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
@@ -293,5 +293,23 @@ export class SubmissionRepository extends BaseRepository<
     });
 
     return result;
+  }
+
+  async getAcceptedProblemIdsByUser(userId: string, problemIds: string[]): Promise<Set<string>> {
+    if (!problemIds.length) return new Set();
+
+    const rows = await this.db
+      .select({ problemId: submissions.problemId })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.userId, userId),
+          inArray(submissions.problemId, problemIds),
+          eq(submissions.status, ESubmissionStatus.ACCEPTED)
+        )
+      )
+      .groupBy(submissions.problemId);
+
+    return new Set(rows.map(r => r.problemId));
   }
 }
