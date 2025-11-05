@@ -239,6 +239,19 @@ export class SandboxService {
 
         if (ok) passed++;
 
+        // Chi tiết lỗi khi output không khớp
+        let errorMessage = null;
+        let stderrMessage = null;
+
+        if (!ok) {
+          errorMessage = `Wrong Answer\nExpected: ${expected}\nActual: ${actual}`;
+          stderrMessage = `Test case ${i + 1} failed:\n- Input: ${testcase.input}\n- Expected: ${expected}\n- Your output: ${actual}`;
+        } else if (result.exitCode !== 0) {
+          // Nếu có lỗi runtime
+          errorMessage = result.stderr;
+          stderrMessage = `Runtime Error:\n${result.stderr}`;
+        }
+
         results.push({
           testcaseId: testcase.id,
           input: testcase.input || '',
@@ -247,7 +260,8 @@ export class SandboxService {
           isPassed: ok,
           executionTime: Date.now() - testStart,
           memoryUse: null,
-          error: result.exitCode !== 0 ? result.stderr : null,
+          error: errorMessage,
+          stderr: stderrMessage,
         });
       } catch (error: any) {
         results.push({
@@ -295,9 +309,20 @@ export class SandboxService {
           proc.stderr.on('data', d => (stderr += d.toString()));
           proc.on('close', code => {
             if (code === 0) return resolve();
-            return reject(new Error(`Compilation failed: ${stderr.trim()}`));
+            // Định dạng lỗi compile chi tiết hơn
+            const errorLines = stderr.trim().split('\n');
+            const formattedError = errorLines
+              .map(line => {
+                // Loại bỏ đường dẫn tuyệt đối để tránh lộ thông tin hệ thống
+                return line.replace(new RegExp(jobDir, 'g'), '').replace(/\.+\\/g, ''); // Loại bỏ đường dẫn tương đối
+              })
+              .join('\n');
+            return reject(new Error(`Compilation Error:\n${formattedError}`));
           });
-          proc.on('error', err => reject(err));
+          proc.on('error', err => {
+            const errorMsg = `Compiler Error: ${err.message}\nPlease check your code syntax.`;
+            reject(new Error(errorMsg));
+          });
         } else if (langConfig.compileCmd) {
           // Fallback: run the compile command in a shell inside cwd
           const proc = spawn('sh', ['-c', langConfig.compileCmd], {

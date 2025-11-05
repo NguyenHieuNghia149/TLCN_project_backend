@@ -54,6 +54,7 @@ export const SubmissionStatusSchema = z.object({
   userId: z.string().uuid(),
   problemId: z.string().uuid(),
   language: z.string(),
+  sourceCode: z.string(),
   status: z.enum([
     'PENDING',
     'RUNNING',

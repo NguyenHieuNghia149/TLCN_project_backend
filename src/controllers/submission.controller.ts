@@ -46,6 +46,23 @@ export class SubmissionController {
     }
   }
 
+  async runCode(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    try {
+      const runData = req.body as CreateSubmissionInput;
+      const userId = (req as any).user?.userId; // optional
+
+      console.log('Running code for user:', userId);
+      console.log('Run data:', runData);
+
+      const authHeader = req.headers.authorization as string | undefined;
+      const result = await this.submissionService.runCode({ ...runData, userId }, { authHeader });
+
+      return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getSubmissionStatus(
     req: Request,
     res: Response,
@@ -132,7 +149,8 @@ export class SubmissionController {
   ): Promise<void | Response> {
     try {
       const { problemId } = req.params;
-      const { limit, offset, status } = req.query as unknown as GetSubmissionsQuery;
+      //const { limit, offset, status } = req.query as unknown as GetSubmissionsQuery;
+      console.log('Problem ID:', problemId);
 
       if (!problemId) {
         return res.status(400).json({
@@ -144,23 +162,20 @@ export class SubmissionController {
 
       const result = await this.submissionService.listSubmissions({
         problemId,
-        limit,
-        offset,
-        status: status as any,
+        limit: 10,
+        offset: 0,
       });
 
       // Filter by status if provided
-      const filteredSubmissions = status
-        ? result.data.filter((sub: any) => sub.status === status)
-        : result.data;
+      const filteredSubmissions = result.data;
 
       res.status(200).json({
         success: true,
         data: {
           submissions: filteredSubmissions,
           total: filteredSubmissions.length,
-          limit,
-          offset,
+          limit: 10,
+          offset: 0,
         },
       });
     } catch (error) {

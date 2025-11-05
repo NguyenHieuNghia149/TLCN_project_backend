@@ -22,7 +22,7 @@ const submissionRateLimit = rateLimitMiddleware({
 
 const createSubmissionRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 submission creation requests per windowMs
+  max: 50, // limit each IP to 10 submission creation requests per windowMs
   message: 'Too many submission creation requests from this IP, please try again later.',
 });
 
@@ -68,7 +68,7 @@ router.get(
   '/problem/:problemId',
   authenticationToken,
   submissionRateLimit,
-  validate(GetSubmissionsQuerySchema),
+  //validate(GetSubmissionsQuerySchema),
   submissionController.getProblemSubmissions.bind(submissionController)
 );
 
@@ -80,6 +80,15 @@ router.get('/health', submissionRateLimit, (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Run code immediately without creating a submission record
+router.post(
+  '/run',
+  authenticationToken,
+  submissionRateLimit,
+  validate(CreateSubmissionSchema),
+  submissionController.runCode.bind(submissionController)
+);
 
 // Error handling middleware
 router.use(SubmissionController.errorHandler);

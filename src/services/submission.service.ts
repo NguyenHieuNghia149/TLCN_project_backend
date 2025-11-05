@@ -13,6 +13,8 @@ import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { ProblemRepository } from '@/repositories/problem.repository';
 import { SubmissionEntity, ResultSubmissionEntity, TestcaseEntity } from '@/database/schema';
 import { PaginationOptions } from '@/repositories/base.repository';
+import axios from 'axios';
+import { BaseException } from '@/exceptions/auth.exceptions';
 
 export interface SubmissionInput {
   sourceCode: string;
@@ -103,6 +105,71 @@ export class SubmissionService {
     };
   }
 
+  async runCode(
+    input: CreateSubmissionInput & { userId?: string },
+    options?: { authHeader?: string }
+  ) {
+    // Validate problem exists
+    const problem = await this.problemRepository.findById(input.problemId);
+    if (!problem) {
+      throw new BaseException('Problem not found');
+    }
+
+    // Get testcases for the problem
+    const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
+    if (testcases.length === 0) {
+      throw new BaseException('No testcases found for this problem');
+    }
+
+    // Build execution config expected by sandbox
+    const execConfig = {
+      code: input.sourceCode,
+      language: input.language,
+      testcases: testcases.map(tc => ({ id: tc.id, input: tc.input, output: tc.output })),
+      timeLimit: problem.timeLimit || 1000,
+      memoryLimit: problem.memoryLimit || '128m',
+    } as any;
+
+    // Call remote sandbox HTTP API instead of direct import to support separate sandbox service
+    // Prefer SANDBOX_URL (set in docker-compose as http://sandbox:4000), otherwise fall back to SANDBOX_HOST/PORT
+    const rawSandboxUrl = process.env.SANDBOX_URL;
+    let url: string;
+    if (rawSandboxUrl) {
+      const base = rawSandboxUrl.replace(/\/$/, '');
+      url = `${base}/api/sandbox/execute`;
+    } else {
+      const sandboxHost = process.env.SANDBOX_HOST || 'localhost';
+      const sandboxPort = process.env.SANDBOX_PORT || '4000';
+      url = `http://${sandboxHost}:${sandboxPort}/api/sandbox/execute`;
+    }
+
+    try {
+      const axiosOpts: any = {
+        timeout: (execConfig.timeLimit + 5) * 1000, // small buffer
+      };
+      if (options?.authHeader) {
+        axiosOpts.headers = { Authorization: options.authHeader };
+      }
+
+      const resp = await axios.post(url, execConfig, axiosOpts);
+      return resp.data;
+    } catch (err: any) {
+      // Normalize axios error and include detailed context
+      if (err.response) {
+        const status = err.response.status;
+        const body = err.response.data;
+        throw new BaseException(
+          `Sandbox error: status=${status}, message=${body?.message || JSON.stringify(body)}`
+        );
+      }
+
+      // Network / timeout / other error
+      throw new BaseException(
+        `Failed to call sandbox service: ${err.message || 'Unknown error'}${err.code ? `, code=${err.code}` : ''}`
+      );
+    }
+  }
+
   async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {
     const submission = await this.submissionRepository.findById(submissionId);
     if (!submission) {
@@ -157,6 +224,7 @@ export class SubmissionService {
       userId: submission.userId,
       problemId: submission.problemId,
       language: submission.language,
+      sourceCode: submission.sourceCode,
       status: submission.status as any,
       result: result
         ? {
