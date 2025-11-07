@@ -73,6 +73,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   // Xử lý preflight requests (OPTIONS)
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
+    return;
   }
   next();
 });

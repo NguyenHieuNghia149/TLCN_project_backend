@@ -203,6 +203,7 @@ export class SubmissionService {
             executionTime: rs.executionTime,
             memoryUse: rs.memoryUse,
             error: rs.error,
+            isPublic: testcase?.isPublic || false,
           };
         }),
       };
@@ -239,6 +240,7 @@ export class SubmissionService {
               stderr: r.error || '',
               executionTime: r.executionTime || 0,
               error: r.error || undefined,
+              isPublic: r.isPublic || false,
             })),
           }
         : undefined,

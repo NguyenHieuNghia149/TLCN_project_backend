@@ -57,13 +57,10 @@ export class ChallengeController {
         userId: req.user?.userId,
       });
 
-      return res
-        .status(200)
-        .json({
-          success: true,
-          data: result,
-        })
-        .send();
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
     } catch (error) {
       next(error);
     }
@@ -99,7 +96,7 @@ export class ChallengeController {
       if (!topicId) throw new BaseException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
       const tags = await this.challengeService.getTopicTags(topicId);
-      return res.status(200).json({ success: true, data: { tags } }).send();
+      return res.status(200).json({ success: true, data: { tags } });
     } catch (error) {
       next(error);
     }
@@ -134,7 +131,7 @@ export class ChallengeController {
         userId: req.user?.userId,
       });
 
-      return res.status(200).json({ success: true, data: result }).send();
+      return res.status(200).json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

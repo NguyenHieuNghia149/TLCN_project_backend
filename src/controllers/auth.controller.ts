@@ -91,15 +91,6 @@ export class AuthController {
 
     const result = await this.authService.refreshToken({ refreshToken });
 
-    // Set rotated refresh token cookie
-    res.cookie('refreshToken', result.tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/api/auth/refresh-token',
-    });
-
     // Return only access token to client
     const { refreshToken: _rt, ...tokensWithoutRefresh } = result.tokens as any;
 

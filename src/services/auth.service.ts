@@ -156,13 +156,13 @@ export class AuthService {
     // Token rotation: rotate tokens (no sessionId)
     const rotated = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
-    await this.tokenRepository.createRefreshToken({
-      token: rotated.refreshToken,
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
+    // await this.tokenRepository.createRefreshToken({
+    //   token: rotated.refreshToken,
+    //   userId: user.id,
+    //   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    // });
 
-    await this.tokenRepository.revokeToken(dto.refreshToken);
+    //await this.tokenRepository.revokeToken(dto.refreshToken);
 
     return {
       user: {

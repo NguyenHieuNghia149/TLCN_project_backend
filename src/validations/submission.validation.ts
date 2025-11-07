@@ -79,6 +79,7 @@ export const SubmissionStatusSchema = z.object({
           stderr: z.string(),
           executionTime: z.number(),
           error: z.string().optional(),
+          isPublic: z.boolean().optional(),
         })
       ),
     })
@@ -129,6 +130,7 @@ export const TestcaseResultSchema = z.object({
   stderr: z.string(),
   executionTime: z.number(),
   error: z.string().optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export type TestcaseResult = z.infer<typeof TestcaseResultSchema>;
@@ -159,5 +161,6 @@ export interface SubmissionResult {
     executionTime: number | null;
     memoryUse: number | null;
     error: string | null;
+    isPublic?: boolean;
   }>;
 }
