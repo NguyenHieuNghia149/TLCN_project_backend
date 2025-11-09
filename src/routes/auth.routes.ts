@@ -16,6 +16,7 @@ import {
   PasswordResetSchema,
   SendVerificationEmailSchema,
 } from '@/validations/auth.validation';
+import { upload } from '@/middlewares/upload.middleware';
 import { UserService } from '@/services/user.service';
 import { EMailService } from '@/services/email.service';
 
@@ -51,8 +52,16 @@ router.post(
   validate(ChangePasswordSchema),
   authController.changePassword.bind(authController)
 );
+// Profile routes
 router.get('/me', authenticationToken, authController.getProfile.bind(authController));
+router.get('/profile/:userId', authenticationToken, authController.getProfileById.bind(authController));
 router.put('/profile', authenticationToken, authController.updateProfile.bind(authController));
+router.post(
+  '/profile/upload-avatar',
+  authenticationToken,
+  upload.single('avatar'),
+  authController.uploadAvatar.bind(authController)
+);
 
 router.post(
   '/reset-password',

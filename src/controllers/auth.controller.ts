@@ -11,6 +11,8 @@ import { UserService } from '@/services/user.service';
 import { EMailService } from '@/services/email.service';
 import { PasswordUtils } from '@/utils/security';
 import { fa } from 'zod/v4/locales';
+import cloudinary from '@/config/cloudinary';
+import { Readable } from 'stream';
 // Removed session revoke validation
 
 export class AuthController {
@@ -204,6 +206,88 @@ export class AuthController {
       message: 'Profile updated successfully',
       data: profile,
     });
+  }
+
+  async getProfileById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required',
+      });
+    }
+
+    const profile = await this.userService.getProfile(userId);
+
+    res.status(200).json({
+      success: true,
+      data: profile,
+    });
+  }
+
+  async uploadAvatar(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded',
+      });
+    }
+
+    try {
+      // Upload to Cloudinary
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'avatars',
+        },
+        async (error: any, result?: any) => {
+          if (error || !result) {
+            console.error('Cloudinary upload error:', error);
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to upload image',
+            });
+          }
+
+          try {
+            // Update user profile with Cloudinary URL
+            const updateData = { avatar: result.secure_url };
+            const profile = await this.userService.updateProfile(userId, updateData);
+
+            return res.status(200).json({
+              success: true,
+              message: 'Avatar updated successfully',
+              data: profile,
+            });
+          } catch (error) {
+            console.error('Profile update error:', error);
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to update profile',
+            });
+          }
+        }
+      );
+
+      // Convert buffer to stream and pipe to Cloudinary
+      const fileBuffer = req.file.buffer;
+      const readableStream = new Readable();
+      readableStream.push(fileBuffer);
+      readableStream.push(null);
+      readableStream.pipe(stream);
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      next(error);
+    }
   }
 
   // Error handling middleware
