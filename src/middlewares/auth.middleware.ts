@@ -95,7 +95,10 @@ export const requireRole = (roles: string | string[]) => {
 // Admin only middleware
 export const requireTeacher = requireRole('teacher');
 
-// User or Admin middleware
+// Owner only middleware
+export const requireOwner = requireRole('owner');
+
+// Owner or Teacher middleware
 export const requireTeacherOrOwner = requireRole(['owner', 'teacher']);
 
 // Optional authentication middleware (doesn't fail if no token)

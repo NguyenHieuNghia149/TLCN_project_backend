@@ -6,6 +6,7 @@ import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import { UpdateProfileSchema } from '@/validations/profile.validation';
 import { z } from 'zod';
+import { upload } from '@/middlewares/upload.middleware';
 
 const router = Router();
 const profileService = new ProfileService();
@@ -40,6 +41,15 @@ router.put(
   mutateLimit,
   validate(UpdateProfileSchema),
   profileController.updateProfile.bind(profileController)
+);
+
+// Upload avatar
+router.post(
+  '/upload-avatar',
+  authenticationToken,
+  mutateLimit,
+  upload.single('avatar'),
+  profileController.uploadAvatar.bind(profileController)
 );
 
 // Error handler middleware

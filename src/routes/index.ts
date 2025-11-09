@@ -7,6 +7,8 @@ import topicRoutes from './topic.routes';
 import lessonRoutes from './lesson.routes';
 import lessonDetailRoutes from './lessonDetail.routes';
 import profileRoutes from './profile.routes';
+import adminUserRoutes from './admin/adminUser.routes';
+import adminTeacherRoutes from './admin/adminTeacher.routes';
 import { generalLimiter } from '../middlewares/ratelimit.middleware';
 
 function route(app: Application): void {
@@ -18,6 +20,8 @@ function route(app: Application): void {
   app.use('/api/lessons', lessonRoutes);
   app.use('/api/lesson-details', lessonDetailRoutes);
   app.use('/api/profile', profileRoutes);
+  app.use('/api/admin/users', adminUserRoutes);
+  app.use('/api/admin/teachers', adminTeacherRoutes);
 
   app.use('/api/health', async (req, res) => {
     const dbHealth = await DatabaseUtils.getHealthInfo();
