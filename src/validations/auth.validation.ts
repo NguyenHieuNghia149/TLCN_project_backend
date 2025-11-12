@@ -109,3 +109,9 @@ export const RegisterResponseSchema = z.object({
 export type RegisterResponseSchema = z.infer<typeof RegisterResponseSchema>;
 
 // Removed RevokeSessionSchema
+// Google Login
+export const GoogleLoginSchema = z.object({
+  idToken: z.string().min(1, 'Google idToken is required'),
+});
+
+export type GoogleLoginInput = z.infer<typeof GoogleLoginSchema>;
