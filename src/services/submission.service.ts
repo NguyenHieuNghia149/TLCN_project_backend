@@ -11,6 +11,7 @@ import { SubmissionRepository } from '@/repositories/submission.repository';
 import { ResultSubmissionRepository } from '@/repositories/result-submission.repository';
 import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { ProblemRepository } from '@/repositories/problem.repository';
+import { UserRepository } from '@/repositories/user.repository';
 import { SubmissionEntity, ResultSubmissionEntity, TestcaseEntity } from '@/database/schema';
 import { PaginationOptions } from '@/repositories/base.repository';
 import axios from 'axios';
@@ -28,12 +29,14 @@ export class SubmissionService {
   private resultSubmissionRepository: ResultSubmissionRepository;
   private testcaseRepository: TestcaseRepository;
   private problemRepository: ProblemRepository;
+  private userRepository: UserRepository;
 
   constructor() {
     this.submissionRepository = new SubmissionRepository();
     this.resultSubmissionRepository = new ResultSubmissionRepository();
     this.testcaseRepository = new TestcaseRepository();
     this.problemRepository = new ProblemRepository();
+    this.userRepository = new UserRepository();
   }
 
   async submitCode(input: CreateSubmissionInput & { userId: string }): Promise<{
@@ -270,7 +273,53 @@ export class SubmissionService {
       judgedAt?: string;
     }
   ): Promise<SubmissionEntity | null> {
-    // Update submission status
+    // ⚠️ QUAN TRỌNG: Lấy submission TRƯỚC KHI update status
+    // Để có thể check xem user đã solve problem này chưa
+    const submissionBeforeUpdate = await this.submissionRepository.findById(submissionId);
+    if (!submissionBeforeUpdate) {
+      return null;
+    }
+
+    // Chỉ cộng điểm khi submission ACCEPTED và user chưa solve problem này trước đó
+    if (data.status === ESubmissionStatus.ACCEPTED) {
+      // Check TRƯỚC KHI update status - xem user đã có submission ACCEPTED nào cho problem này chưa
+      const hasSolvedBefore = await this.submissionRepository.hasUserSolvedProblem(
+        submissionBeforeUpdate.userId,
+        submissionBeforeUpdate.problemId
+      );
+
+      if (!hasSolvedBefore) {
+        // Tính tổng điểm từ tất cả testcases của problem
+        const testcases = await this.testcaseRepository.findByProblemId(
+          submissionBeforeUpdate.problemId
+        );
+        const totalPoints = testcases.reduce((sum, tc) => sum + tc.point, 0);
+
+        if (totalPoints > 0) {
+          try {
+            await this.userRepository.incrementRankingPoint(
+              submissionBeforeUpdate.userId,
+              totalPoints
+            );
+            console.log(
+              `✅ Cộng ${totalPoints} điểm cho user ${submissionBeforeUpdate.userId} - Problem ${submissionBeforeUpdate.problemId} (lần đầu solve)`
+            );
+          } catch (error: any) {
+            console.error(
+              `❌ Lỗi khi cộng điểm cho user ${submissionBeforeUpdate.userId}:`,
+              error.message
+            );
+            // Không throw error - việc cộng điểm không nên block việc update submission
+          }
+        }
+      } else {
+        console.log(
+          `ℹ️ User ${submissionBeforeUpdate.userId} đã solve problem ${submissionBeforeUpdate.problemId} trước đó - không cộng điểm lại`
+        );
+      }
+    }
+
+    // Sau đó mới update submission status
     const submission = await this.submissionRepository.updateStatus(
       submissionId,
       data.status,

@@ -55,7 +55,7 @@ export const generalLimiter = rateLimitMiddleware({
 
 export const strictLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3,
+  max: 15,
   message: 'Too many attempts from this IP, please try again later.',
 });
 

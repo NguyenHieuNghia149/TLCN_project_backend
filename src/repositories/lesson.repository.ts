@@ -19,14 +19,14 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
 
   async getAllLessons(): Promise<LessonResponse[]> {
     const lessonSelect = await this.db
-      .select({ 
-        id: lessons.id, 
-        title: lessons.title, 
+      .select({
+        id: lessons.id,
+        title: lessons.title,
         content: lessons.content,
         topicId: lessons.topicId,
         topicName: topics.topicName,
         createdAt: lessons.createdAt,
-        updatedAt: lessons.updatedAt
+        updatedAt: lessons.updatedAt,
       })
       .from(lessons)
       .leftJoin(topics, eq(lessons.topicId, topics.id));

@@ -33,7 +33,6 @@ export const otpStore = new Map<string, OTPData>();
 
 export class EMailService {
   private transporter;
-  private userRepository: UserRepository;
 
   constructor() {
     this.transporter = nodemailer.createTransport({
@@ -45,21 +44,13 @@ export class EMailService {
         pass: config.email.pass,
       },
     });
-    this.userRepository = new UserRepository();
   }
 
   generateOTP(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  async sendVerificationCode(email: string, req: Request): Promise<void> {
-    const rateLimitKey = `sendVeriCode:${req.ip}`;
-    const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 20, 15 * 60 * 1000);
-
-    if (!rateLimit.allowed) {
-      throw new RateLimitExceededException();
-    }
-
+  async sendVerificationCode(email: string): Promise<void> {
     const otp = this.generateOTP();
     const expires = new Date(Date.now() + config.otp.expiryMinutes * 60000);
 

@@ -47,6 +47,10 @@ export class AuthService {
       throw new ValidationException(passwordValidation.errors.join(', '));
     }
 
+    if (dto.password !== dto.passwordConfirm) {
+      throw new ValidationException('Password does not match');
+    }
+
     const hashedPassword = await PasswordUtils.hashPassword(dto.password);
 
     const userData = {
@@ -56,16 +60,6 @@ export class AuthService {
     } as any;
 
     const user = await this.userRepository.createUser(userData);
-
-    //const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
-
-    // await this.tokenRepository.createRefreshToken({
-    //   token: tokens.refreshToken,
-    //   userId: user.id,
-    //   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    // });
-
-    console.log('User registered:', user);
 
     return {
       user: {
@@ -114,6 +108,9 @@ export class AuthService {
       expiresAt: new Date(Date.now() + (dto.rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000),
     });
 
+    // get rank info
+    const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
+
     return {
       user: {
         id: user.id,
@@ -123,6 +120,9 @@ export class AuthService {
         avatar: user.avatar,
         role: user.role,
         status: user.status,
+        rankingPoint: rankingPoint ?? null,
+        rank,
+        lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
       },
       tokens: {
@@ -146,23 +146,14 @@ export class AuthService {
       throw new TokenExpiredException('Refresh token expired');
     }
 
-    // No session binding
-
     const user = await this.userRepository.findByIdOrThrow(payload.userId);
     if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
-    // Token rotation: rotate tokens (no sessionId)
     const rotated = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
-    // await this.tokenRepository.createRefreshToken({
-    //   token: rotated.refreshToken,
-    //   userId: user.id,
-    //   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    // });
-
-    //await this.tokenRepository.revokeToken(dto.refreshToken);
+    const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
 
     return {
       user: {
@@ -173,6 +164,9 @@ export class AuthService {
         avatar: user.avatar,
         role: user.role,
         status: user.status,
+        rankingPoint: rankingPoint ?? null,
+        rank,
+        lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
       },
       tokens: {

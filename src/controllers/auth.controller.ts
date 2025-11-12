@@ -21,7 +21,6 @@ export class AuthController {
   ) {}
 
   async register(req: Request, res: Response, next: NextFunction) {
-    console.log(req.body);
     const result = await this.authService.register(req.body as RegisterInput);
 
     console.log(result);
@@ -56,7 +55,6 @@ export class AuthController {
         message: 'User with this email does not exist',
       });
     }
-    console.log(result);
 
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
@@ -205,7 +203,7 @@ export class AuthController {
     try {
       const { email } = req.body;
 
-      await this.emailService.sendVerificationCode(email, req);
+      await this.emailService.sendVerificationCode(email);
 
       res.status(200).json({
         success: true,

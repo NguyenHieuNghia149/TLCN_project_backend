@@ -312,4 +312,20 @@ export class SubmissionRepository extends BaseRepository<
 
     return new Set(rows.map(r => r.problemId));
   }
+
+  async hasUserSolvedProblem(userId: string, problemId: string): Promise<boolean> {
+    const [result] = await this.db
+      .select({ id: submissions.id })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.userId, userId),
+          eq(submissions.problemId, problemId),
+          eq(submissions.status, ESubmissionStatus.ACCEPTED)
+        )
+      )
+      .limit(1);
+
+    return !!result;
+  }
 }
