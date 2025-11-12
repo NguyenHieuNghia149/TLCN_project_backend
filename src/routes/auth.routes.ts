@@ -61,6 +61,7 @@ router.post(
 );
 // Profile routes
 router.get('/me', authenticationToken, authController.getProfile.bind(authController));
+
 router.get(
   '/profile/:userId',
   authenticationToken,

@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -81,6 +82,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Initialize application
 async function startServer() {
@@ -109,8 +112,6 @@ async function startServer() {
 
     // Global error handler
     app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-      console.error('Global error handler:', err);
-
       if (err.message === 'Not allowed by CORS') {
         return res.status(403).json({
           success: false,

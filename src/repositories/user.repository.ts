@@ -6,6 +6,7 @@ import {
   UserNotFoundException,
   ValidationException,
 } from '@/exceptions/auth.exceptions';
+
 import { SanitizationUtils } from '@/utils/security';
 
 export interface UserFilters {
@@ -339,6 +340,7 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
 
     // Count submissions by status
     const totalSubmissions = allSubmissions.length;
+
     const acceptedSubmissions = allSubmissions.filter(s => s.status === 'ACCEPTED').length;
     const wrongAnswerSubmissions = allSubmissions.filter(s => s.status === 'WRONG_ANSWER').length;
     const timeLimitExceededSubmissions = allSubmissions.filter(

@@ -5,25 +5,17 @@ import {
   ErrorHandler,
   UserAlreadyExistsException,
   UserNotFoundException,
-  ValidationException,
 } from '@/exceptions/auth.exceptions';
 import {
   ChangePasswordInput,
   GoogleLoginInput,
   LoginInput,
-  RefreshTokenInput,
   RegisterInput,
 } from '@/validations/auth.validation';
 import { UserService } from '@/services/user.service';
 import { EMailService } from '@/services/email.service';
-import { PasswordUtils } from '@/utils/security';
-import { fa } from 'zod/v4/locales';
 import cloudinary from '@/config/cloudinary';
 import { Readable } from 'stream';
-import { OAuth2Client } from 'google-auth-library';
-import { EStatus } from '@/enums/EStatus';
-import { EUserRole } from '@/enums/EUerRole';
-// Removed session revoke validation
 
 export class AuthController {
   constructor(
