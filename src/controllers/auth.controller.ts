@@ -20,6 +20,10 @@ import { PasswordUtils } from '@/utils/security';
 import { fa } from 'zod/v4/locales';
 import cloudinary from '@/config/cloudinary';
 import { Readable } from 'stream';
+import { OAuth2Client } from 'google-auth-library';
+import { EStatus } from '@/enums/EStatus';
+import { EUserRole } from '@/enums/EUerRole';
+// Removed session revoke validation
 
 export class AuthController {
   constructor(
@@ -72,9 +76,6 @@ export class AuthController {
       },
     });
   }
-
-  // legacy google handler removed in favor of googleLogin above
-  // Removed revokeSession handler
 
   async login(req: Request, res: Response, next: NextFunction) {
     const result = await this.authService.login(req.body as LoginInput);

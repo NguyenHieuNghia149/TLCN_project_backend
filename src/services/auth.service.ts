@@ -179,7 +179,6 @@ export class AuthService {
         status: EStatus.ACTIVE,
         role: EUserRole.USER,
         rankingPoint: 0,
-        rank: 0,
       } as any);
     } else {
       if (avatar && user.avatar !== avatar) {
@@ -203,7 +202,7 @@ export class AuthService {
     });
 
     const { rankingPoint, rank } = await this.userRepository.getUserRank(u.id);
-    ``;
+
     return {
       user: {
         id: u.id,

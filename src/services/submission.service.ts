@@ -301,21 +301,10 @@ export class SubmissionService {
               submissionBeforeUpdate.userId,
               totalPoints
             );
-            console.log(
-              `✅ Cộng ${totalPoints} điểm cho user ${submissionBeforeUpdate.userId} - Problem ${submissionBeforeUpdate.problemId} (lần đầu solve)`
-            );
           } catch (error: any) {
-            console.error(
-              `❌ Lỗi khi cộng điểm cho user ${submissionBeforeUpdate.userId}:`,
-              error.message
-            );
-            // Không throw error - việc cộng điểm không nên block việc update submission
+            throw new BaseException(error.message);
           }
         }
-      } else {
-        console.log(
-          `ℹ️ User ${submissionBeforeUpdate.userId} đã solve problem ${submissionBeforeUpdate.problemId} trước đó - không cộng điểm lại`
-        );
       }
     }
 

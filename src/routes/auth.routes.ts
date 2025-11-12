@@ -15,7 +15,9 @@ import {
   ChangePasswordSchema,
   PasswordResetSchema,
   SendVerificationEmailSchema,
+  GoogleLoginSchema,
 } from '@/validations/auth.validation';
+import { upload } from '@/middlewares/upload.middleware';
 import { UserService } from '@/services/user.service';
 import { EMailService } from '@/services/email.service';
 
@@ -41,6 +43,12 @@ router.post(
   validate(LoginSchema),
   authController.login.bind(authController)
 );
+router.post(
+  '/google',
+  authRateLimit,
+  validate(GoogleLoginSchema),
+  authController.googleLogin.bind(authController)
+);
 router.post('/refresh-token', authRateLimit, authController.refreshToken.bind(authController));
 
 router.post('/logout', authController.logout.bind(authController));
@@ -51,8 +59,20 @@ router.post(
   validate(ChangePasswordSchema),
   authController.changePassword.bind(authController)
 );
+// Profile routes
 router.get('/me', authenticationToken, authController.getProfile.bind(authController));
+router.get(
+  '/profile/:userId',
+  authenticationToken,
+  authController.getProfileById.bind(authController)
+);
 router.put('/profile', authenticationToken, authController.updateProfile.bind(authController));
+router.post(
+  '/profile/upload-avatar',
+  authenticationToken,
+  upload.single('avatar'),
+  authController.uploadAvatar.bind(authController)
+);
 
 router.post(
   '/reset-password',
@@ -68,12 +88,9 @@ router.post(
   authController.sendVerificationCode.bind(authController)
 );
 
-// Removed revoke-session route
+router.post('/send-reset-otp', authRateLimit, authController.sendResetOTP.bind(authController));
 
-// Route kiểm tra trạng thái xác thực
-// router.get('/me', authenticationToken, (req: any, res) => {
-//   res.status(200).json({ user: req.user });
-// });
+router.post('/verify-otp', authRateLimit, authController.verifyOTP.bind(authController));
 
 router.get('/health', authRateLimit, (req, res) => {
   res.json({ status: 'ok' });

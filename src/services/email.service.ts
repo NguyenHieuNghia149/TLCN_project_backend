@@ -6,8 +6,6 @@ import {
   RateLimitExceededException,
   ValidationException,
 } from '@/exceptions/auth.exceptions';
-import { RateLimitUtils } from '@/utils/security';
-import { UserRepository } from '@/repositories/user.repository';
 
 export interface OTPData {
   otp: string;
@@ -86,14 +84,14 @@ export class EMailService {
 
     if (new Date() > otpData.expires) {
       otpStore.delete(email);
-
       throw new ValidationException('OTP has expired');
     }
 
     const isValid = otpData.otp === providedOTP;
 
-    if (isValid) {
+    if (!isValid) {
       otpStore.delete(email);
+      throw new ValidationException('Invalid OTP');
     } else {
       otpStore.set(email, otpData);
     }
