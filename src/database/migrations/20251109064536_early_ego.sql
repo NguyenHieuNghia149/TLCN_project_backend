@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN "ranking_point" integer DEFAULT 0 NOT NULL;
