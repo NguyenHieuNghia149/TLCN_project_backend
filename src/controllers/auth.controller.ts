@@ -1,8 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '@/services/auth.service';
-import { BaseException, ErrorHandler, ValidationException } from '@/exceptions/auth.exceptions';
+import {
+  BaseException,
+  ErrorHandler,
+  UserAlreadyExistsException,
+  UserNotFoundException,
+  ValidationException,
+} from '@/exceptions/auth.exceptions';
 import {
   ChangePasswordInput,
+  GoogleLoginInput,
   LoginInput,
   RefreshTokenInput,
   RegisterInput,
@@ -11,6 +18,11 @@ import { UserService } from '@/services/user.service';
 import { EMailService } from '@/services/email.service';
 import { PasswordUtils } from '@/utils/security';
 import { fa } from 'zod/v4/locales';
+import cloudinary from '@/config/cloudinary';
+import { Readable } from 'stream';
+import { OAuth2Client } from 'google-auth-library';
+import { EStatus } from '@/enums/EStatus';
+import { EUserRole } from '@/enums/EUerRole';
 // Removed session revoke validation
 
 export class AuthController {
@@ -21,10 +33,7 @@ export class AuthController {
   ) {}
 
   async register(req: Request, res: Response, next: NextFunction) {
-    console.log(req.body);
     const result = await this.authService.register(req.body as RegisterInput);
-
-    console.log(result);
     // res.cookie('refreshToken', result.tokens.refreshToken, {
     //   httpOnly: true,
     //   secure: process.env.NODE_ENV === 'production',
@@ -45,7 +54,28 @@ export class AuthController {
     });
   }
 
-  // Removed revokeSession handler
+  async googleLogin(req: Request, res: Response, next: NextFunction) {
+    const result = await this.authService.loginWithGoogle(req.body as GoogleLoginInput);
+
+    res.cookie('refreshToken', result.tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/api/auth/refresh-token',
+    });
+
+    const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
+
+    res.status(200).json({
+      success: true,
+      message: 'Login with Google successful',
+      data: {
+        user: result.user,
+        tokens: tokensWithoutRefresh,
+      },
+    });
+  }
 
   async login(req: Request, res: Response, next: NextFunction) {
     const result = await this.authService.login(req.body as LoginInput);
@@ -56,7 +86,6 @@ export class AuthController {
         message: 'User with this email does not exist',
       });
     }
-    console.log(result);
 
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
@@ -90,6 +119,15 @@ export class AuthController {
     }
 
     const result = await this.authService.refreshToken({ refreshToken });
+
+    // Set rotated refresh token cookie
+    res.cookie('refreshToken', result.tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/api/auth/refresh-token',
+    });
 
     // Return only access token to client
     const { refreshToken: _rt, ...tokensWithoutRefresh } = result.tokens as any;
@@ -197,38 +235,85 @@ export class AuthController {
     });
   }
 
-  async sendVerificationCode(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void | Response> {
-    try {
-      const { email } = req.body;
+  async getProfileById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const { userId } = req.params;
 
-      await this.emailService.sendVerificationCode(email, req);
-
-      res.status(200).json({
-        success: true,
-        message: 'Verification code sent to your email.',
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required',
       });
+    }
+
+    const profile = await this.userService.getProfile(userId);
+
+    res.status(200).json({
+      success: true,
+      data: profile,
+    });
+  }
+
+  async uploadAvatar(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded',
+      });
+    }
+
+    try {
+      // Upload to Cloudinary
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'avatars',
+        },
+        async (error: any, result?: any) => {
+          if (error || !result) {
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to upload image',
+            });
+          }
+
+          try {
+            // Update user profile with Cloudinary URL
+            const updateData = { avatar: result.secure_url };
+            const profile = await this.userService.updateProfile(userId, updateData);
+
+            return res.status(200).json({
+              success: true,
+              message: 'Avatar updated successfully',
+              data: profile,
+            });
+          } catch (error) {
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to update profile',
+            });
+          }
+        }
+      );
+
+      // Convert buffer to stream and pipe to Cloudinary
+      const fileBuffer = req.file.buffer;
+      const readableStream = new Readable();
+      readableStream.push(fileBuffer);
+      readableStream.push(null);
+      readableStream.pipe(stream);
     } catch (error) {
       next(error);
     }
   }
 
-  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { email, otp, newPassword } = req.body;
-      await this.authService.resetPassword(email, otp, newPassword);
-      res.status(200).json({
-        success: true,
-        message: 'Password has been reset successfully. You can now log in with your new password.',
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
+  // Error handling middleware
   static errorHandler(
     error: Error,
     req: Request,
@@ -256,14 +341,77 @@ export class AuthController {
       });
     }
 
-    // Log unexpected errors
-    console.error('Unexpected error:', error);
-
     res.status(500).json({
       success: false,
       message: 'Internal server error',
       code: 'INTERNAL_ERROR',
       timestamp: new Date().toISOString(),
+    });
+  }
+
+  async sendVerificationCode(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    const { email } = req.body;
+
+    const user = await this.userService.findUserByEmail(email);
+
+    if (user) {
+      throw new UserAlreadyExistsException('User with this email already exists');
+    }
+
+    await this.emailService.sendVerificationCode(email);
+
+    res.status(200).json({
+      success: true,
+      message: 'Verification code sent to your email.',
+    });
+  }
+
+  async sendResetOTP(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const { email } = req.body;
+
+    const user = await this.userService.findUserByEmail(email);
+
+    if (!user) {
+      throw new UserNotFoundException('User with this email does not exist');
+    }
+
+    await this.emailService.sendVerificationCode(email);
+
+    res.status(200).json({
+      success: true,
+      message: 'Reset OTP sent to your email.',
+    });
+  }
+
+  async verifyOTP(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const { email, otp } = req.body;
+
+    const isValid = await this.emailService.verifyOTP(email, otp);
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP verified successfully',
+    });
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    const { email, otp, newPassword } = req.body;
+    await this.authService.resetPassword(email, newPassword, otp);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password has been reset successfully. You can now log in with your new password.',
     });
   }
 }

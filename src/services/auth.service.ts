@@ -5,6 +5,7 @@ import {
   RefreshTokenInput,
   RegisterInput,
   RegisterResponseSchema,
+  GoogleLoginInput,
 } from '@/validations/auth.validation';
 import { TokenRepository } from '@/repositories/token.repository';
 import { UserRepository } from '@/repositories/user.repository';
@@ -19,15 +20,21 @@ import {
 import { Request } from 'express';
 import { EStatus } from '@/enums/EStatus';
 import { EMailService, otpStore } from './email.service';
+import { EUserRole } from '@/enums/EUerRole';
+import { OAuth2Client } from 'google-auth-library';
 
 export class AuthService {
   private userRepository: UserRepository;
   private tokenRepository: TokenRepository;
   private emailService: EMailService;
+  private googleClient?: OAuth2Client;
   constructor() {
     this.userRepository = new UserRepository();
     this.tokenRepository = new TokenRepository();
     this.emailService = new EMailService();
+    if (process.env.GOOGLE_CLIENT_ID) {
+      this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    }
   }
 
   async register(dto: RegisterInput): Promise<RegisterResponseSchema> {
@@ -47,6 +54,10 @@ export class AuthService {
       throw new ValidationException(passwordValidation.errors.join(', '));
     }
 
+    if (dto.password !== dto.passwordConfirm) {
+      throw new ValidationException('Password does not match');
+    }
+
     const hashedPassword = await PasswordUtils.hashPassword(dto.password);
 
     const userData = {
@@ -56,16 +67,6 @@ export class AuthService {
     } as any;
 
     const user = await this.userRepository.createUser(userData);
-
-    //const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
-
-    // await this.tokenRepository.createRefreshToken({
-    //   token: tokens.refreshToken,
-    //   userId: user.id,
-    //   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    // });
-
-    console.log('User registered:', user);
 
     return {
       user: {
@@ -114,6 +115,9 @@ export class AuthService {
       expiresAt: new Date(Date.now() + (dto.rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000),
     });
 
+    // get rank info
+    const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
+
     return {
       user: {
         id: user.id,
@@ -123,7 +127,95 @@ export class AuthService {
         avatar: user.avatar,
         role: user.role,
         status: user.status,
+        rankingPoint: rankingPoint ?? null,
+        rank,
+        lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
+      },
+      tokens: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
+      },
+    };
+  }
+
+  async loginWithGoogle(dto: GoogleLoginInput): Promise<AuthResponse> {
+    if (!this.googleClient) {
+      throw new ValidationException('Google login is not configured');
+    }
+
+    const ticket = await this.googleClient.verifyIdToken({
+      idToken: dto.idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      throw new ValidationException('Invalid Google token');
+    }
+
+    const email = payload.email;
+    // const emailVerified = payload.email_verified;
+    // if (!emailVerified) {
+    //   throw new ValidationException('Google account email is not verified');
+    // }
+
+    const firstName = (payload.given_name as string) || '';
+    const lastName = (payload.family_name as string) || '';
+    const avatar = (payload.picture as string) || null;
+
+    let user = await this.userRepository.findByEmail(email);
+
+    if (!user) {
+      user = await this.userRepository.createUser({
+        email,
+        password: await PasswordUtils.hashPassword(
+          Math.random().toString(36).slice(2) + Date.now().toString()
+        ),
+        firstName,
+        lastName,
+        avatar,
+        status: EStatus.ACTIVE,
+        role: EUserRole.USER,
+        rankingPoint: 0,
+      } as any);
+    } else {
+      if (avatar && user.avatar !== avatar) {
+        await this.userRepository.updateUser(user.id, { avatar });
+        user = { ...user, avatar } as any;
+      }
+    }
+
+    if (!user) {
+      throw new ValidationException('Unable to create or load user');
+    }
+
+    const u = user as NonNullable<typeof user>;
+    await this.userRepository.updateLastLogin(u.id);
+
+    const tokens = JWTUtils.generateTokenPair(u.id, u.email, u.role);
+    await this.tokenRepository.createRefreshToken({
+      token: tokens.refreshToken,
+      userId: u.id,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+
+    const { rankingPoint, rank } = await this.userRepository.getUserRank(u.id);
+
+    return {
+      user: {
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        avatar: u.avatar,
+        role: u.role,
+        rankingPoint: rankingPoint,
+        rank: rank,
+        status: u.status,
+        createdAt: u.createdAt.toISOString(),
+        lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
       },
       tokens: {
         accessToken: tokens.accessToken,
@@ -146,23 +238,14 @@ export class AuthService {
       throw new TokenExpiredException('Refresh token expired');
     }
 
-    // No session binding
-
     const user = await this.userRepository.findByIdOrThrow(payload.userId);
     if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
-    // Token rotation: rotate tokens (no sessionId)
     const rotated = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
-    // await this.tokenRepository.createRefreshToken({
-    //   token: rotated.refreshToken,
-    //   userId: user.id,
-    //   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    // });
-
-    //await this.tokenRepository.revokeToken(dto.refreshToken);
+    const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
 
     return {
       user: {
@@ -173,6 +256,9 @@ export class AuthService {
         avatar: user.avatar,
         role: user.role,
         status: user.status,
+        rankingPoint: rankingPoint ?? null,
+        rank,
+        lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
       },
       tokens: {
