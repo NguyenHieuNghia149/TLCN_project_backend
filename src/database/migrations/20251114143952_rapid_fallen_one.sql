@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "favorite_user_problem_unique" ON "favorite" USING btree ("user_id","problem_id");

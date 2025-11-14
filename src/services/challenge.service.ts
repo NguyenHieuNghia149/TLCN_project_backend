@@ -3,17 +3,14 @@ import { ProblemRepository } from '@/repositories/problem.repository';
 import { SolutionRepository } from '@/repositories/solution.repository';
 import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { TopicRepository } from '@/repositories/topic.repository';
-import {
-  ProblemEntity,
-  SolutionEntity,
-  TestcaseEntity,
-  updateSolutionVisibilitySchema,
-} from '@/database/schema';
-import { ChallengeResponse, ProblemInput } from '@/validations/problem.validation';
+import { updateSolutionVisibilitySchema } from '@/database/schema';
+import { ChallengeResponse, ProblemInput, ProblemResponse } from '@/validations/problem.validation';
 import { LessonRepository } from '@/repositories/lesson.repository';
 import { SubmissionRepository } from '@/repositories/submission.repository';
 import { SolutionApproachRepository } from '@/repositories/solutionApproach.repository';
 import { SolutionResponse } from '@/validations/solution.validation';
+import { FavoriteRepository } from '@/repositories/favorite.repository';
+import { TestcaseResponse } from '@/validations/testcase.validation';
 
 export class ChallengeService {
   private topicRepository: TopicRepository;
@@ -23,6 +20,7 @@ export class ChallengeService {
   private lessonRepository: LessonRepository;
   private solutionApproachRepository: SolutionApproachRepository;
   private submissionRepository: SubmissionRepository;
+  private favoriteRepository: FavoriteRepository;
 
   constructor() {
     this.topicRepository = new TopicRepository();
@@ -32,6 +30,7 @@ export class ChallengeService {
     this.lessonRepository = new LessonRepository();
     this.solutionApproachRepository = new SolutionApproachRepository();
     this.submissionRepository = new SubmissionRepository();
+    this.favoriteRepository = new FavoriteRepository();
   }
 
   async createChallenge(challengeData: ProblemInput): Promise<ChallengeResponse> {
@@ -70,6 +69,11 @@ export class ChallengeService {
       return sum + point;
     }, 0);
 
+    // Get isSolved and isFavorite from problem object (passed from getChallengeById)
+    // These are explicitly set in getChallengeById, so we can safely read them
+    const isSolved = Boolean((problem as any).isSolved ?? false);
+    const isFavorite = Boolean((problem as any).isFavorite ?? false);
+
     return {
       problem: {
         id: problem.id,
@@ -81,7 +85,8 @@ export class ChallengeService {
         lessonId: problem.lessonId ?? '',
         topicId: problem.topicId ?? '',
         totalPoints,
-        isSolved: Boolean((problem as any).isSolved),
+        isSolved,
+        isFavorite,
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
@@ -141,7 +146,7 @@ export class ChallengeService {
   async updateSolutionVisibility(
     solutionId: string,
     isVisible: boolean
-  ): Promise<Pick<SolutionEntity, 'id' | 'isVisible' | 'updatedAt'>> {
+  ): Promise<{ id: string; isVisible: boolean; updatedAt: string }> {
     // Validate input using Zod schema
     updateSolutionVisibilitySchema.parse({ isVisible });
 
@@ -154,7 +159,10 @@ export class ChallengeService {
     return {
       id: updatedSolution.id,
       isVisible: updatedSolution.isVisible,
-      updatedAt: updatedSolution.updatedAt,
+      updatedAt:
+        updatedSolution.updatedAt instanceof Date
+          ? updatedSolution.updatedAt.toISOString()
+          : String(updatedSolution.updatedAt),
     };
   }
 
@@ -164,12 +172,16 @@ export class ChallengeService {
     cursor?: { createdAt: string; id: string } | null;
     userId?: string;
   }): Promise<{
-    items: Array<
-      Pick<ProblemEntity, 'id' | 'title' | 'description' | 'difficult' | 'createdAt'> & {
-        totalPoints: number;
-        isSolved: boolean;
-      }
-    >;
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficult: string;
+      createdAt: Date | string;
+      totalPoints: number;
+      isSolved: boolean;
+      isFavorite: boolean;
+    }>;
     nextCursor: { createdAt: string; id: string } | null;
   }> {
     const { topicId, limit = 10, cursor, userId } = params;
@@ -186,15 +198,15 @@ export class ChallengeService {
     });
 
     // Batch sum points
-    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(items.map(p => p.id));
+    const problemIds = items.map(p => p.id);
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
 
-    // Batch solved map if user provided
+    // Batch solved/favorite map if user provided
     let solvedSet: Set<string> = new Set();
+    let favoriteSet: Set<string> = new Set();
     if (userId) {
-      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(
-        userId,
-        items.map(p => p.id)
-      );
+      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(userId, problemIds);
+      favoriteSet = await this.favoriteRepository.getFavoriteProblemIds(userId, problemIds);
     }
 
     return {
@@ -206,6 +218,7 @@ export class ChallengeService {
         createdAt: p.createdAt,
         totalPoints: pointsMap[p.id] ?? 0,
         isSolved: userId ? solvedSet.has(p.id) : false,
+        isFavorite: userId ? favoriteSet.has(p.id) : false,
       })),
       nextCursor: nextCursor
         ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
@@ -228,12 +241,16 @@ export class ChallengeService {
     cursor?: { createdAt: string; id: string } | null;
     userId?: string;
   }): Promise<{
-    items: Array<
-      Pick<ProblemEntity, 'id' | 'title' | 'description' | 'difficult' | 'createdAt'> & {
-        totalPoints: number;
-        isSolved: boolean;
-      }
-    >;
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficult: string;
+      createdAt: Date | string;
+      totalPoints: number;
+      isSolved: boolean;
+      isFavorite: boolean;
+    }>;
     nextCursor: { createdAt: string; id: string } | null;
   }> {
     const { topicId, tags, limit = 10, cursor, userId } = params;
@@ -251,15 +268,15 @@ export class ChallengeService {
     });
 
     // Batch sum points
-    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(items.map(p => p.id));
+    const problemIds = items.map(p => p.id);
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
 
-    // Batch solved map if user provided
+    // Batch solved/favorite map if user provided
     let solvedSet: Set<string> = new Set();
+    let favoriteSet: Set<string> = new Set();
     if (userId) {
-      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(
-        userId,
-        items.map(p => p.id)
-      );
+      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(userId, problemIds);
+      favoriteSet = await this.favoriteRepository.getFavoriteProblemIds(userId, problemIds);
     }
 
     return {
@@ -271,6 +288,7 @@ export class ChallengeService {
         createdAt: p.createdAt,
         totalPoints: pointsMap[p.id] ?? 0,
         isSolved: userId ? solvedSet.has(p.id) : false,
+        isFavorite: userId ? favoriteSet.has(p.id) : false,
       })),
       nextCursor: nextCursor
         ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
@@ -280,19 +298,26 @@ export class ChallengeService {
 
   async getChallengeById(challengeId: string, userId?: string): Promise<ChallengeResponse> {
     const problem = await this.problemRepository.findById(challengeId);
+
     if (!problem) {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
     }
 
     const testcases = await this.testcaseRepository.findPublicByProblemId(challengeId);
     const visibleSolution = await this.fetchVisibleSolutionWithApproaches(challengeId);
+
     const isSolved = userId
       ? (await this.submissionRepository.getAcceptedProblemIdsByUser(userId, [challengeId])).has(
           challengeId
         )
       : false;
+
+    const isFavorite = userId
+      ? await this.favoriteRepository.isFavorite(userId, challengeId)
+      : false;
+
     return this.mapToChallengeResponse({
-      problem: { ...problem, isSolved },
+      problem: { ...problem, isSolved, isFavorite },
       testcases: testcases,
       solution: visibleSolution,
     });

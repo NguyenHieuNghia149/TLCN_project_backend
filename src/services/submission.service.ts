@@ -6,13 +6,14 @@ import {
   CreateSubmissionInput,
   SubmissionStatus,
   SubmissionResult,
+  SubmissionDataResponse,
 } from '@/validations/submission.validation';
 import { SubmissionRepository } from '@/repositories/submission.repository';
 import { ResultSubmissionRepository } from '@/repositories/result-submission.repository';
 import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { ProblemRepository } from '@/repositories/problem.repository';
 import { UserRepository } from '@/repositories/user.repository';
-import { SubmissionEntity, ResultSubmissionEntity, TestcaseEntity } from '@/database/schema';
+// Removed direct schema entity imports - using validation types instead
 import { PaginationOptions } from '@/repositories/base.repository';
 import axios from 'axios';
 import { BaseException } from '@/exceptions/auth.exceptions';
@@ -260,8 +261,13 @@ export class SubmissionService {
   async updateSubmissionStatus(
     submissionId: string,
     status: ESubmissionStatus
-  ): Promise<SubmissionEntity | null> {
-    return await this.submissionRepository.updateStatus(submissionId, status);
+  ): Promise<{ id: string; status: string } | null> {
+    const result = await this.submissionRepository.updateStatus(submissionId, status);
+    if (!result) return null;
+    return {
+      id: result.id,
+      status: result.status,
+    };
   }
 
   async updateSubmissionResult(
@@ -272,7 +278,7 @@ export class SubmissionService {
       score: number;
       judgedAt?: string;
     }
-  ): Promise<SubmissionEntity | null> {
+  ): Promise<{ id: string; status: string } | null> {
     // ⚠️ QUAN TRỌNG: Lấy submission TRƯỚC KHI update status
     // Để có thể check xem user đã solve problem này chưa
     const submissionBeforeUpdate = await this.submissionRepository.findById(submissionId);
@@ -336,7 +342,7 @@ export class SubmissionService {
     // Create result submissions
     await this.resultSubmissionRepository.createBatch(resultSubmissions);
 
-    return submission;
+    return submission ? { id: submission.id, status: submission.status } : null;
   }
 
   async listSubmissions(options: {
@@ -361,43 +367,32 @@ export class SubmissionService {
       limit: options.limit || 20,
     };
 
-    let submissions: SubmissionEntity[];
-    let pagination: any;
+    let result: { data: any[]; pagination: any };
 
     if (options.userId && options.problemId) {
-      const result = await this.submissionRepository.findByUserAndProblem(
+      result = await this.submissionRepository.findByUserAndProblem(
         options.userId,
         options.problemId,
         paginationOptions
       );
-      submissions = result.data;
-      pagination = result.pagination;
     } else if (options.userId) {
-      const result = await this.submissionRepository.findByUserId(
-        options.userId,
-        paginationOptions
-      );
-      submissions = result.data;
-      pagination = result.pagination;
+      result = await this.submissionRepository.findByUserId(options.userId, paginationOptions);
     } else if (options.problemId) {
-      const result = await this.submissionRepository.findByProblemId(
+      result = await this.submissionRepository.findByProblemId(
         options.problemId,
         paginationOptions
       );
-      submissions = result.data;
-      pagination = result.pagination;
     } else if (options.status) {
-      const result = await this.submissionRepository.findByStatus(
-        options.status,
-        paginationOptions
-      );
-      submissions = result.data;
-      pagination = result.pagination;
+      result = await this.submissionRepository.findByStatus(options.status, paginationOptions);
     } else {
-      const result = await this.submissionRepository.findMany(paginationOptions);
-      submissions = result.data;
-      pagination = result.pagination;
+      result = await this.submissionRepository.findMany(paginationOptions);
     }
+
+    // Map entities to validation types
+    const submissions: SubmissionDataResponse[] = result.data.map(sub =>
+      this.mapToSubmissionDataResponse(sub)
+    );
+    const pagination = result.pagination;
 
     // Convert to SubmissionStatus format
     const data: SubmissionStatus[] = [];
@@ -422,9 +417,29 @@ export class SubmissionService {
     };
   }
 
+  private mapToSubmissionDataResponse(submission: any): SubmissionDataResponse {
+    return {
+      id: submission.id,
+      userId: submission.userId,
+      problemId: submission.problemId,
+      language: submission.language,
+      sourceCode: submission.sourceCode,
+      status: submission.status,
+      submittedAt:
+        submission.submittedAt instanceof Date
+          ? submission.submittedAt
+          : new Date(submission.submittedAt),
+      judgedAt: submission.judgedAt
+        ? submission.judgedAt instanceof Date
+          ? submission.judgedAt
+          : new Date(submission.judgedAt)
+        : undefined,
+    };
+  }
+
   calculateScore(
     results: Array<{ testcaseId: string; isPassed: boolean; point: number }>,
-    testcases: TestcaseEntity[]
+    testcases: Array<{ id: string; point: number }>
   ): number {
     const testcaseMap = new Map(testcases.map(tc => [tc.id, tc]));
     let totalScore = 0;

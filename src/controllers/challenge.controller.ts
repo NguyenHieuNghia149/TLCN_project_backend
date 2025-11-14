@@ -228,8 +228,6 @@ export class ChallengeController {
     }
 
     // Log unexpected errors
-    console.error('Unexpected error:', error);
-
     res.status(500).json({
       success: false,
       message: 'Internal server error',
