@@ -164,3 +164,16 @@ export interface SubmissionResult {
     isPublic?: boolean;
   }>;
 }
+
+export const SubmissionDataResponseSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  problemId: z.string().uuid(),
+  language: z.string(),
+  sourceCode: z.string(),
+  status: z.string(),
+  submittedAt: z.date(),
+  judgedAt: z.date().optional(),
+});
+
+export type SubmissionDataResponse = z.infer<typeof SubmissionDataResponseSchema>;

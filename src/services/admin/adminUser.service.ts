@@ -10,7 +10,10 @@ export class AdminUserService {
     this.repo = new AdminUserRepository();
   }
 
-  async listUsers(params: { filters: UserFilters; pagination: PaginationOptions }): Promise<PaginatedResult<UserEntity>> {
+  async listUsers(params: {
+    filters: UserFilters;
+    pagination: PaginationOptions;
+  }): Promise<PaginatedResult<UserEntity>> {
     return this.repo.list(params.filters, params.pagination);
   }
 
@@ -21,7 +24,9 @@ export class AdminUserService {
   async createUser(payload: UserInsert): Promise<UserEntity> {
     const data: UserInsert = {
       ...payload,
-      password: payload.password ? await PasswordUtils.hashPassword(payload.password) : (payload as any).password,
+      password: payload.password
+        ? await PasswordUtils.hashPassword(payload.password)
+        : (payload as any).password,
     } as UserInsert;
     return this.repo.create(data);
   }
@@ -42,5 +47,3 @@ export class AdminUserService {
     return this.repo.listByRole('teacher', pagination);
   }
 }
-
-

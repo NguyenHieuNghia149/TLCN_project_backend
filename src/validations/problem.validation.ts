@@ -1,13 +1,8 @@
-import { problems } from '@/database/schema';
-import { solutionApproaches } from '@/database/schema/solutionApproaches';
-import { is } from 'drizzle-orm';
 import { z } from 'zod';
 
-// Import schemas from other validation files
 import { CreateTestcaseSchema, TestcaseResponseSchema } from './testcase.validation';
 import { CreateSolutionSchema, SolutionResponseSchema } from './solution.validation';
 
-// Re-export schemas from other validation files for convenience
 export {
   CreateTestcaseSchema,
   TestcaseResponseSchema,
@@ -55,6 +50,7 @@ export const ProblemResponseSchema = z.object({
   topicId: z.string(),
   totalPoints: z.number().default(0),
   isSolved: z.boolean().default(false),
+  isFavorite: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

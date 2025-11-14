@@ -8,6 +8,7 @@ export * from './testcase';
 export * from './solution';
 export * from './submission';
 export * from './resultSubmission';
+export * from './favorite';
 
 // Relations
 import { relations } from 'drizzle-orm';
@@ -21,6 +22,7 @@ import { solutions } from './solution';
 import { solutionApproaches } from './solutionApproaches';
 import { submissions } from './submission';
 import { resultSubmissions } from './resultSubmission';
+import { favorite } from './favorite';
 
 export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
@@ -103,5 +105,20 @@ export const resultSubmissionsRelations = relations(resultSubmissions, ({ one })
   testcase: one(testcases, {
     fields: [resultSubmissions.testcaseId],
     references: [testcases.id],
+  }),
+}));
+
+export const favoriteRelations = relations(favorite, ({ one }) => ({
+  user: one(users, {
+    fields: [favorite.userId],
+    references: [users.id],
+  }),
+  problem: one(problems, {
+    fields: [favorite.problemId],
+    references: [problems.id],
+  }),
+  lesson: one(lessons, {
+    fields: [favorite.lessonId],
+    references: [lessons.id],
   }),
 }));

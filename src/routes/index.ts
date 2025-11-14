@@ -11,6 +11,7 @@ import lessonRoutes from './lesson.routes';
 import lessonDetailRoutes from './lessonDetail.routes';
 import adminUserRoutes from './admin/adminUser.routes';
 import adminTeacherRoutes from './admin/adminTeacher.routes';
+import favoriteRoutes from './favorite.routes';
 import { generalLimiter } from '../middlewares/ratelimit.middleware';
 
 function route(app: Application): void {
@@ -18,6 +19,7 @@ function route(app: Application): void {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/challenges', challengeRoutes);
+  app.use('/api/favorites', favoriteRoutes);
   app.use('/api/topics', topicRoutes);
   app.use('/api/submissions', submissionRoutes);
   app.use('/api/security', securityRoutes);
