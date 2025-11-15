@@ -29,3 +29,43 @@ export const ToggleFavoriteResponseSchema = z.object({
 });
 
 export type ToggleFavoriteResponse = z.infer<typeof ToggleFavoriteResponseSchema>;
+
+// Lesson favorite schemas
+export const LessonFavoriteInputSchema = z.object({
+  lessonId: z.string().uuid('Invalid lesson ID'),
+});
+
+export type LessonFavoriteInput = z.infer<typeof LessonFavoriteInputSchema>;
+
+export const LessonFavoriteParamsSchema = z.object({
+  lessonId: z.string().uuid('Invalid lesson ID'),
+});
+
+export type LessonFavoriteParams = z.infer<typeof LessonFavoriteParamsSchema>;
+
+export const LessonFavoriteResponseSchema = z.object({
+  id: z.string(),
+  lessonId: z.string(),
+  createdAt: z.string(),
+  lesson: z.object({
+    id: z.string(),
+    title: z.string(),
+    content: z.string(),
+    videoUrl: z.string(),
+    topicId: z.string(),
+    topicName: z.string().nullable(),
+    isFavorite: z.boolean(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  }).nullable(),
+});
+
+export type LessonFavoriteResponse = z.infer<typeof LessonFavoriteResponseSchema>;
+
+export const ToggleLessonFavoriteResponseSchema = z.object({
+  isFavorite: z.boolean(),
+  message: z.string(),
+  data: LessonFavoriteResponseSchema.nullable(),
+});
+
+export type ToggleLessonFavoriteResponse = z.infer<typeof ToggleLessonFavoriteResponseSchema>;

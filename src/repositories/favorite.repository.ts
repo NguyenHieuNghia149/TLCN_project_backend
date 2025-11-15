@@ -4,6 +4,8 @@ import {
   favorite,
   ProblemEntity,
   problems,
+  LessonEntity,
+  lessons,
 } from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -11,6 +13,11 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 export type FavoriteWithProblem = {
   favorite: FavoriteEntity;
   problem: ProblemEntity | null;
+};
+
+export type FavoriteWithLesson = {
+  favorite: FavoriteEntity;
+  lesson: LessonEntity | null;
 };
 
 export class FavoriteRepository extends BaseRepository<
@@ -27,6 +34,16 @@ export class FavoriteRepository extends BaseRepository<
       .select()
       .from(this.table)
       .where(and(eq(this.table.userId, userId), eq(this.table.problemId, problemId)))
+      .limit(1);
+
+    return rows[0] ?? null;
+  }
+
+  async findByUserAndLesson(userId: string, lessonId: string): Promise<FavoriteEntity | null> {
+    const rows = await this.db
+      .select()
+      .from(this.table)
+      .where(and(eq(this.table.userId, userId), eq(this.table.lessonId, lessonId)))
       .limit(1);
 
     return rows[0] ?? null;
@@ -71,10 +88,57 @@ export class FavoriteRepository extends BaseRepository<
     }
   }
 
+  async addLessonFavorite(userId: string, lessonId: string): Promise<FavoriteEntity> {
+    // Check if already exists first to avoid unnecessary insert
+    const existing = await this.findByUserAndLesson(userId, lessonId);
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      const [inserted] = await this.db
+        .insert(this.table)
+        .values({
+          userId,
+          lessonId,
+        } as FavoriteInsert)
+        .returning();
+
+      if (inserted) {
+        return inserted;
+      }
+
+      // If insert returned nothing, check again (race condition)
+      const recheck = await this.findByUserAndLesson(userId, lessonId);
+      if (recheck) {
+        return recheck;
+      }
+
+      throw new Error('Failed to create lesson favorite');
+    } catch (error: any) {
+      // If unique constraint violation, check if it exists now
+      if (error.code === '23505' || error.message?.includes('unique')) {
+        const recheck = await this.findByUserAndLesson(userId, lessonId);
+        if (recheck) {
+          return recheck;
+        }
+      }
+      throw error;
+    }
+  }
+
   async removeFavorite(userId: string, problemId: string): Promise<boolean> {
     const result = await this.db
       .delete(this.table)
       .where(and(eq(this.table.userId, userId), eq(this.table.problemId, problemId)));
+
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async removeLessonFavorite(userId: string, lessonId: string): Promise<boolean> {
+    const result = await this.db
+      .delete(this.table)
+      .where(and(eq(this.table.userId, userId), eq(this.table.lessonId, lessonId)));
 
     return (result.rowCount ?? 0) > 0;
   }
@@ -93,6 +157,20 @@ export class FavoriteRepository extends BaseRepository<
     return rows as FavoriteWithProblem[];
   }
 
+  async listLessonFavoritesByUser(userId: string): Promise<FavoriteWithLesson[]> {
+    const rows = await this.db
+      .select({
+        favorite: this.table,
+        lesson: lessons,
+      })
+      .from(this.table)
+      .leftJoin(lessons, eq(this.table.lessonId, lessons.id))
+      .where(eq(this.table.userId, userId))
+      .orderBy(desc(this.table.createdAt));
+
+    return rows as FavoriteWithLesson[];
+  }
+
   async getFavoriteProblemIds(userId: string, problemIds: string[]): Promise<Set<string>> {
     if (problemIds.length === 0) {
       return new Set();
@@ -106,8 +184,26 @@ export class FavoriteRepository extends BaseRepository<
     return new Set(rows.map(row => row.problemId).filter(Boolean) as string[]);
   }
 
+  async getFavoriteLessonIds(userId: string, lessonIds: string[]): Promise<Set<string>> {
+    if (lessonIds.length === 0) {
+      return new Set();
+    }
+
+    const rows = await this.db
+      .select({ lessonId: this.table.lessonId })
+      .from(this.table)
+      .where(and(eq(this.table.userId, userId), inArray(this.table.lessonId, lessonIds)));
+
+    return new Set(rows.map(row => row.lessonId).filter(Boolean) as string[]);
+  }
+
   async isFavorite(userId: string, problemId: string): Promise<boolean> {
     const favoriteRecord = await this.findByUserAndProblem(userId, problemId);
+    return Boolean(favoriteRecord);
+  }
+
+  async isLessonFavorite(userId: string, lessonId: string): Promise<boolean> {
+    const favoriteRecord = await this.findByUserAndLesson(userId, lessonId);
     return Boolean(favoriteRecord);
   }
 }

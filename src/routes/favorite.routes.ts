@@ -4,7 +4,7 @@ import { FavoriteService } from '@/services/favorite.service';
 import { authenticationToken } from '@/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
 import { validate } from '@/middlewares/validate.middleware';
-import { FavoriteInputSchema, FavoriteParamsSchema } from '@/validations/favorite.validation';
+import { FavoriteInputSchema, FavoriteParamsSchema, LessonFavoriteInputSchema, LessonFavoriteParamsSchema } from '@/validations/favorite.validation';
 
 const router = Router();
 const favoriteService = new FavoriteService();
@@ -18,6 +18,29 @@ const favoriteRateLimit = rateLimitMiddleware({
 
 router.use(authenticationToken, favoriteRateLimit);
 
+// Lesson favorite endpoints (must be before generic :id routes)
+router.get('/lessons', favoriteController.listLessonFavorites.bind(favoriteController));
+
+router.post(
+  '/lesson',
+  validate(LessonFavoriteInputSchema),
+  favoriteController.addLessonFavorite.bind(favoriteController)
+);
+
+router.delete(
+  '/lesson/:lessonId',
+  validate(LessonFavoriteParamsSchema, 'params'),
+  favoriteController.removeLessonFavorite.bind(favoriteController)
+);
+
+// Toggle lesson favorite - thêm hoặc xóa yêu thích
+router.put(
+  '/lesson/:lessonId/toggle',
+  validate(LessonFavoriteParamsSchema, 'params'),
+  favoriteController.toggleLessonFavorite.bind(favoriteController)
+);
+
+// Problem favorite endpoints
 router.get('/', favoriteController.listFavorites.bind(favoriteController));
 
 router.post(

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { LessonService } from '../services/lesson.service';
 import { BaseException, ErrorHandler } from '../exceptions/auth.exceptions';
+import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import {
   CreateLessonInput,
   CreateLessonSchema,
@@ -10,9 +11,14 @@ import {
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}
 
-  async list(req: Request, res: Response, next: NextFunction) {
-    const result = await this.lessonService.getAllLessons();
-    res.status(200).json({ success: true, data: result });
+  async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      const result = await this.lessonService.getAllLessons(userId);
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
   }
 
   async getById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {

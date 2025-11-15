@@ -17,7 +17,7 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
     return lesson;
   }
 
-  async getAllLessons(): Promise<LessonResponse[]> {
+  async getAllLessons(): Promise<(LessonResponse & { isFavorite: boolean })[]> {
     const lessonSelect = await this.db
       .select({
         id: lessons.id,
@@ -37,6 +37,7 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
       content: lesson.content,
       topicId: lesson.topicId,
       topicName: lesson.topicName,
+      isFavorite: false,
       createdAt: lesson.createdAt.toISOString(),
       updatedAt: lesson.updatedAt.toISOString(),
     }));
