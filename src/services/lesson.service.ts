@@ -3,14 +3,17 @@ import { TopicRepository } from '../repositories/topic.repository';
 import { CreateLessonInput, UpdateLessonInput, LessonResponse } from '../validations/lesson.validation';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { BaseException } from '../exceptions/auth.exceptions';
+import { FavoriteRepository } from '../repositories/favorite.repository';
 
 export class LessonService {
   private lessonRepository: LessonRepository;
   private topicRepository: TopicRepository;
+  private favoriteRepository: FavoriteRepository;
 
   constructor() {
     this.lessonRepository = new LessonRepository();
     this.topicRepository = new TopicRepository();
+    this.favoriteRepository = new FavoriteRepository();
   }
 
   async createLesson(lessonData: CreateLessonInput): Promise<LessonResponse> {
@@ -39,6 +42,7 @@ export class LessonService {
         content: lesson.content,
         topicId: lesson.topicId,
         topicName: topicForName?.topicName || null,
+        isFavorite: false,
         createdAt: lesson.createdAt.toISOString(),
         updatedAt: lesson.updatedAt.toISOString(),
       };
@@ -61,13 +65,31 @@ export class LessonService {
       content: lesson.content,
       topicId: lesson.topicId,
       topicName: topicForName?.topicName || null,
+      isFavorite: false,
       createdAt: lesson.createdAt.toISOString(),
       updatedAt: lesson.updatedAt.toISOString(),
     };
   }
 
-  async getAllLessons(): Promise<LessonResponse[]> {
-    return await this.lessonRepository.getAllLessons();
+  async getAllLessons(userId?: string): Promise<(LessonResponse & { isFavorite: boolean })[]> {
+    const lessons = await this.lessonRepository.getAllLessons();
+
+    // If userId provided, fetch favorite status for each lesson
+    if (userId) {
+      const lessonIds = lessons.map(l => l.id);
+      const favoriteSet = await this.favoriteRepository.getFavoriteLessonIds(userId, lessonIds);
+      
+      return lessons.map(lesson => ({
+        ...lesson,
+        isFavorite: favoriteSet.has(lesson.id),
+      }));
+    }
+
+    // If no userId, return all lessons with isFavorite as false
+    return lessons.map(lesson => ({
+      ...lesson,
+      isFavorite: false,
+    }));
   }
 
   async updateLesson(id: string, lessonData: UpdateLessonInput): Promise<LessonResponse> {
@@ -96,6 +118,7 @@ export class LessonService {
       content: lesson.content,
       topicId: lesson.topicId,
       topicName: topicForName?.topicName || null,
+      isFavorite: false,
       createdAt: lesson.createdAt.toISOString(),
       updatedAt: lesson.updatedAt.toISOString(),
     };

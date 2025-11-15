@@ -22,6 +22,7 @@ export const LessonResponseSchema = z.object({
   content: z.string().nullable(),
   topicId: z.string(),
   topicName: z.string().nullable(),
+  isFavorite: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
