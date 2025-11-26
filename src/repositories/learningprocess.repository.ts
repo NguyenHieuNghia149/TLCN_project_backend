@@ -152,6 +152,9 @@ export class LearningProcessRepository {
       const overallCompletionPercentage =
         totalProblems > 0 ? Math.round((totalSolvedProblems / totalProblems) * 100) : 0;
 
+      // Get the first topic with solved problems
+      const recentTopic = sortedTopicProgress.find(tp => tp.solvedProblems > 0);
+
       return {
         userId,
         totalTopics,
@@ -159,7 +162,7 @@ export class LearningProcessRepository {
         totalSolvedProblems,
         overallCompletionPercentage,
         topicProgress: sortedTopicProgress,
-        recentTopic: sortedTopicProgress.length > 0 ? sortedTopicProgress[0] : undefined,
+        recentTopic,
       };
     } catch (error) {
       console.error('Error fetching user learning progress:', error);
@@ -354,13 +357,16 @@ export class LearningProcessRepository {
       const completionPercentage =
         totalLessons > 0 ? Math.round((completedLessonsCount / totalLessons) * 100) : 0;
 
+      // Get the first lesson with completed lessons
+      const recentLesson = sortedLessonProgress.find(lp => lp.completedLessons > 0);
+
       return {
         userId,
         totalLessons,
         completedLessons: completedLessonsCount,
         completionPercentage,
         lessonProgress: sortedLessonProgress,
-        recentLesson: sortedLessonProgress.length > 0 ? sortedLessonProgress[0] : undefined,
+        recentLesson,
       };
     } catch (error) {
       console.error('Error fetching user lesson progress:', error);
