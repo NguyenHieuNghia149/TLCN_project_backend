@@ -52,9 +52,11 @@ export class AuthController {
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      // sameSite: 'strict',
+      sameSite: 'none',
       maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/api/auth/refresh-token',
+      // path: '/api/auth/refresh-token',
+      path: '/',
     });
 
     const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
@@ -82,9 +84,10 @@ export class AuthController {
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/api/auth/refresh-token',
+      // path: '/api/auth/refresh-token',
+      path: '/',
     });
 
     const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
@@ -116,9 +119,10 @@ export class AuthController {
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/api/auth/refresh-token',
+      // path: '/api/auth/refresh-token',
+      path: '/',
     });
 
     // Return only access token to client
