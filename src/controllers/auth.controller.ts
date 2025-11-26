@@ -52,11 +52,10 @@ export class AuthController {
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      // sameSite: 'strict',
-      sameSite: 'none',
+      sameSite: 'strict',
+      // sameSite: 'none',
       maxAge: 30 * 24 * 60 * 60 * 1000,
-      // path: '/api/auth/refresh-token',
-      path: '/',
+      path: '/api/auth/refresh-token',
     });
 
     const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
@@ -84,10 +83,9 @@ export class AuthController {
     res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      // path: '/api/auth/refresh-token',
-      path: '/',
+      path: '/api/auth/refresh-token',
     });
 
     const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
@@ -116,13 +114,12 @@ export class AuthController {
     const result = await this.authService.refreshToken({ refreshToken });
 
     // Set rotated refresh token cookie
-    res.cookie('refreshToken', result.tokens.refreshToken, {
+    res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      // path: '/api/auth/refresh-token',
-      path: '/',
+      path: '/api/auth/refresh-token',
     });
 
     // Return only access token to client

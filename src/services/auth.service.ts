@@ -228,7 +228,11 @@ export class AuthService {
   async refreshToken(dto: RefreshTokenInput): Promise<AuthResponse> {
     const payload = JWTUtils.verifyRefreshToken(dto.refreshToken);
 
+    console.log('Refresh token payload:', payload);
+    console.log('Provided refresh token:', dto.refreshToken);
     const storedToken = await this.tokenRepository.findByToken(dto.refreshToken);
+
+    console.log('Stored token from DB:', storedToken);
     if (!storedToken) {
       throw new TokenExpiredException('Refresh token not found or revoked');
     }
