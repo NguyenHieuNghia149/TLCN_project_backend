@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
 import { LearningProcessService } from '@/services/learningprocess.service';
+import { BaseException, ErrorHandler } from '@/exceptions/auth.exceptions';
 
 export class LearningProcessController {
   private learningProcessService: LearningProcessService;
@@ -11,16 +13,12 @@ export class LearningProcessController {
   /**
    * Get user's complete learning progress
    */
-  async getUserProgress(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getUserProgress(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new BaseException('User ID is required', 400, 'USER_ID_REQUIRED');
       }
 
       const progress = await this.learningProcessService.getUserLearningProgress(userId);
@@ -38,25 +36,17 @@ export class LearningProcessController {
   /**
    * Get progress for a specific topic
    */
-  async getTopicProgress(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getTopicProgress(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
       const { topicId } = req.params;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new BaseException('User ID is required', 400, 'USER_ID_REQUIRED');
       }
 
       if (!topicId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Topic ID is required',
-          code: 'INVALID_INPUT',
-        });
+        throw new BaseException('Topic ID is required', 400, 'TOPIC_ID_REQUIRED');
       }
 
       const progress = await this.learningProcessService.getTopicProgress(userId, topicId);
@@ -82,16 +72,12 @@ export class LearningProcessController {
   /**
    * Get the most recent topic with submissions
    */
-  async getRecentTopic(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getRecentTopic(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new BaseException('User ID is required', 400, 'USER_ID_REQUIRED');
       }
 
       const recentTopic = await this.learningProcessService.getRecentTopic(userId);
@@ -109,16 +95,12 @@ export class LearningProcessController {
   /**
    * Get user's complete lesson progress
    */
-  async getUserLessonProgress(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getUserLessonProgress(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new BaseException('User ID is required', 400, 'USER_ID_REQUIRED');
       }
 
       const progress = await this.learningProcessService.getUserLessonProgress(userId);
@@ -136,25 +118,17 @@ export class LearningProcessController {
   /**
    * Get progress for a specific lesson
    */
-  async getLessonProgress(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getLessonProgress(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
       const { lessonId } = req.params;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new BaseException('User ID is required', 400, 'USER_ID_REQUIRED');
       }
 
       if (!lessonId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Lesson ID is required',
-          code: 'INVALID_INPUT',
-        });
+        throw new BaseException('Lesson ID is required', 400, 'LESSON_ID_REQUIRED');
       }
 
       const progress = await this.learningProcessService.getLessonProgress(userId, lessonId);
@@ -180,16 +154,12 @@ export class LearningProcessController {
   /**
    * Get the most recent lesson completed
    */
-  async getRecentLesson(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getRecentLesson(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new BaseException('User ID is required', 400, 'USER_ID_REQUIRED');
       }
 
       const recentLesson = await this.learningProcessService.getRecentLesson(userId);
@@ -202,5 +172,35 @@ export class LearningProcessController {
     } catch (error) {
       next(error);
     }
+  }
+
+  /**
+   * Error handling middleware for learning process endpoints
+   */
+  static errorHandler(
+    error: Error,
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void | Response {
+    // Handle custom exceptions
+    if (error instanceof BaseException) {
+      const errorResponse = ErrorHandler.getErrorResponse(error);
+      return res.status(errorResponse.statusCode).json({
+        success: false,
+        message: errorResponse.message,
+        code: errorResponse.code,
+        timestamp: errorResponse.timestamp,
+      });
+    }
+
+    // Log unexpected errors
+    console.error('Learning process error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+      timestamp: new Date().toISOString(),
+    });
   }
 }

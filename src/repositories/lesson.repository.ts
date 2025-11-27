@@ -42,4 +42,13 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
       updatedAt: lesson.updatedAt.toISOString(),
     }));
   }
+
+  async getLessonsByTopicId(topicId: string): Promise<LessonEntity[]> {
+    const result = await this.db
+      .select()
+      .from(lessons)
+      .where(eq(lessons.topicId, topicId));
+
+    return result;
+  }
 }
