@@ -1,4 +1,15 @@
-import { LearningProcessRepository, LearningProgressResponse, TopicProgress, LessonProgress, LessonProgressResponse } from '@/repositories/learningprocess.repository';
+import { LearningProcessRepository } from '@/repositories/learningprocess.repository';
+import {
+  TopicProgress,
+  LessonProgress,
+  LearningProgressResponse,
+  LessonProgressResponse,
+} from '@/validations/learningprocess.validation';
+import {
+  UserIdRequiredException,
+  TopicIdRequiredException,
+  LessonIdRequiredException,
+} from '@/exceptions/learningprocess.exception';
 
 export class LearningProcessService {
   private learningProcessRepository: LearningProcessRepository;
@@ -13,7 +24,7 @@ export class LearningProcessService {
   async getUserLearningProgress(userId: string): Promise<LearningProgressResponse> {
     try {
       if (!userId) {
-        throw new Error('User ID is required');
+        throw new UserIdRequiredException();
       }
 
       return await this.learningProcessRepository.getUserLearningProgress(userId);
@@ -28,8 +39,11 @@ export class LearningProcessService {
    */
   async getTopicProgress(userId: string, topicId: string): Promise<TopicProgress | null> {
     try {
-      if (!userId || !topicId) {
-        throw new Error('User ID and Topic ID are required');
+      if (!userId) {
+        throw new UserIdRequiredException();
+      }
+      if (!topicId) {
+        throw new TopicIdRequiredException();
       }
 
       return await this.learningProcessRepository.getTopicProgress(userId, topicId);
@@ -45,7 +59,7 @@ export class LearningProcessService {
   async getRecentTopic(userId: string): Promise<TopicProgress | null> {
     try {
       if (!userId) {
-        throw new Error('User ID is required');
+        throw new UserIdRequiredException();
       }
 
       const progress = await this.learningProcessRepository.getUserLearningProgress(userId);
@@ -62,7 +76,7 @@ export class LearningProcessService {
   async getUserLessonProgress(userId: string): Promise<LessonProgressResponse> {
     try {
       if (!userId) {
-        throw new Error('User ID is required');
+        throw new UserIdRequiredException();
       }
 
       return await this.learningProcessRepository.getUserLessonProgress(userId);
@@ -77,8 +91,11 @@ export class LearningProcessService {
    */
   async getLessonProgress(userId: string, lessonId: string): Promise<LessonProgress | null> {
     try {
-      if (!userId || !lessonId) {
-        throw new Error('User ID and Lesson ID are required');
+      if (!userId) {
+        throw new UserIdRequiredException();
+      }
+      if (!lessonId) {
+        throw new LessonIdRequiredException();
       }
 
       return await this.learningProcessRepository.getLessonProgress(userId, lessonId);
@@ -94,7 +111,7 @@ export class LearningProcessService {
   async getRecentLesson(userId: string): Promise<LessonProgress | null> {
     try {
       if (!userId) {
-        throw new Error('User ID is required');
+        throw new UserIdRequiredException();
       }
 
       const progress = await this.learningProcessRepository.getUserLessonProgress(userId);
