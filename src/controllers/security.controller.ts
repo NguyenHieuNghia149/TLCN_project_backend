@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { monitoringService } from '@/services/monitoring.service';
 import { securityService } from '@/services/security.service';
+import { BaseException, ErrorHandler } from '@/exceptions/auth.exceptions';
+import z from 'zod';
 
 export class SecurityController {
   /**
@@ -108,5 +110,43 @@ export class SecurityController {
     } catch (error) {
       next(error);
     }
+  }
+
+  static errorHandler(
+    error: Error,
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void | Response {
+    // Handle validation errors
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        code: 'VALIDATION_ERROR',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Handle base exceptions
+    if (error instanceof BaseException) {
+      const errorResponse = ErrorHandler.getErrorResponse(error);
+      return res.status(errorResponse.statusCode).json({
+        success: false,
+        message: errorResponse.message,
+        code: errorResponse.code,
+        timestamp: errorResponse.timestamp,
+      });
+    }
+
+    // Log unexpected errors
+    console.error('Unexpected submission error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+      timestamp: new Date().toISOString(),
+    });
   }
 }

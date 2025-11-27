@@ -1,7 +1,7 @@
 import { eq, and, desc, asc, count, sql, inArray } from 'drizzle-orm';
 import { BaseRepository, PaginationOptions, PaginationResult } from './base.repository';
 import { submissions, SubmissionEntity, SubmissionInsert } from '@/database/schema';
-import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 
 export class SubmissionRepository extends BaseRepository<
   typeof submissions,

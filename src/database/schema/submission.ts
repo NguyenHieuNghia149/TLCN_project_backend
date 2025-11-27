@@ -3,7 +3,7 @@ import { users } from './user';
 import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 
 export const submissions = pgTable('submissions', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ExecutionResult, Testcase, ExecutionConfig } from '@/validations/submission.validation';
 import { securityService } from './security.service';
 import { monitoringService } from './monitoring.service';
+import { BaseException } from '@/exceptions/auth.exceptions';
+import { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 // Security configuration
 interface SecurityConfig {
@@ -150,20 +152,30 @@ export class CodeExecutionService {
   private validateCodeSecurity(code: string, language: string): void {
     // Check code length
     if (code.length > this.securityConfig.maxCodeLength) {
-      throw new Error(
-        `Code too long. Maximum ${this.securityConfig.maxCodeLength} characters allowed.`
+      throw new BaseException(
+        `Code too long. Maximum ${this.securityConfig.maxCodeLength} characters allowed.`,
+        400,
+        'CODE_TOO_LONG'
       );
     }
 
     // Check if language is allowed
     if (!this.securityConfig.allowedLanguages.includes(language)) {
-      throw new Error(`Language '${language}' is not allowed.`);
+      throw new BaseException(
+        `Language '${language}' is not allowed.`,
+        400,
+        'UNSUPPORTED_LANGUAGE'
+      );
     }
 
     // Check for blocked patterns
     for (const pattern of this.securityConfig.blockedPatterns) {
       if (pattern.test(code)) {
-        throw new Error(`Code contains blocked pattern: ${pattern.source}`);
+        throw new BaseException(
+          `Code contains blocked pattern: ${pattern.source}`,
+          400,
+          'MALICIOUS_CODE_DETECTED'
+        );
       }
     }
 
@@ -220,7 +232,11 @@ export class CodeExecutionService {
 
     for (const pattern of dangerousPatterns) {
       if (pattern.test(code)) {
-        throw new Error(`Python code contains dangerous pattern: ${pattern.source}`);
+        throw new BaseException(
+          `Python code contains dangerous pattern: ${pattern.source}`,
+          400,
+          'MALICIOUS_CODE_DETECTED'
+        );
       }
     }
   }
@@ -245,7 +261,11 @@ export class CodeExecutionService {
 
     for (const pattern of dangerousPatterns) {
       if (pattern.test(code)) {
-        throw new Error(`JavaScript code contains dangerous pattern: ${pattern.source}`);
+        throw new BaseException(
+          `JavaScript code contains dangerous pattern: ${pattern.source}`,
+          400,
+          'MALICIOUS_CODE_DETECTED'
+        );
       }
     }
   }
@@ -271,7 +291,11 @@ export class CodeExecutionService {
 
     for (const pattern of dangerousPatterns) {
       if (pattern.test(code)) {
-        throw new Error(`Java code contains dangerous pattern: ${pattern.source}`);
+        throw new BaseException(
+          `Java code contains dangerous pattern: ${pattern.source}`,
+          400,
+          'MALICIOUS_CODE_DETECTED'
+        );
       }
     }
   }
@@ -308,7 +332,11 @@ export class CodeExecutionService {
 
     for (const pattern of dangerousPatterns) {
       if (pattern.test(code)) {
-        throw new Error(`C++ code contains dangerous pattern: ${pattern.source}`);
+        throw new BaseException(
+          `C++ code contains dangerous pattern: ${pattern.source}`,
+          400,
+          'MALICIOUS_CODE_DETECTED'
+        );
       }
     }
   }
@@ -339,7 +367,7 @@ export class CodeExecutionService {
       const timer = setTimeout(() => {
         isTimeout = true;
         proc.kill('SIGKILL');
-        reject(new Error('Execution timeout'));
+        reject(new BaseException('Execution timeout', 408, 'EXECUTION_TIMEOUT'));
       }, timeout);
 
       proc.stdout.on('data', data => {
@@ -348,7 +376,7 @@ export class CodeExecutionService {
         if (stdout.length > this.securityConfig.maxOutputSize) {
           proc.kill('SIGKILL');
           clearTimeout(timer);
-          reject(new Error('Output size limit exceeded'));
+          reject(new BaseException('Output size limit exceeded', 413, 'OUTPUT_SIZE_EXCEEDED'));
         }
       });
 
@@ -357,7 +385,7 @@ export class CodeExecutionService {
         if (stderr.length > this.securityConfig.maxErrorSize) {
           proc.kill('SIGKILL');
           clearTimeout(timer);
-          reject(new Error('Error output size limit exceeded'));
+          reject(new BaseException('Error output size limit exceeded', 413, 'ERROR_SIZE_EXCEEDED'));
         }
       });
 
@@ -420,7 +448,7 @@ export class CodeExecutionService {
       const result = await this.runDocker(dockerArgs, '', 30000);
 
       if (result.exitCode !== 0) {
-        throw new Error(`Compilation failed: ${result.stderr}`);
+        throw new BaseException(`Compilation failed: ${result.stderr}`, 400, 'COMPILATION_FAILED');
       }
 
       console.log('✅ Compilation successful');
@@ -472,9 +500,9 @@ export class CodeExecutionService {
       return result;
     } catch (error: any) {
       if (error.message.includes('timeout') || error.message.includes('Execution timeout')) {
-        throw new Error('Time limit exceeded');
+        throw new BaseException('Time limit exceeded', 408, 'TIME_LIMIT_EXCEEDED');
       } else {
-        throw new Error(`Runtime error: ${error.message}`);
+        throw new BaseException(`Runtime error: ${error.message}`, 400, 'RUNTIME_ERROR');
       }
     }
   }
@@ -495,7 +523,11 @@ export class CodeExecutionService {
       // Get language config
       const langConfig = languages[config.language as keyof typeof languages];
       if (!langConfig) {
-        throw new Error(`Unsupported language: ${config.language}`);
+        throw new BaseException(
+          `Unsupported language: ${config.language}`,
+          400,
+          'UNSUPPORTED_LANGUAGE'
+        );
       }
 
       const filePath = path.join(jobDir, langConfig.fileName);

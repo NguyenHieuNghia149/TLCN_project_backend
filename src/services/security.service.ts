@@ -1,3 +1,4 @@
+import { BaseException } from '@/exceptions/auth.exceptions';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -415,7 +416,11 @@ export class SecurityService {
 
     for (const pattern of bufferOverflowPatterns) {
       if (pattern.test(code)) {
-        throw new Error(`Code contains potentially unsafe function: ${pattern.source}`);
+        throw new BaseException(
+          `Code contains potentially unsafe function: ${pattern.source}`,
+          400,
+          'UNSAFE_CODE_DETECTED'
+        );
       }
     }
 

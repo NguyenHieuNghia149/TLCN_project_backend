@@ -1,4 +1,4 @@
-import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 import { queueService, QueueJob } from './queue.service';
 import { codeExecutionService } from './code-execution.service';
 import { WebSocketService } from './websocket.service';
@@ -49,13 +49,13 @@ export class SubmissionService {
     // Validate problem exists
     const problem = await this.problemRepository.findById(input.problemId);
     if (!problem) {
-      throw new Error('Problem not found');
+      throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
     // Get testcases for the problem
     const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
     if (testcases.length === 0) {
-      throw new Error('No testcases found for this problem');
+      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
     }
 
     // Create submission record

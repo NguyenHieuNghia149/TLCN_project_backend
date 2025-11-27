@@ -4,7 +4,7 @@ import { problems as problemsTable } from '@/database/schema';
 import { topics } from '@/database/schema';
 import { lessons } from '@/database/schema';
 import { learnedLessons } from '@/database/schema';
-import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 import { db } from '@/database/connection';
 
 export interface TopicProgress {
@@ -72,20 +72,14 @@ export class LearningProcessRepository {
         })
         .from(submissions)
         .where(
-          and(
-            eq(submissions.userId, userId),
-            eq(submissions.status, ESubmissionStatus.ACCEPTED)
-          )
+          and(eq(submissions.userId, userId), eq(submissions.status, ESubmissionStatus.ACCEPTED))
         );
 
       // Create a set of solved problem IDs for quick lookup
       const solvedProblemIds = new Set(acceptedSubmissions.map(s => s.problemId));
 
       // Create a map of solved problems by topic for latest submission date
-      const solvedByTopic = new Map<
-        string,
-        { count: number; lastSubmittedAt: Date | null }
-      >();
+      const solvedByTopic = new Map<string, { count: number; lastSubmittedAt: Date | null }>();
 
       acceptedSubmissions.forEach(submission => {
         const topic = topicsWithProblems.find(tp => tp.problemId === submission.problemId);
@@ -121,7 +115,8 @@ export class LearningProcessRepository {
         ([topicId, { topicName, problems }]) => {
           const totalProblems = problems.size;
           const solvedProblems = Array.from(problems).filter(p => solvedProblemIds.has(p)).length;
-          const completionPercentage = totalProblems > 0 ? (solvedProblems / totalProblems) * 100 : 0;
+          const completionPercentage =
+            totalProblems > 0 ? (solvedProblems / totalProblems) * 100 : 0;
           const topicSolvedData = solvedByTopic.get(topicId);
 
           return {
@@ -192,7 +187,7 @@ export class LearningProcessRepository {
         .from(problemsTable)
         .where(eq(problemsTable.topicId, topicId));
 
-      const problemIds = topicProblems.map((p) => p.id);
+      const problemIds = topicProblems.map(p => p.id);
 
       if (problemIds.length === 0) {
         return {
@@ -278,10 +273,7 @@ export class LearningProcessRepository {
       const completedLessonIds = new Set(completedLessons.map(cl => cl.lessonId));
 
       // Create a map of completed lessons by topic for latest completion date
-      const completedByTopic = new Map<
-        string,
-        { count: number; lastCompletedAt: Date | null }
-      >();
+      const completedByTopic = new Map<string, { count: number; lastCompletedAt: Date | null }>();
 
       completedLessons.forEach(lesson => {
         const lessonData = lessonsWithTopics.find(l => l.lessonId === lesson.lessonId);
@@ -318,8 +310,8 @@ export class LearningProcessRepository {
       });
 
       // Calculate progress for each topic
-      const lessonProgress: LessonProgress[] = Array.from(topicLessonsMap.entries())
-        .flatMap(([topicId, { topicName, lessons: topicLessons, lessonDetails }]) => {
+      const lessonProgress: LessonProgress[] = Array.from(topicLessonsMap.entries()).flatMap(
+        ([topicId, { topicName, lessons: topicLessons, lessonDetails }]) => {
           return Array.from(topicLessons).map(lessonId => {
             const totalLessonsInTopic = topicLessons.size;
             const completedLessonsInTopic = Array.from(topicLessons).filter(l =>
@@ -342,7 +334,8 @@ export class LearningProcessRepository {
               lastCompletedAt: topicCompletedData?.lastCompletedAt || null,
             };
           });
-        });
+        }
+      );
 
       // Sort by last completed date (most recent first)
       const sortedLessonProgress = lessonProgress.sort((a, b) => {

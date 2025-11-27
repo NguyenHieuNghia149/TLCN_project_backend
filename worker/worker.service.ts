@@ -1,6 +1,6 @@
 import { queueService, QueueJob } from '../src/services/queue.service';
 import { submissionService } from '../src/services/submission.service';
-import { ESubmissionStatus } from '../src/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '../src/enums/submissionStatus.enum';
 import axios from 'axios';
 
 export class WorkerService {
