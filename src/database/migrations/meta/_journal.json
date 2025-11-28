@@ -1,1 +1,12 @@
-{"version":"5","entries":[]}
+{
+  "version": "5",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1764330082627,
+      "tag": "20251128114122_chunky_snowbird",
+      "breakpoints": true
+    }
+  ]
+}

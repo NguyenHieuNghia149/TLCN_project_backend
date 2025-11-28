@@ -1,8 +1,9 @@
-import { pgTable, uuid, varchar, text, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { lessons } from './lesson';
 import { topics } from './topic';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
+import { ProblemVisibility } from '@/enums/problemVisibility.enum';
 
 export const problems = pgTable('problems', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -15,6 +16,7 @@ export const problems = pgTable('problems', {
   memoryLimit: varchar('memory_limit', { length: 20 }).default('128m'),
   lessonId: uuid('lesson_id').references(() => lessons.id),
   topicId: uuid('topic_id').references(() => topics.id),
+  visibility: varchar('visibility', { length: 30 }).default(ProblemVisibility.PUBLIC).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -33,6 +35,7 @@ export const insertProblemSchema = createInsertSchema(problems, {
     .transform(arr => (arr ?? []).join(',')),
   lessonId: z.string().uuid().optional(),
   topicId: z.string().uuid().optional(),
+  visibility: z.string().default(ProblemVisibility.PUBLIC),
 });
 
 export const selectProblemSchema = createSelectSchema(problems);

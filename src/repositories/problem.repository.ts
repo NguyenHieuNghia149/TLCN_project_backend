@@ -11,6 +11,7 @@ import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@/database/schema/solutionApproaches';
 import { and, desc, eq, gt, ilike, lt, or } from 'drizzle-orm';
+import { ProblemVisibility } from '@/enums/problemVisibility.enum';
 
 export type ChallengeCreationResult = {
   problem: ProblemEntity;
@@ -40,6 +41,7 @@ export class ProblemRepository extends BaseRepository<
           tags: (problemData.tags ?? []).join(','),
           lessonId: problemData.lessonid,
           topicId: problemData.topicid,
+          visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
         } as any)
         .returning();
 

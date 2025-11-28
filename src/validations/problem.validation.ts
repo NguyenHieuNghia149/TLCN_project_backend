@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { CreateTestcaseSchema, TestcaseResponseSchema } from './testcase.validation';
 import { CreateSolutionSchema, SolutionResponseSchema } from './solution.validation';
+import { ProblemVisibility } from '@/enums/problemVisibility.enum';
 
 export {
   CreateTestcaseSchema,
@@ -31,6 +32,7 @@ export const CreateProblemSchema = z.object({
   tags: z.array(z.string()).optional(),
   lessonid: z.string().uuid({ message: 'Invalid Lesson ID.' }).optional(),
   topicid: z.string().uuid({ message: 'Invalid Topic ID.' }).optional(),
+  visibility: z.string().default(ProblemVisibility.PUBLIC),
   solution: CreateSolutionSchema.optional(),
   testcases: z
     .array(CreateTestcaseSchema)

@@ -27,6 +27,9 @@ import { resultSubmissions } from './resultSubmission';
 import { favorite } from './favorite';
 import { comments } from './comment';
 import { learnedLessons } from './completed_lesson';
+import { examToProblems } from './examsToProblems';
+import { examParticipations } from './examParticipations';
+import { exam } from './exam';
 
 export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
@@ -67,6 +70,8 @@ export const problemsRelations = relations(problems, ({ one, many }) => ({
   testcases: many(testcases),
   solutions: one(solutions),
   submissions: many(submissions),
+
+  examToProblems: many(examToProblems),
 }));
 
 export const testcasesRelations = relations(testcases, ({ one }) => ({
@@ -152,5 +157,32 @@ export const learnedLessonsRelations = relations(learnedLessons, ({ one }) => ({
   lesson: one(lessons, {
     fields: [learnedLessons.lessonId],
     references: [lessons.id],
+  }),
+}));
+
+export const examRelations = relations(exam, ({ many }) => ({
+  examToProblems: many(examToProblems),
+  examParticipations: many(examParticipations),
+}));
+
+export const examParticipationsRelations = relations(examParticipations, ({ one }) => ({
+  exam: one(exam, {
+    fields: [examParticipations.examId],
+    references: [exam.id],
+  }),
+  user: one(users, {
+    fields: [examParticipations.userId],
+    references: [users.id],
+  }),
+}));
+
+export const examToProblemsRelations = relations(examToProblems, ({ one }) => ({
+  exam: one(exam, {
+    fields: [examToProblems.examId],
+    references: [exam.id],
+  }),
+  problem: one(problems, {
+    fields: [examToProblems.problemId],
+    references: [problems.id],
   }),
 }));
