@@ -83,6 +83,7 @@ export class SubmissionService {
         input: tc.input,
         output: tc.output,
         point: tc.point,
+        isPublic: tc.isPublic ?? false,
       })),
       timeLimit: problem.timeLimit || 1000, // Default 1 second
       memoryLimit: problem.memoryLimit || '128m', // Default 128MB
@@ -156,6 +157,28 @@ export class SubmissionService {
       }
 
       const resp = await axios.post(url, execConfig, axiosOpts);
+
+      // Create a map of testcaseId -> isPublic for quick lookup
+      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
+
+      // Add isPublic to each result in the response
+      // Handle nested response structure: resp.data.data.results or resp.data.results
+      const addIsPublicToResults = (results: any[]) => {
+        return results.map((result: any) => ({
+          ...result,
+          isPublic: testcaseMap.get(result.testcaseId) ?? false,
+        }));
+      };
+
+      // Check for nested structure: resp.data.data.results
+      if (resp.data?.data?.results && Array.isArray(resp.data.data.results)) {
+        resp.data.data.results = addIsPublicToResults(resp.data.data.results);
+      }
+      // Check for direct structure: resp.data.results
+      else if (resp.data?.results && Array.isArray(resp.data.results)) {
+        resp.data.results = addIsPublicToResults(resp.data.results);
+      }
+
       return resp.data;
     } catch (err: any) {
       // Normalize axios error and include detailed context

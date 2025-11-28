@@ -50,10 +50,42 @@ export class ChallengeController {
 
       if (!topicId) throw new BaseException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
+      // Validate and parse limit
+      let parsedLimit = 10;
+      if (limit) {
+        const numLimit = parseInt(limit as string, 10);
+        if (isNaN(numLimit) || numLimit < 1) {
+          throw new BaseException('Limit must be a positive number', 400, 'INVALID_LIMIT');
+        }
+        if (numLimit > 50) {
+          throw new BaseException('Limit cannot exceed 50', 400, 'LIMIT_TOO_LARGE');
+        }
+        parsedLimit = numLimit;
+      }
+
+      // Validate and parse cursor
+      let parsedCursor: { createdAt: string; id: string } | null = null;
+      if (cursor) {
+        try {
+          if (typeof cursor === 'string') {
+            parsedCursor = JSON.parse(cursor);
+          } else if (typeof cursor === 'object') {
+            parsedCursor = cursor as { createdAt: string; id: string };
+          }
+
+          // Validate cursor structure
+          if (parsedCursor && (!parsedCursor.createdAt || !parsedCursor.id)) {
+            throw new BaseException('Invalid cursor format', 400, 'INVALID_CURSOR');
+          }
+        } catch (parseError) {
+          throw new BaseException('Invalid cursor format', 400, 'INVALID_CURSOR');
+        }
+      }
+
       const result = await this.challengeService.listProblemsByTopicInfinite({
         topicId,
-        limit: limit ? parseInt(limit as string) : 10,
-        cursor: cursor ? JSON.parse(cursor as string) : null,
+        limit: parsedLimit,
+        cursor: parsedCursor,
         userId: req.user?.userId,
       });
 

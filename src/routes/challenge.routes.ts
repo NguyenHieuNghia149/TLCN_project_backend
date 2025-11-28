@@ -37,7 +37,7 @@ router.get(
   '/problems/topic/:topicId',
   challengeRateLimit,
   optionalAuth,
-  ///validate(ListProblemsByTopicSchema),
+  validate(ListProblemsByTopicSchema),
   challengeController.listProblemsByTopic.bind(challengeController)
 );
 

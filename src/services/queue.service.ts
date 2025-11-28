@@ -15,6 +15,7 @@ export interface QueueJob {
     input: string;
     output: string;
     point: number;
+    isPublic?: boolean;
   }>;
   timeLimit: number;
   memoryLimit: string;

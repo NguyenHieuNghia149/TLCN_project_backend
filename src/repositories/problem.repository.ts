@@ -137,7 +137,10 @@ export class ProblemRepository extends BaseRepository<
   }): Promise<{ items: ProblemEntity[]; nextCursor: { createdAt: Date; id: string } | null }> {
     const { topicId, limit, cursor, direction = 'forward' } = params;
 
-    const baseWhere = eq(problems.topicId, topicId);
+    const baseWhere = and(
+      eq(problems.topicId, topicId),
+      eq(problems.visibility, ProblemVisibility.PUBLIC)
+    );
 
     const whereClause = cursor
       ? direction === 'forward'
@@ -151,10 +154,12 @@ export class ProblemRepository extends BaseRepository<
           )
       : undefined;
 
+    const finalWhere = whereClause ? and(baseWhere, whereClause) : baseWhere;
+
     const rows = await this.db
       .select()
       .from(problems)
-      .where(whereClause ? and(baseWhere, whereClause) : baseWhere)
+      .where(finalWhere)
       .orderBy(desc(problems.createdAt), desc(problems.id))
       .limit(limit + 1);
 
@@ -193,7 +198,10 @@ export class ProblemRepository extends BaseRepository<
   }): Promise<{ items: ProblemEntity[]; nextCursor: { createdAt: Date; id: string } | null }> {
     const { topicId, tags, limit, cursor } = params;
 
-    const baseWhere = eq(problems.topicId, topicId);
+    const baseWhere = and(
+      eq(problems.topicId, topicId),
+      eq(problems.visibility, ProblemVisibility.PUBLIC)
+    );
 
     // Build OR conditions for tags using ILIKE on CSV column
     const tagConds = tags.filter(Boolean).map(tag => ilike(problems.tags, `%${tag}%`));
@@ -208,12 +216,14 @@ export class ProblemRepository extends BaseRepository<
         )
       : undefined;
 
-    const finalWhere = [baseWhere, tagWhere, cursorWhere].filter(Boolean) as any[];
+    const finalWhereConditions = [baseWhere, tagWhere, cursorWhere].filter(Boolean) as any[];
 
     const rows = await this.db
       .select()
       .from(problems)
-      .where(finalWhere.length === 1 ? finalWhere[0] : and(...finalWhere))
+      .where(
+        finalWhereConditions.length === 1 ? finalWhereConditions[0] : and(...finalWhereConditions)
+      )
       .orderBy(desc(problems.createdAt), desc(problems.id))
       .limit(limit + 1);
 

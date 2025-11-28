@@ -84,6 +84,17 @@ export class WorkerService {
         memoryLimit,
       });
 
+      // Create a map of testcaseId -> isPublic for quick lookup
+      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
+
+      // Add isPublic to each result in the execution result
+      if (executionResult.results && Array.isArray(executionResult.results)) {
+        executionResult.results = executionResult.results.map((result: any) => ({
+          ...result,
+          isPublic: testcaseMap.get(result.testcaseId) ?? false,
+        }));
+      }
+
       // Calculate final status
       const finalStatus = this.determineFinalStatus(
         executionResult.summary,
