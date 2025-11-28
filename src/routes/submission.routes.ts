@@ -72,6 +72,14 @@ router.get(
   submissionController.getProblemSubmissions.bind(submissionController)
 );
 
+router.get(
+  '/problem/:problemId/me',
+  authenticationToken,
+  submissionRateLimit,
+  // validate(GetSubmissionsQuerySchema),
+  submissionController.getProblemSubmissionsByUser.bind(submissionController)
+);
+
 // Health check for submission service
 router.get('/health', submissionRateLimit, (req, res) => {
   res.json({

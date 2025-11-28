@@ -100,12 +100,12 @@ async function startServer() {
     initializeWebSocket(server);
 
     // Connect to Redis
-    queueService
-      .connect()
-      .then(() => console.log('Connected to Redis'))
-      .catch(error =>
-        console.error('Redis connection failed (continuing without it):', error.message)
-      );
+    // queueService
+    //   .connect()
+    //   .then(() => console.log('Connected to Redis'))
+    //   .catch(error =>
+    //     console.error('Redis connection failed (continuing without it):', error.message)
+    //   );
 
     // Routes
     route(app);

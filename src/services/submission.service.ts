@@ -406,6 +406,23 @@ export class SubmissionService {
     return { data, pagination };
   }
 
+  async getSubmissionByProblemIdAndUserId(
+    problemId: string,
+    userId: string
+  ): Promise<SubmissionStatus | null> {
+    const result = await this.submissionRepository.findByUserAndProblem(userId, problemId, {
+      page: 1,
+      limit: 1,
+    });
+
+    const submission = result.data[0];
+    if (!submission) {
+      return null;
+    }
+
+    return this.getSubmissionStatus(submission.id);
+  }
+
   async getQueueStatus(): Promise<{
     queueLength: number;
     isHealthy: boolean;
