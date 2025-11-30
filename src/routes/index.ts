@@ -11,6 +11,7 @@ import lessonRoutes from './lesson.routes';
 import lessonDetailRoutes from './lessonDetail.routes';
 import adminUserRoutes from './admin/adminUser.routes';
 import adminTeacherRoutes from './admin/adminTeacher.routes';
+import adminLessonRoutes from './admin/adminLesson.routes';
 import favoriteRoutes from './favorite.routes';
 import commentRoutes from './comment.routes';
 import learningProcessRoutes from './learningprocess.routes'
@@ -31,6 +32,7 @@ function route(app: Application): void {
   app.use('/api/lesson-details', lessonDetailRoutes)
   app.use('/api/admin/users', adminUserRoutes)
   app.use('/api/admin/teachers', adminTeacherRoutes)
+  app.use('/api/admin/lessons', adminLessonRoutes)
   app.use('/api/comments', commentRoutes)
   app.use('/api/learningprocess', learningProcessRoutes)
   app.use('/api/learned-lessons', learnedLessonRoutes)
