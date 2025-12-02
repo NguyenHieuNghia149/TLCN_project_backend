@@ -125,6 +125,8 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
         ? SanitizationUtils.sanitizeName(userData.firstName)
         : undefined,
       lastName: userData.lastName ? SanitizationUtils.sanitizeName(userData.lastName) : undefined,
+      // Avatar URL từ Cloudinary - không sanitize
+      avatar: userData.avatar,
     };
 
     const [user] = await this.db
@@ -137,6 +139,7 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
       throw new UserNotFoundException(`User with id ${id} not found`);
     }
 
+    console.log('User avatar updated to:', user.avatar)
     return user;
   }
 
