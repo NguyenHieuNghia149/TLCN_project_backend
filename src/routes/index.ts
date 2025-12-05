@@ -16,6 +16,7 @@ import favoriteRoutes from './favorite.routes';
 import commentRoutes from './comment.routes';
 import learningProcessRoutes from './learningprocess.routes'
 import learnedLessonRoutes from './learned-lesson.routes'
+import leaderboardRoutes from './leaderboard.routes'
 import { generalLimiter } from '../middlewares/ratelimit.middleware'
 
 function route(app: Application): void {
@@ -36,6 +37,7 @@ function route(app: Application): void {
   app.use('/api/comments', commentRoutes)
   app.use('/api/learningprocess', learningProcessRoutes)
   app.use('/api/learned-lessons', learnedLessonRoutes)
+  app.use('/api/leaderboard', leaderboardRoutes)
 
   app.use('/api/health', async (req, res) => {
     const dbHealth = await DatabaseUtils.getHealthInfo();
