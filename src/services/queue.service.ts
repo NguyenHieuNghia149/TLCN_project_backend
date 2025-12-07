@@ -1,5 +1,6 @@
 import { createClient, RedisClientType } from 'redis';
 import { config } from 'dotenv';
+import { BaseException } from '@/exceptions/auth.exceptions';
 
 config();
 
@@ -14,6 +15,7 @@ export interface QueueJob {
     input: string;
     output: string;
     point: number;
+    isPublic?: boolean;
   }>;
   timeLimit: number;
   memoryLimit: string;
@@ -76,7 +78,7 @@ export class QueueService {
 
   async addJob(job: QueueJob): Promise<void> {
     if (!this.isConnected) {
-      throw new Error('Redis client is not connected');
+      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
     }
 
     try {
@@ -90,7 +92,7 @@ export class QueueService {
 
   async getJob(): Promise<QueueJob | null> {
     if (!this.isConnected) {
-      throw new Error('Redis client is not connected');
+      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
     }
 
     try {
@@ -107,7 +109,7 @@ export class QueueService {
 
   async getQueueLength(): Promise<number> {
     if (!this.isConnected) {
-      throw new Error('Redis client is not connected');
+      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
     }
 
     try {
@@ -120,7 +122,7 @@ export class QueueService {
 
   async clearQueue(): Promise<void> {
     if (!this.isConnected) {
-      throw new Error('Redis client is not connected');
+      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
     }
 
     try {

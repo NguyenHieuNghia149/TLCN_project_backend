@@ -4,7 +4,12 @@ import { FavoriteService } from '@/services/favorite.service';
 import { authenticationToken } from '@/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
 import { validate } from '@/middlewares/validate.middleware';
-import { FavoriteInputSchema, FavoriteParamsSchema, LessonFavoriteInputSchema, LessonFavoriteParamsSchema } from '@/validations/favorite.validation';
+import {
+  FavoriteInputSchema,
+  FavoriteParamsSchema,
+  LessonFavoriteInputSchema,
+  LessonFavoriteParamsSchema,
+} from '@/validations/favorite.validation';
 
 const router = Router();
 const favoriteService = new FavoriteService();

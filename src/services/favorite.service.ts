@@ -1,11 +1,20 @@
-import { FavoriteRepository, FavoriteWithProblem, FavoriteWithLesson } from '@/repositories/favorite.repository';
+import {
+  FavoriteRepository,
+  FavoriteWithProblem,
+  FavoriteWithLesson,
+} from '@/repositories/favorite.repository';
 import { ProblemRepository } from '@/repositories/problem.repository';
 import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { SubmissionRepository } from '@/repositories/submission.repository';
 import { LessonRepository } from '@/repositories/lesson.repository';
 import { BaseException } from '@/exceptions/auth.exceptions';
 import { NotFoundException } from '@/exceptions/solution.exception';
-import { FavoriteResponse, ToggleFavoriteResponse, LessonFavoriteResponse, ToggleLessonFavoriteResponse } from '@/validations/favorite.validation';
+import {
+  FavoriteResponse,
+  ToggleFavoriteResponse,
+  LessonFavoriteResponse,
+  ToggleLessonFavoriteResponse,
+} from '@/validations/favorite.validation';
 import { ProblemResponse, ProblemResponseSchema } from '@/validations/problem.validation';
 import { LessonEntity } from '@/database/schema';
 
@@ -59,7 +68,7 @@ export class FavoriteService {
   async listUserFavorites(userId: string): Promise<FavoriteResponse[]> {
     const favorites = await this.favoriteRepository.listFavoritesByUser(userId);
     console.log('Raw favorites from DB:', JSON.stringify(favorites, null, 2));
-    
+
     const problemIds = favorites
       .map(row => row.favorite.problemId)
       .filter((id): id is string => Boolean(id));
@@ -77,7 +86,7 @@ export class FavoriteService {
       const isSolved = solvedSet.has(problemId);
       return this.mapFavoriteRowToResponse(row, pointsMap, isSolved);
     });
-    
+
     console.log('Transformed favorites response:', JSON.stringify(result, null, 2));
     return result;
   }
@@ -297,7 +306,7 @@ export class FavoriteService {
     const result = favorites.map(row => {
       return this.mapLessonFavoriteRowToResponse(row);
     });
-    
+
     return result;
   }
 
@@ -305,7 +314,10 @@ export class FavoriteService {
     return this.favoriteRepository.isLessonFavorite(userId, lessonId);
   }
 
-  async toggleLessonFavorite(userId: string, lessonId: string): Promise<ToggleLessonFavoriteResponse> {
+  async toggleLessonFavorite(
+    userId: string,
+    lessonId: string
+  ): Promise<ToggleLessonFavoriteResponse> {
     // Validate lesson exists
     const lesson = await this.lessonRepository.findById(lessonId);
     if (!lesson) {
@@ -320,7 +332,11 @@ export class FavoriteService {
       const removed = await this.favoriteRepository.removeLessonFavorite(userId, lessonId);
 
       if (!removed) {
-        throw new BaseException('Failed to remove lesson favorite', 500, 'REMOVE_LESSON_FAVORITE_FAILED');
+        throw new BaseException(
+          'Failed to remove lesson favorite',
+          500,
+          'REMOVE_LESSON_FAVORITE_FAILED'
+        );
       }
       return {
         isFavorite: false,
@@ -382,16 +398,11 @@ export class FavoriteService {
       id: favorite.id,
       lessonId,
       createdAt: this.formatDate(favorite.createdAt),
-      lesson: lesson
-        ? this.mapLessonToResponse(lesson, { isFavorite: true, ...options })
-        : null,
+      lesson: lesson ? this.mapLessonToResponse(lesson, { isFavorite: true, ...options }) : null,
     };
   }
 
-  private mapLessonToResponse(
-    lesson: LessonEntity,
-    options?: { isFavorite?: boolean }
-  ) {
+  private mapLessonToResponse(lesson: LessonEntity, options?: { isFavorite?: boolean }) {
     return {
       id: lesson.id,
       title: lesson.title,

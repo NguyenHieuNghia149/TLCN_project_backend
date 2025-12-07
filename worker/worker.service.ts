@@ -1,6 +1,7 @@
 import { queueService, QueueJob } from '../src/services/queue.service';
 import { submissionService } from '../src/services/submission.service';
-import { ESubmissionStatus } from '../src/enums/ESubmissionStatus';
+import { ExamService } from '../src/services/exam.service';
+import { ESubmissionStatus } from '../src/enums/submissionStatus.enum';
 import axios from 'axios';
 
 export class WorkerService {
@@ -34,6 +35,9 @@ export class WorkerService {
       this.isRunning = true;
       console.log(`Worker ${this.workerId} started successfully`);
 
+      // Exam finalizer frequency control
+      let lastFinalize = 0;
+
       // Main processing loop
       while (this.isRunning) {
         try {
@@ -48,6 +52,21 @@ export class WorkerService {
           console.error('Error in worker loop:', error);
           this.totalErrors++;
           await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retrying
+        }
+
+        // Periodically finalize expired exam participations (every 10 seconds)
+        try {
+          const now = Date.now();
+          if (now - lastFinalize > 10000) {
+            lastFinalize = now;
+            const examService = new ExamService();
+            const finalized = await examService.finalizeExpiredParticipations();
+            if (finalized > 0) {
+              console.log(`Auto-finalized ${finalized} expired exam participations`);
+            }
+          }
+        } catch (err) {
+          console.error('Error running exam finalizer:', err);
         }
       }
     } catch (error) {
@@ -83,6 +102,17 @@ export class WorkerService {
         timeLimit,
         memoryLimit,
       });
+
+      // Create a map of testcaseId -> isPublic for quick lookup
+      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
+
+      // Add isPublic to each result in the execution result
+      if (executionResult.results && Array.isArray(executionResult.results)) {
+        executionResult.results = executionResult.results.map((result: any) => ({
+          ...result,
+          isPublic: testcaseMap.get(result.testcaseId) ?? false,
+        }));
+      }
 
       // Calculate final status
       const finalStatus = this.determineFinalStatus(

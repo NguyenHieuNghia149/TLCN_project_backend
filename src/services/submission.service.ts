@@ -1,4 +1,4 @@
-import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 import { queueService, QueueJob } from './queue.service';
 import { codeExecutionService } from './code-execution.service';
 import { WebSocketService } from './websocket.service';
@@ -13,6 +13,8 @@ import { ResultSubmissionRepository } from '@/repositories/result-submission.rep
 import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { ProblemRepository } from '@/repositories/problem.repository';
 import { UserRepository } from '@/repositories/user.repository';
+import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
+import { ExamRepository } from '@/repositories/exam.repository';
 // Removed direct schema entity imports - using validation types instead
 import { PaginationOptions } from '@/repositories/base.repository';
 import axios from 'axios';
@@ -31,6 +33,8 @@ export class SubmissionService {
   private testcaseRepository: TestcaseRepository;
   private problemRepository: ProblemRepository;
   private userRepository: UserRepository;
+  private examParticipationRepository: ExamParticipationRepository;
+  private examRepository: ExamRepository;
 
   constructor() {
     this.submissionRepository = new SubmissionRepository();
@@ -38,6 +42,8 @@ export class SubmissionService {
     this.testcaseRepository = new TestcaseRepository();
     this.problemRepository = new ProblemRepository();
     this.userRepository = new UserRepository();
+    this.examParticipationRepository = new ExamParticipationRepository();
+    this.examRepository = new ExamRepository();
   }
 
   async submitCode(input: CreateSubmissionInput & { userId: string }): Promise<{
@@ -49,22 +55,54 @@ export class SubmissionService {
     // Validate problem exists
     const problem = await this.problemRepository.findById(input.problemId);
     if (!problem) {
-      throw new Error('Problem not found');
+      throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
     // Get testcases for the problem
     const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
     if (testcases.length === 0) {
-      throw new Error('No testcases found for this problem');
+      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
     }
 
-    // Create submission record
+    // If participationId provided, validate it and ensure it's active for this user
+    let examParticipationId: string | undefined = undefined;
+    if ((input as any).participationId) {
+      const participationId = (input as any).participationId as string;
+      const participation = await this.examParticipationRepository.findById(participationId);
+      if (!participation || participation.userId !== input.userId) {
+        throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
+      }
+
+      const exam = await this.examRepository.findById(participation.examId);
+      if (!exam) {
+        throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
+      }
+
+      const startMs = participation.startTime.getTime();
+      const durationMs = (exam.duration || 0) * 60 * 1000;
+      const participationEndByDuration = new Date(startMs + durationMs);
+      const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
+      const effectiveEnd =
+        participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+          ? participationEndByDuration
+          : examGlobalEnd;
+
+      const now = new Date();
+      if (now.getTime() > effectiveEnd.getTime()) {
+        throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
+      }
+
+      examParticipationId = participationId;
+    }
+
+    // Create submission record (attach examParticipationId if present)
     const submission = await this.submissionRepository.create({
       sourceCode: input.sourceCode,
       language: input.language,
       problemId: input.problemId,
       userId: input.userId,
       status: ESubmissionStatus.PENDING,
+      ...(examParticipationId ? { examParticipationId } : {}),
     });
 
     // Get queue position
@@ -83,6 +121,7 @@ export class SubmissionService {
         input: tc.input,
         output: tc.output,
         point: tc.point,
+        isPublic: tc.isPublic ?? false,
       })),
       timeLimit: problem.timeLimit || 1000, // Default 1 second
       memoryLimit: problem.memoryLimit || '128m', // Default 128MB
@@ -156,6 +195,28 @@ export class SubmissionService {
       }
 
       const resp = await axios.post(url, execConfig, axiosOpts);
+
+      // Create a map of testcaseId -> isPublic for quick lookup
+      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
+
+      // Add isPublic to each result in the response
+      // Handle nested response structure: resp.data.data.results or resp.data.results
+      const addIsPublicToResults = (results: any[]) => {
+        return results.map((result: any) => ({
+          ...result,
+          isPublic: testcaseMap.get(result.testcaseId) ?? false,
+        }));
+      };
+
+      // Check for nested structure: resp.data.data.results
+      if (resp.data?.data?.results && Array.isArray(resp.data.data.results)) {
+        resp.data.data.results = addIsPublicToResults(resp.data.data.results);
+      }
+      // Check for direct structure: resp.data.results
+      else if (resp.data?.results && Array.isArray(resp.data.results)) {
+        resp.data.results = addIsPublicToResults(resp.data.results);
+      }
+
       return resp.data;
     } catch (err: any) {
       // Normalize axios error and include detailed context
@@ -348,6 +409,7 @@ export class SubmissionService {
   async listSubmissions(options: {
     userId?: string;
     problemId?: string;
+    participationId?: string;
     status?: ESubmissionStatus;
     limit?: number;
     offset?: number;
@@ -369,7 +431,13 @@ export class SubmissionService {
 
     let result: { data: any[]; pagination: any };
 
-    if (options.userId && options.problemId) {
+    if (options.participationId && options.problemId) {
+      result = await this.submissionRepository.findByParticipationAndProblem(
+        options.participationId,
+        options.problemId,
+        paginationOptions
+      );
+    } else if (options.userId && options.problemId) {
       result = await this.submissionRepository.findByUserAndProblem(
         options.userId,
         options.problemId,
@@ -404,6 +472,23 @@ export class SubmissionService {
     }
 
     return { data, pagination };
+  }
+
+  async getSubmissionByProblemIdAndUserId(
+    problemId: string,
+    userId: string
+  ): Promise<SubmissionStatus | null> {
+    const result = await this.submissionRepository.findByUserAndProblem(userId, problemId, {
+      page: 1,
+      limit: 1,
+    });
+
+    const submission = result.data[0];
+    if (!submission) {
+      return null;
+    }
+
+    return this.getSubmissionStatus(submission.id);
   }
 
   async getQueueStatus(): Promise<{

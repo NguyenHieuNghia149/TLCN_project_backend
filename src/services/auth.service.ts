@@ -18,9 +18,9 @@ import {
   ValidationException,
 } from '@/exceptions/auth.exceptions';
 import { Request } from 'express';
-import { EStatus } from '@/enums/EStatus';
+import { EStatus } from '@/enums/userStatus.enum';
 import { EMailService, otpStore } from './email.service';
-import { EUserRole } from '@/enums/EUerRole';
+import { EUserRole } from '@/enums/userRole.enum';
 import { OAuth2Client } from 'google-auth-library';
 
 export class AuthService {

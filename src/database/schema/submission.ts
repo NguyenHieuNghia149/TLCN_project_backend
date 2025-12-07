@@ -1,9 +1,10 @@
 import { pgTable, uuid, text, varchar, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './user';
+import { examParticipations } from './examParticipations';
 import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import { ESubmissionStatus } from '@/enums/ESubmissionStatus';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 
 export const submissions = pgTable('submissions', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -18,6 +19,7 @@ export const submissions = pgTable('submissions', {
   problemId: uuid('problem_id')
     .references(() => problems.id)
     .notNull(),
+  examParticipationId: uuid('exam_participation_id').references(() => examParticipations.id),
 });
 
 export type SubmissionEntity = typeof submissions.$inferSelect;
@@ -42,6 +44,7 @@ export const insertSubmissionSchema = createInsertSchema(submissions, {
   judgedAt: z.string().optional(),
   userId: z.string().uuid(),
   problemId: z.string().uuid(),
+  examParticipationId: z.string().uuid().optional(),
 });
 
 export const selectSubmissionSchema = createSelectSchema(submissions);

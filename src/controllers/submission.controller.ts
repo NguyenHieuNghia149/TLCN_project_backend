@@ -1,6 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { BaseException, ErrorHandler } from '@/exceptions/auth.exceptions';
 import {
+  UserNotAuthenticatedException,
+  SubmissionIdRequiredException,
+  SubmissionNotFoundException,
+  ProblemIdRequiredException,
+} from '@/exceptions/submission.exceptions';
+import {
   CreateSubmissionInput,
   CreateSubmissionSchema,
   GetSubmissionsQuery,
@@ -24,11 +30,7 @@ export class SubmissionController {
       const userId = (req as any).user?.userId; // Assuming user is attached by auth middleware
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new UserNotAuthenticatedException();
       }
 
       const result = await this.submissionService.submitCode({
@@ -72,21 +74,13 @@ export class SubmissionController {
       const { submissionId } = req.params;
 
       if (!submissionId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Submission ID is required',
-          code: 'MISSING_SUBMISSION_ID',
-        });
+        throw new SubmissionIdRequiredException();
       }
 
       const status = await this.submissionService.getSubmissionStatus(submissionId);
 
       if (!status) {
-        return res.status(404).json({
-          success: false,
-          message: 'Submission not found',
-          code: 'SUBMISSION_NOT_FOUND',
-        });
+        throw new SubmissionNotFoundException();
       }
 
       res.status(200).json({
@@ -107,11 +101,7 @@ export class SubmissionController {
       const userId = (req as any).user?.userId;
 
       if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
+        throw new UserNotAuthenticatedException();
       }
 
       const { limit, offset, status } = req.query as unknown as GetSubmissionsQuery;
@@ -153,11 +143,7 @@ export class SubmissionController {
       console.log('Problem ID:', problemId);
 
       if (!problemId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Problem ID is required',
-          code: 'MISSING_PROBLEM_ID',
-        });
+        throw new ProblemIdRequiredException();
       }
 
       const result = await this.submissionService.listSubmissions({
@@ -176,6 +162,46 @@ export class SubmissionController {
           total: filteredSubmissions.length,
           limit: 10,
           offset: 0,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getProblemSubmissionsByUser(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const userId = (req as any).user?.userId;
+      const { problemId } = req.params;
+      const { limit, offset, status, participationId } =
+        req.query as unknown as GetSubmissionsQuery;
+
+      if (!userId) {
+        throw new UserNotAuthenticatedException();
+      }
+
+      if (!problemId) {
+        throw new ProblemIdRequiredException();
+      }
+
+      const result = await this.submissionService.listSubmissions({
+        userId,
+        problemId,
+        participationId,
+        limit,
+        offset,
+        status: status as any,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          submissions: result.data,
+          pagination: result.pagination,
         },
       });
     } catch (error) {
@@ -205,21 +231,13 @@ export class SubmissionController {
       const { submissionId } = req.params;
 
       if (!submissionId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Submission ID is required',
-          code: 'MISSING_SUBMISSION_ID',
-        });
+        throw new SubmissionIdRequiredException();
       }
 
       const status = await this.submissionService.getSubmissionStatus(submissionId);
 
       if (!status) {
-        return res.status(404).json({
-          success: false,
-          message: 'Submission not found',
-          code: 'SUBMISSION_NOT_FOUND',
-        });
+        throw new SubmissionNotFoundException();
       }
 
       // Return only the results part

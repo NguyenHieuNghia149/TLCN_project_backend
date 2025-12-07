@@ -1,3 +1,4 @@
+import { BaseException } from '@/exceptions/auth.exceptions';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -78,10 +79,16 @@ export class MonitoringService {
             const stats = JSON.parse(output.trim());
             resolve(stats);
           } catch (error) {
-            reject(new Error('Failed to parse container stats'));
+            reject(new BaseException('Failed to parse container stats', 500, 'PARSE_STATS_ERROR'));
           }
         } else {
-          reject(new Error(`Docker stats command failed with code ${code}`));
+          reject(
+            new BaseException(
+              `Docker stats command failed with code ${code}`,
+              500,
+              'DOCKER_STATS_ERROR'
+            )
+          );
         }
       });
 

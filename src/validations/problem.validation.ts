@@ -31,6 +31,7 @@ export const CreateProblemSchema = z.object({
   tags: z.array(z.string()).optional(),
   lessonid: z.string().uuid({ message: 'Invalid Lesson ID.' }).optional(),
   topicid: z.string().uuid({ message: 'Invalid Topic ID.' }).optional(),
+  visibility: z.string().optional(),
   solution: CreateSolutionSchema.optional(),
   testcases: z
     .array(CreateTestcaseSchema)

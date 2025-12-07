@@ -50,4 +50,6 @@ router.post(
   securityController.testSecurityValidation.bind(securityController)
 );
 
+// Error handling middleware
+
 export default router;
