@@ -13,27 +13,29 @@ import adminUserRoutes from './admin/adminUser.routes';
 import adminTeacherRoutes from './admin/adminTeacher.routes';
 import favoriteRoutes from './favorite.routes';
 import commentRoutes from './comment.routes';
-import learningProcessRoutes from './learningprocess.routes'
-import learnedLessonRoutes from './learned-lesson.routes'
-import { generalLimiter } from '../middlewares/ratelimit.middleware'
+import learningProcessRoutes from './learningprocess.routes';
+import learnedLessonRoutes from './learned-lesson.routes';
+import examRoutes from './exam.routes';
+import { generalLimiter } from '../middlewares/ratelimit.middleware';
 
 function route(app: Application): void {
-  app.use('/api', generalLimiter)
+  app.use('/api', generalLimiter);
 
-  app.use('/api/auth', authRoutes)
-  app.use('/api/challenges', challengeRoutes)
-  app.use('/api/favorites', favoriteRoutes)
-  app.use('/api/topics', topicRoutes)
-  app.use('/api/submissions', submissionRoutes)
-  app.use('/api/security', securityRoutes)
-  app.use('/api/sandbox', sandboxRoutes)
-  app.use('/api/lessons', lessonRoutes)
-  app.use('/api/lesson-details', lessonDetailRoutes)
-  app.use('/api/admin/users', adminUserRoutes)
-  app.use('/api/admin/teachers', adminTeacherRoutes)
-  app.use('/api/comments', commentRoutes)
-  app.use('/api/learningprocess', learningProcessRoutes)
-  app.use('/api/learned-lessons', learnedLessonRoutes)
+  app.use('/api/auth', authRoutes);
+  app.use('/api/challenges', challengeRoutes);
+  app.use('/api/favorites', favoriteRoutes);
+  app.use('/api/topics', topicRoutes);
+  app.use('/api/submissions', submissionRoutes);
+  app.use('/api/security', securityRoutes);
+  app.use('/api/sandbox', sandboxRoutes);
+  app.use('/api/lessons', lessonRoutes);
+  app.use('/api/lesson-details', lessonDetailRoutes);
+  app.use('/api/admin/users', adminUserRoutes);
+  app.use('/api/admin/teachers', adminTeacherRoutes);
+  app.use('/api/comments', commentRoutes);
+  app.use('/api/learningprocess', learningProcessRoutes);
+  app.use('/api/learned-lessons', learnedLessonRoutes);
+  app.use('/api/exams', examRoutes);
 
   app.use('/api/health', async (req, res) => {
     const dbHealth = await DatabaseUtils.getHealthInfo();

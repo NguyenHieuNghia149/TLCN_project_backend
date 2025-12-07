@@ -33,6 +33,7 @@ export const CreateSubmissionSchema = z.object({
     message: 'Unsupported language. Supported: cpp, python, java, javascript',
   }),
   problemId: z.string().uuid('Invalid problem ID'),
+  participationId: z.string().uuid().optional(),
 });
 
 export type CreateSubmissionInput = z.infer<typeof CreateSubmissionSchema>;
@@ -108,6 +109,7 @@ export const GetSubmissionsQuerySchema = z.object({
       'COMPILATION_ERROR',
     ])
     .optional(),
+  participationId: z.string().uuid().optional(),
 });
 
 export type GetSubmissionsQuery = z.infer<typeof GetSubmissionsQuerySchema>;

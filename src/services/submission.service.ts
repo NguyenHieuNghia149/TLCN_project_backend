@@ -13,6 +13,8 @@ import { ResultSubmissionRepository } from '@/repositories/result-submission.rep
 import { TestcaseRepository } from '@/repositories/testcase.repository';
 import { ProblemRepository } from '@/repositories/problem.repository';
 import { UserRepository } from '@/repositories/user.repository';
+import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
+import { ExamRepository } from '@/repositories/exam.repository';
 // Removed direct schema entity imports - using validation types instead
 import { PaginationOptions } from '@/repositories/base.repository';
 import axios from 'axios';
@@ -31,6 +33,8 @@ export class SubmissionService {
   private testcaseRepository: TestcaseRepository;
   private problemRepository: ProblemRepository;
   private userRepository: UserRepository;
+  private examParticipationRepository: ExamParticipationRepository;
+  private examRepository: ExamRepository;
 
   constructor() {
     this.submissionRepository = new SubmissionRepository();
@@ -38,6 +42,8 @@ export class SubmissionService {
     this.testcaseRepository = new TestcaseRepository();
     this.problemRepository = new ProblemRepository();
     this.userRepository = new UserRepository();
+    this.examParticipationRepository = new ExamParticipationRepository();
+    this.examRepository = new ExamRepository();
   }
 
   async submitCode(input: CreateSubmissionInput & { userId: string }): Promise<{
@@ -58,13 +64,45 @@ export class SubmissionService {
       throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
     }
 
-    // Create submission record
+    // If participationId provided, validate it and ensure it's active for this user
+    let examParticipationId: string | undefined = undefined;
+    if ((input as any).participationId) {
+      const participationId = (input as any).participationId as string;
+      const participation = await this.examParticipationRepository.findById(participationId);
+      if (!participation || participation.userId !== input.userId) {
+        throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
+      }
+
+      const exam = await this.examRepository.findById(participation.examId);
+      if (!exam) {
+        throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
+      }
+
+      const startMs = participation.startTime.getTime();
+      const durationMs = (exam.duration || 0) * 60 * 1000;
+      const participationEndByDuration = new Date(startMs + durationMs);
+      const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
+      const effectiveEnd =
+        participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+          ? participationEndByDuration
+          : examGlobalEnd;
+
+      const now = new Date();
+      if (now.getTime() > effectiveEnd.getTime()) {
+        throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
+      }
+
+      examParticipationId = participationId;
+    }
+
+    // Create submission record (attach examParticipationId if present)
     const submission = await this.submissionRepository.create({
       sourceCode: input.sourceCode,
       language: input.language,
       problemId: input.problemId,
       userId: input.userId,
       status: ESubmissionStatus.PENDING,
+      ...(examParticipationId ? { examParticipationId } : {}),
     });
 
     // Get queue position
@@ -371,6 +409,7 @@ export class SubmissionService {
   async listSubmissions(options: {
     userId?: string;
     problemId?: string;
+    participationId?: string;
     status?: ESubmissionStatus;
     limit?: number;
     offset?: number;
@@ -392,7 +431,13 @@ export class SubmissionService {
 
     let result: { data: any[]; pagination: any };
 
-    if (options.userId && options.problemId) {
+    if (options.participationId && options.problemId) {
+      result = await this.submissionRepository.findByParticipationAndProblem(
+        options.participationId,
+        options.problemId,
+        paginationOptions
+      );
+    } else if (options.userId && options.problemId) {
       result = await this.submissionRepository.findByUserAndProblem(
         options.userId,
         options.problemId,

@@ -12,6 +12,48 @@ export class SubmissionRepository extends BaseRepository<
     super(submissions);
   }
 
+  async findLatestByParticipationAndProblem(
+    participationId: string,
+    problemId: string
+  ): Promise<SubmissionEntity | null> {
+    const [row] = await this.db
+      .select()
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.examParticipationId, participationId),
+          eq(submissions.problemId, problemId)
+        )
+      )
+      .orderBy(desc(submissions.submittedAt))
+      .limit(1);
+
+    return row || null;
+  }
+
+  async findLatestByUserProblemBetween(
+    userId: string,
+    problemId: string,
+    start: Date,
+    end: Date
+  ): Promise<SubmissionEntity | null> {
+    const [row] = await this.db
+      .select()
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.userId, userId),
+          eq(submissions.problemId, problemId),
+          sql`${submissions.submittedAt} >= ${start}`,
+          sql`${submissions.submittedAt} <= ${end}`
+        )
+      )
+      .orderBy(desc(submissions.submittedAt))
+      .limit(1);
+
+    return row || null;
+  }
+
   async findByUserId(
     userId: string,
     paginationOptions: PaginationOptions = {}
@@ -179,6 +221,66 @@ export class SubmissionRepository extends BaseRepository<
       .select({ total: count() })
       .from(submissions)
       .where(and(eq(submissions.userId, userId), eq(submissions.problemId, problemId)));
+
+    const total = countQuery[0]?.total || 0;
+    const data = await dataQuery;
+
+    const totalPages = Math.ceil(total / limit);
+    const hasNext = page < totalPages;
+    const hasPrev = page > 1;
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext,
+        hasPrev,
+      },
+    };
+  }
+
+  async findByParticipationAndProblem(
+    participationId: string,
+    problemId: string,
+    paginationOptions: PaginationOptions = {}
+  ): Promise<PaginationResult<SubmissionEntity>> {
+    const { page = 1, limit = 10, sortBy = 'submittedAt', sortOrder = 'desc' } = paginationOptions;
+
+    if (page < 1 || limit < 1) {
+      throw new Error('Page and limit must be positive numbers');
+    }
+
+    const offset = (page - 1) * limit;
+
+    // Query submissions for specific participation and problem
+    const query = this.db
+      .select()
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.examParticipationId, participationId),
+          eq(submissions.problemId, problemId)
+        )
+      );
+
+    const dataQuery = query
+      .limit(limit)
+      .offset(offset)
+      .orderBy(sortOrder === 'asc' ? asc(submissions.submittedAt) : desc(submissions.submittedAt));
+
+    // Count total records
+    const countQuery = await this.db
+      .select({ total: count() })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.examParticipationId, participationId),
+          eq(submissions.problemId, problemId)
+        )
+      );
 
     const total = countQuery[0]?.total || 0;
     const data = await dataQuery;

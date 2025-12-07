@@ -177,7 +177,8 @@ export class SubmissionController {
     try {
       const userId = (req as any).user?.userId;
       const { problemId } = req.params;
-      const { limit, offset, status } = req.query as unknown as GetSubmissionsQuery;
+      const { limit, offset, status, participationId } =
+        req.query as unknown as GetSubmissionsQuery;
 
       if (!userId) {
         throw new UserNotAuthenticatedException();
@@ -190,6 +191,7 @@ export class SubmissionController {
       const result = await this.submissionService.listSubmissions({
         userId,
         problemId,
+        participationId,
         limit,
         offset,
         status: status as any,

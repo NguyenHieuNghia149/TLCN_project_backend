@@ -6,11 +6,15 @@ export * from './lesson';
 export * from './problem';
 export * from './testcase';
 export * from './solution';
+export * from './solutionApproaches';
 export * from './submission';
 export * from './resultSubmission';
 export * from './favorite';
 export * from './comment';
 export * from './completed_lesson';
+export * from './exam';
+export * from './examsToProblems';
+export * from './examParticipations';
 
 // Relations
 import { relations } from 'drizzle-orm';

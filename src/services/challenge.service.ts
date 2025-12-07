@@ -87,6 +87,7 @@ export class ChallengeService {
         totalPoints,
         isSolved,
         isFavorite,
+        // visibility: problem.visibility,
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
