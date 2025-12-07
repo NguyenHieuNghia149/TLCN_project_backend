@@ -1,161 +1,115 @@
-import { eq, and, desc, count, sql } from 'drizzle-orm';
-import { submissions, SubmissionEntity } from '@/database/schema';
-import { problems as problemsTable } from '@/database/schema';
-import { topics } from '@/database/schema';
-import { lessons } from '@/database/schema';
-import { learnedLessons } from '@/database/schema';
+import { SubmissionRepository } from './submission.repository';
+import { LearnedLessonRepository } from './learned-lesson.repository';
+import { ProblemRepository } from './problem.repository';
+import { LessonRepository } from './lesson.repository';
+import { TopicRepository } from './topic.repository';
 import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
-import { db } from '@/database/connection';
-
-export interface TopicProgress {
-  topicId: string;
-  topicName: string;
-  totalProblems: number;
-  solvedProblems: number;
-  completionPercentage: number;
-  lastSubmittedAt: Date | null;
-}
-
-export interface LessonProgress {
-  lessonId: string;
-  lessonTitle: string;
-  topicId: string;
-  topicName: string;
-  totalLessons: number;
-  completedLessons: number;
-  completionPercentage: number;
-  lastCompletedAt: Date | null;
-}
-
-export interface LearningProgressResponse {
-  userId: string;
-  totalTopics: number;
-  totalProblems: number;
-  totalSolvedProblems: number;
-  overallCompletionPercentage: number;
-  topicProgress: TopicProgress[];
-  recentTopic?: TopicProgress;
-}
-
-export interface LessonProgressResponse {
-  userId: string;
-  totalLessons: number;
-  completedLessons: number;
-  completionPercentage: number;
-  lessonProgress: LessonProgress[];
-  recentLesson?: LessonProgress;
-}
+import {
+  TopicProgress,
+  LessonProgress,
+  LearningProgressResponse,
+  LessonProgressResponse,
+} from '@/validations/learningprocess.validation';
 
 export class LearningProcessRepository {
-  constructor(private dbInstance = db) {}
+  private submissionRepository: SubmissionRepository;
+  private learnedLessonRepository: LearnedLessonRepository;
+  private problemRepository: ProblemRepository;
+  private lessonRepository: LessonRepository;
+  private topicRepository: TopicRepository;
+
+  constructor() {
+    this.submissionRepository = new SubmissionRepository();
+    this.learnedLessonRepository = new LearnedLessonRepository();
+    this.problemRepository = new ProblemRepository();
+    this.lessonRepository = new LessonRepository();
+    this.topicRepository = new TopicRepository();
+  }
 
   /**
    * Get learning progress for a specific user
+   * Aggregates data from submission repository and problem/topic data
    */
   async getUserLearningProgress(userId: string): Promise<LearningProgressResponse> {
     try {
-      // Get all topics with their problems
-      const topicsWithProblems = await this.dbInstance
-        .select({
-          topicId: topics.id,
-          topicName: topics.topicName,
-          problemId: problemsTable.id,
-        })
-        .from(topics)
-        .leftJoin(problemsTable, eq(problemsTable.topicId, topics.id));
-
       // Get all accepted submissions for this user
-      const acceptedSubmissions = await this.dbInstance
-        .select({
-          problemId: submissions.problemId,
-          submittedAt: submissions.submittedAt,
-        })
-        .from(submissions)
-        .where(
-          and(eq(submissions.userId, userId), eq(submissions.status, ESubmissionStatus.ACCEPTED))
-        );
-
-      // Create a set of solved problem IDs for quick lookup
-      const solvedProblemIds = new Set(acceptedSubmissions.map(s => s.problemId));
-
-      // Create a map of solved problems by topic for latest submission date
-      const solvedByTopic = new Map<string, { count: number; lastSubmittedAt: Date | null }>();
-
-      acceptedSubmissions.forEach(submission => {
-        const topic = topicsWithProblems.find(tp => tp.problemId === submission.problemId);
-        if (topic) {
-          if (!solvedByTopic.has(topic.topicId)) {
-            solvedByTopic.set(topic.topicId, { count: 0, lastSubmittedAt: null });
-          }
-          const current = solvedByTopic.get(topic.topicId)!;
-          current.count += 1;
-          if (!current.lastSubmittedAt || submission.submittedAt > current.lastSubmittedAt) {
-            current.lastSubmittedAt = submission.submittedAt;
-          }
-        }
+      const submissionResult = await this.submissionRepository.findByUserId(userId, {
+        limit: 1000,
       });
+      const allSubmissions = submissionResult.data;
 
-      // Group problems by topic
-      const topicMap = new Map<string, { topicName: string; problems: Set<string> }>();
-
-      topicsWithProblems.forEach(item => {
-        if (!topicMap.has(item.topicId)) {
-          topicMap.set(item.topicId, {
-            topicName: item.topicName,
-            problems: new Set<string>(),
-          });
-        }
-        if (item.problemId) {
-          topicMap.get(item.topicId)!.problems.add(item.problemId);
-        }
-      });
-
-      // Calculate progress for each topic
-      const topicProgress: TopicProgress[] = Array.from(topicMap.entries()).map(
-        ([topicId, { topicName, problems }]) => {
-          const totalProblems = problems.size;
-          const solvedProblems = Array.from(problems).filter(p => solvedProblemIds.has(p)).length;
-          const completionPercentage =
-            totalProblems > 0 ? (solvedProblems / totalProblems) * 100 : 0;
-          const topicSolvedData = solvedByTopic.get(topicId);
-
-          return {
-            topicId,
-            topicName,
-            totalProblems,
-            solvedProblems,
-            completionPercentage: Math.round(completionPercentage),
-            lastSubmittedAt: topicSolvedData?.lastSubmittedAt || null,
-          };
-        }
+      // Filter only accepted submissions
+      const acceptedSubmissions = allSubmissions.filter(
+        s => s.status === ESubmissionStatus.ACCEPTED
       );
 
-      // Sort by last submitted date (most recent first)
-      const sortedTopicProgress = topicProgress.sort((a, b) => {
+      // Get all topics
+      const topicsResult = await this.topicRepository.findMany({ limit: 1000 });
+      const allTopics = topicsResult.data;
+
+      // Get solved problem IDs
+      const solvedProblemIds = new Set(acceptedSubmissions.map(s => s.problemId));
+
+      // Build topic progress
+      const topicProgressMap = new Map<string, TopicProgress>();
+
+      for (const topic of allTopics) {
+        // Get problems for this topic
+        const problems = await this.problemRepository.getProblemsByTopicId(topic.id);
+        const problemIds = problems.map(p => p.id);
+
+        // Count solved problems in this topic
+        const solvedCount = problemIds.filter(pId => solvedProblemIds.has(pId)).length;
+
+        // Get latest submission date for this topic
+        const topicSubmissions = acceptedSubmissions.filter(s => problemIds.includes(s.problemId));
+        const latestSubmission =
+          topicSubmissions.length > 0
+            ? topicSubmissions.reduce((latest, current) =>
+                current.submittedAt > latest.submittedAt ? current : latest
+              )
+            : null;
+
+        topicProgressMap.set(topic.id, {
+          topicId: topic.id,
+          topicName: topic.topicName,
+          totalProblems: problemIds.length,
+          solvedProblems: solvedCount,
+          completionPercentage:
+            problemIds.length > 0 ? Math.round((solvedCount / problemIds.length) * 100) : 0,
+          lastSubmittedAt: latestSubmission?.submittedAt || null,
+        });
+      }
+
+      // Sort by latest submission
+      const sortedTopicProgress = Array.from(topicProgressMap.values()).sort((a, b) => {
         if (!a.lastSubmittedAt) return 1;
         if (!b.lastSubmittedAt) return -1;
         return b.lastSubmittedAt.getTime() - a.lastSubmittedAt.getTime();
       });
 
-      // Calculate overall progress
-      const totalTopics = topicProgress.length;
-      const totalProblems = Array.from(topicMap.values()).reduce(
-        (sum, topic) => sum + topic.problems.size,
-        0
-      );
-      const totalSolvedProblems = solvedProblemIds.size;
-      const overallCompletionPercentage =
-        totalProblems > 0 ? Math.round((totalSolvedProblems / totalProblems) * 100) : 0;
-
-      // Get the first topic with solved problems
+      // Get recent topic with solved problems
       const recentTopic = sortedTopicProgress.find(tp => tp.solvedProblems > 0);
 
       return {
         userId,
-        totalTopics,
-        totalProblems,
-        totalSolvedProblems,
-        overallCompletionPercentage,
+        totalTopics: allTopics.length,
+        totalProblems: Array.from(topicProgressMap.values()).reduce(
+          (sum, tp) => sum + tp.totalProblems,
+          0
+        ),
+        totalSolvedProblems: solvedProblemIds.size,
+        overallCompletionPercentage:
+          solvedProblemIds.size > 0
+            ? Math.round(
+                (solvedProblemIds.size /
+                  Array.from(topicProgressMap.values()).reduce(
+                    (sum, tp) => sum + tp.totalProblems,
+                    0
+                  )) *
+                  100
+              )
+            : 0,
         topicProgress: sortedTopicProgress,
         recentTopic,
       };
@@ -170,29 +124,20 @@ export class LearningProcessRepository {
    */
   async getTopicProgress(userId: string, topicId: string): Promise<TopicProgress | null> {
     try {
-      const topic = await this.dbInstance
-        .select({
-          topicId: topics.id,
-          topicName: topics.topicName,
-        })
-        .from(topics)
-        .where(eq(topics.id, topicId));
-
-      if (!topic.length) {
+      // Get topic info
+      const topic = await this.topicRepository.findById(topicId);
+      if (!topic) {
         return null;
       }
 
-      const topicProblems = await this.dbInstance
-        .select({ id: problemsTable.id })
-        .from(problemsTable)
-        .where(eq(problemsTable.topicId, topicId));
-
-      const problemIds = topicProblems.map(p => p.id);
+      // Get problems for this topic
+      const problems = await this.problemRepository.getProblemsByTopicId(topicId);
+      const problemIds = problems.map(p => p.id);
 
       if (problemIds.length === 0) {
         return {
           topicId,
-          topicName: topic[0]?.topicName || '',
+          topicName: topic.topicName,
           totalProblems: 0,
           solvedProblems: 0,
           completionPercentage: 0,
@@ -200,43 +145,29 @@ export class LearningProcessRepository {
         };
       }
 
-      const acceptedCount = await this.dbInstance
-        .select({ count: count() })
-        .from(submissions)
-        .where(
-          and(
-            eq(submissions.userId, userId),
-            eq(submissions.status, ESubmissionStatus.ACCEPTED),
-            sql`${submissions.problemId} = ANY(ARRAY[${problemIds.join(',')}])`
-          )
-        );
+      // Get user's accepted submissions
+      const submissionResult = await this.submissionRepository.findByUserId(userId, {
+        limit: 1000,
+      });
+      const acceptedSubmissions = submissionResult.data.filter(
+        s => s.status === ESubmissionStatus.ACCEPTED && problemIds.includes(s.problemId)
+      );
 
-      const lastSubmission = await this.dbInstance
-        .select({
-          submittedAt: submissions.submittedAt,
-        })
-        .from(submissions)
-        .where(
-          and(
-            eq(submissions.userId, userId),
-            eq(submissions.status, ESubmissionStatus.ACCEPTED),
-            sql`${submissions.problemId} = ANY(ARRAY[${problemIds.join(',')}])`
-          )
-        )
-        .orderBy(desc(submissions.submittedAt))
-        .limit(1);
-
-      const solvedProblems = acceptedCount[0]?.count || 0;
-      const totalProblems = problemIds.length;
-      const completionPercentage = Math.round((solvedProblems / totalProblems) * 100);
+      // Get latest submission date
+      const latestSubmission =
+        acceptedSubmissions.length > 0
+          ? acceptedSubmissions.reduce((latest, current) =>
+              current.submittedAt > latest.submittedAt ? current : latest
+            )
+          : null;
 
       return {
         topicId,
-        topicName: topic[0]?.topicName || '',
-        totalProblems,
-        solvedProblems,
-        completionPercentage,
-        lastSubmittedAt: lastSubmission.length > 0 ? lastSubmission[0]?.submittedAt || null : null,
+        topicName: topic.topicName,
+        totalProblems: problemIds.length,
+        solvedProblems: acceptedSubmissions.length,
+        completionPercentage: Math.round((acceptedSubmissions.length / problemIds.length) * 100),
+        lastSubmittedAt: latestSubmission?.submittedAt || null,
       };
     } catch (error) {
       console.error('Error fetching topic progress:', error);
@@ -246,118 +177,77 @@ export class LearningProcessRepository {
 
   /**
    * Get lesson progress for a specific user
+   * Aggregates data from learned lessons repository
    */
   async getUserLessonProgress(userId: string): Promise<LessonProgressResponse> {
     try {
-      // Get all lessons with their topics
-      const lessonsWithTopics = await this.dbInstance
-        .select({
-          lessonId: lessons.id,
-          lessonTitle: lessons.title,
-          topicId: lessons.topicId,
-          topicName: topics.topicName,
-        })
-        .from(lessons)
-        .leftJoin(topics, eq(topics.id, lessons.topicId));
-
       // Get all completed lessons for this user
-      const completedLessons = await this.dbInstance
-        .select({
-          lessonId: learnedLessons.lessonId,
-          completedAt: learnedLessons.completedAt,
-        })
-        .from(learnedLessons)
-        .where(eq(learnedLessons.userId, userId));
-
-      // Create a set of completed lesson IDs for quick lookup
+      const completedLessons = await this.learnedLessonRepository.getCompletedLessonsByUser(userId);
       const completedLessonIds = new Set(completedLessons.map(cl => cl.lessonId));
 
-      // Create a map of completed lessons by topic for latest completion date
-      const completedByTopic = new Map<string, { count: number; lastCompletedAt: Date | null }>();
+      // Get all lessons
+      const lessonsResult = await this.lessonRepository.findMany({ limit: 1000 });
+      const allLessons = lessonsResult.data;
 
-      completedLessons.forEach(lesson => {
-        const lessonData = lessonsWithTopics.find(l => l.lessonId === lesson.lessonId);
-        if (lessonData) {
-          if (!completedByTopic.has(lessonData.topicId)) {
-            completedByTopic.set(lessonData.topicId, { count: 0, lastCompletedAt: null });
-          }
-          const current = completedByTopic.get(lessonData.topicId)!;
-          current.count += 1;
-          if (!current.lastCompletedAt || lesson.completedAt > current.lastCompletedAt) {
-            current.lastCompletedAt = lesson.completedAt;
-          }
-        }
-      });
+      // Build lesson progress by topic
+      const lessonProgressMap = new Map<string, LessonProgress>();
 
-      // Group lessons by topic
-      const topicLessonsMap = new Map<
-        string,
-        { topicName: string; lessons: Set<string>; lessonDetails: Map<string, string> }
-      >();
+      for (const lesson of allLessons) {
+        // Get topic info
+        const topic = await this.topicRepository.findById(lesson.topicId);
+        if (!topic) continue;
 
-      lessonsWithTopics.forEach(item => {
-        if (!topicLessonsMap.has(item.topicId)) {
-          topicLessonsMap.set(item.topicId, {
-            topicName: item.topicName || '',
-            lessons: new Set<string>(),
-            lessonDetails: new Map<string, string>(),
-          });
-        }
-        if (item.lessonId) {
-          topicLessonsMap.get(item.topicId)!.lessons.add(item.lessonId);
-          topicLessonsMap.get(item.topicId)!.lessonDetails.set(item.lessonId, item.lessonTitle);
-        }
-      });
+        // Get all lessons for this topic
+        const topicLessons = await this.lessonRepository.getLessonsByTopicId(lesson.topicId);
+        const topicLessonIds = topicLessons.map(l => l.id);
 
-      // Calculate progress for each topic
-      const lessonProgress: LessonProgress[] = Array.from(topicLessonsMap.entries()).flatMap(
-        ([topicId, { topicName, lessons: topicLessons, lessonDetails }]) => {
-          return Array.from(topicLessons).map(lessonId => {
-            const totalLessonsInTopic = topicLessons.size;
-            const completedLessonsInTopic = Array.from(topicLessons).filter(l =>
-              completedLessonIds.has(l)
-            ).length;
-            const completionPercentage =
-              totalLessonsInTopic > 0
-                ? Math.round((completedLessonsInTopic / totalLessonsInTopic) * 100)
-                : 0;
-            const topicCompletedData = completedByTopic.get(topicId);
+        // Count completed lessons in this topic
+        const completedCount = topicLessonIds.filter(lId => completedLessonIds.has(lId)).length;
 
-            return {
-              lessonId,
-              lessonTitle: lessonDetails.get(lessonId) || '',
-              topicId,
-              topicName,
-              totalLessons: totalLessonsInTopic,
-              completedLessons: completedLessonsInTopic,
-              completionPercentage,
-              lastCompletedAt: topicCompletedData?.lastCompletedAt || null,
-            };
-          });
-        }
-      );
+        // Get latest completion date for this topic
+        const topicCompletedLessons = completedLessons.filter(cl =>
+          topicLessonIds.includes(cl.lessonId)
+        );
+        const latestCompletion =
+          topicCompletedLessons.length > 0
+            ? topicCompletedLessons.reduce((latest, current) =>
+                current.completedAt > latest.completedAt ? current : latest
+              )
+            : null;
 
-      // Sort by last completed date (most recent first)
-      const sortedLessonProgress = lessonProgress.sort((a, b) => {
+        lessonProgressMap.set(lesson.id, {
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          topicId: lesson.topicId,
+          topicName: topic.topicName,
+          totalLessons: topicLessonIds.length,
+          completedLessons: completedCount,
+          completionPercentage:
+            topicLessonIds.length > 0
+              ? Math.round((completedCount / topicLessonIds.length) * 100)
+              : 0,
+          lastCompletedAt: latestCompletion?.completedAt || null,
+        });
+      }
+
+      // Sort by latest completion
+      const sortedLessonProgress = Array.from(lessonProgressMap.values()).sort((a, b) => {
         if (!a.lastCompletedAt) return 1;
         if (!b.lastCompletedAt) return -1;
         return b.lastCompletedAt.getTime() - a.lastCompletedAt.getTime();
       });
 
-      // Calculate overall progress
-      const totalLessons = lessonsWithTopics.filter(l => l.lessonId).length;
-      const completedLessonsCount = completedLessonIds.size;
-      const completionPercentage =
-        totalLessons > 0 ? Math.round((completedLessonsCount / totalLessons) * 100) : 0;
-
-      // Get the first lesson with completed lessons
+      // Get recent lesson with completed lessons
       const recentLesson = sortedLessonProgress.find(lp => lp.completedLessons > 0);
 
       return {
         userId,
-        totalLessons,
-        completedLessons: completedLessonsCount,
-        completionPercentage,
+        totalLessons: allLessons.length,
+        completedLessons: completedLessonIds.size,
+        completionPercentage:
+          allLessons.length > 0
+            ? Math.round((completedLessonIds.size / allLessons.length) * 100)
+            : 0,
         lessonProgress: sortedLessonProgress,
         recentLesson,
       };
@@ -372,74 +262,48 @@ export class LearningProcessRepository {
    */
   async getLessonProgress(userId: string, lessonId: string): Promise<LessonProgress | null> {
     try {
-      const lesson = await this.dbInstance
-        .select({
-          lessonId: lessons.id,
-          lessonTitle: lessons.title,
-          topicId: lessons.topicId,
-        })
-        .from(lessons)
-        .where(eq(lessons.id, lessonId));
-
-      if (!lesson.length) {
+      // Get lesson info
+      const lesson = await this.lessonRepository.findById(lessonId);
+      if (!lesson) {
         return null;
       }
 
-      const topic = await this.dbInstance
-        .select({
-          topicId: topics.id,
-          topicName: topics.topicName,
-        })
-        .from(topics)
-        .where(eq(topics.id, lesson[0]?.topicId || ''));
+      // Get topic info
+      const topic = await this.topicRepository.findById(lesson.topicId);
+      if (!topic) {
+        return null;
+      }
 
-      // Get all lessons in this topic
-      const topicLessons = await this.dbInstance
-        .select({ id: lessons.id })
-        .from(lessons)
-        .where(eq(lessons.topicId, lesson[0]?.topicId || ''));
+      // Get all lessons for this topic
+      const topicLessons = await this.lessonRepository.getLessonsByTopicId(lesson.topicId);
+      const topicLessonIds = topicLessons.map(l => l.id);
 
-      const lessonIds = topicLessons.map(l => l.id);
+      // Get user's completed lessons
+      const completedLessons = await this.learnedLessonRepository.getCompletedLessonsByUser(userId);
+      const completedCount = completedLessons.filter(cl =>
+        topicLessonIds.includes(cl.lessonId)
+      ).length;
 
-      // Count completed lessons in this topic
-      const completedCount = await this.dbInstance
-        .select({ count: count() })
-        .from(learnedLessons)
-        .where(
-          and(
-            eq(learnedLessons.userId, userId),
-            sql`${learnedLessons.lessonId} = ANY(ARRAY[${lessonIds.join(',')}])`
-          )
-        );
-
-      // Get last completed lesson in this topic
-      const lastCompleted = await this.dbInstance
-        .select({
-          completedAt: learnedLessons.completedAt,
-        })
-        .from(learnedLessons)
-        .where(
-          and(
-            eq(learnedLessons.userId, userId),
-            sql`${learnedLessons.lessonId} = ANY(ARRAY[${lessonIds.join(',')}])`
-          )
-        )
-        .orderBy(desc(learnedLessons.completedAt))
-        .limit(1);
-
-      const completedLessons = completedCount[0]?.count || 0;
-      const totalLessons = lessonIds.length;
-      const completionPercentage = Math.round((completedLessons / totalLessons) * 100);
+      // Get latest completion date for this topic
+      const latestCompletion =
+        completedLessons.length > 0
+          ? completedLessons.reduce((latest, current) =>
+              current.completedAt > latest.completedAt ? current : latest
+            )
+          : null;
 
       return {
         lessonId,
-        lessonTitle: lesson[0]?.lessonTitle || '',
-        topicId: lesson[0]?.topicId || '',
-        topicName: topic.length > 0 ? topic[0]?.topicName || '' : '',
-        totalLessons,
-        completedLessons,
-        completionPercentage,
-        lastCompletedAt: lastCompleted.length > 0 ? lastCompleted[0]?.completedAt || null : null,
+        lessonTitle: lesson.title,
+        topicId: lesson.topicId,
+        topicName: topic.topicName,
+        totalLessons: topicLessonIds.length,
+        completedLessons: completedCount,
+        completionPercentage:
+          topicLessonIds.length > 0
+            ? Math.round((completedCount / topicLessonIds.length) * 100)
+            : 0,
+        lastCompletedAt: latestCompletion?.completedAt || null,
       };
     } catch (error) {
       console.error('Error fetching lesson progress:', error);
