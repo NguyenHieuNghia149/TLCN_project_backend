@@ -112,19 +112,22 @@ export class LeaderboardRepository extends BaseRepository<typeof users, UserEnti
   async getUserRank(userId: string): Promise<LeaderboardEntry | null> {
     const result = await this.db.execute(
       sql`
-        SELECT 
-          u.id,
-          u.email,
-          u.first_name as "firstName",
-          u.last_name as "lastName",
-          u.avatar,
-          u.ranking_point as "rankingPoint",
-          COALESCE(COUNT(s.id), 0) as "submissionCount",
-          ROW_NUMBER() OVER (ORDER BY u.ranking_point DESC, COALESCE(COUNT(s.id), 0) ASC, u.created_at ASC) as rank
-        FROM users u
-        LEFT JOIN submissions s ON u.id = s.user_id
-        WHERE u.id = ${userId} AND u.status = 'active'
-        GROUP BY u.id, u.email, u.first_name, u.last_name, u.avatar, u.ranking_point, u.created_at
+        WITH leaderboard_data AS (
+          SELECT 
+            u.id,
+            u.email,
+            u.first_name as "firstName",
+            u.last_name as "lastName",
+            u.avatar,
+            u.ranking_point as "rankingPoint",
+            COALESCE(COUNT(s.id), 0) as "submissionCount",
+            ROW_NUMBER() OVER (ORDER BY u.ranking_point DESC, COALESCE(COUNT(s.id), 0) ASC, u.created_at ASC) as rank
+          FROM users u
+          LEFT JOIN submissions s ON u.id = s.user_id
+          WHERE u.status = 'active'
+          GROUP BY u.id, u.email, u.first_name, u.last_name, u.avatar, u.ranking_point, u.created_at
+        )
+        SELECT * FROM leaderboard_data WHERE id = ${userId}
       `
     );
 

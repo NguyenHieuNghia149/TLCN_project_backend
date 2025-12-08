@@ -164,4 +164,9 @@ export class AdminLessonRepository extends BaseRepository<typeof lessons, Lesson
   async findByTopicId(topicId: string): Promise<LessonEntity[]> {
     return db.select().from(lessons).where(eq(lessons.topicId, topicId));
   }
+
+  async verifyTopicExists(topicId: string): Promise<boolean> {
+    const result = await db.select().from(topics).where(eq(topics.id, topicId));
+    return result.length > 0;
+  }
 }

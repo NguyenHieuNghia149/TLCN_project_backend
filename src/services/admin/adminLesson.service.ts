@@ -1,9 +1,7 @@
-import { db } from '@/database/connection';
-import { topics, LessonInsert } from '@/database/schema';
-import { AdminLessonRepository, LessonFilters, PaginationOptions, PaginatedResult, LessonWithTopic } from '@/repositories/admin/adminLesson.repository';
-import { NotFoundException } from '@/exceptions/solution.exception';
-import { BaseException } from '@/exceptions/auth.exceptions';
-import { eq } from 'drizzle-orm';
+import { AdminLessonRepository, LessonFilters, PaginationOptions, PaginatedResult, LessonWithTopic } from '@/repositories/admin/adminLesson.repository'
+import { LessonInsert } from '@/database/schema'
+import { NotFoundException } from '@/exceptions/solution.exception'
+import { BaseException } from '@/exceptions/auth.exceptions'
 
 export class AdminLessonService {
   private repository: AdminLessonRepository;
@@ -29,16 +27,16 @@ export class AdminLessonService {
 
   async createLesson(lessonData: Omit<LessonInsert, 'id' | 'createdAt' | 'updatedAt'>): Promise<LessonWithTopic> {
     try {
-      // Verify topic exists
-      const topicExists = await db.select().from(topics).where(eq(topics.id, lessonData.topicId));
-      if (!topicExists.length) {
-        throw new NotFoundException(`Topic with ID ${lessonData.topicId} not found`);
+      // Verify topic exists using repository
+      const topicExists = await this.repository.verifyTopicExists(lessonData.topicId)
+      if (!topicExists) {
+        throw new NotFoundException(`Topic with ID ${lessonData.topicId} not found`)
       }
 
-      const lesson = await this.repository.createLesson(lessonData);
-      return this.getLessonById(lesson.id);
+      const lesson = await this.repository.createLesson(lessonData)
+      return this.getLessonById(lesson.id)
     } catch (error) {
-      throw error;
+      throw error
     }
   }
 
@@ -48,23 +46,23 @@ export class AdminLessonService {
   ): Promise<LessonWithTopic> {
     try {
       // Verify lesson exists
-      const lesson = await this.repository.findById(id);
+      const lesson = await this.repository.findById(id)
       if (!lesson) {
-        throw new NotFoundException(`Lesson with ID ${id} not found`);
+        throw new NotFoundException(`Lesson with ID ${id} not found`)
       }
 
       // Verify topic exists if being updated
       if (lessonData.topicId) {
-        const topicExists = await db.select().from(topics).where(eq(topics.id, lessonData.topicId));
-        if (!topicExists.length) {
-          throw new NotFoundException(`Topic with ID ${lessonData.topicId} not found`);
+        const topicExists = await this.repository.verifyTopicExists(lessonData.topicId)
+        if (!topicExists) {
+          throw new NotFoundException(`Topic with ID ${lessonData.topicId} not found`)
         }
       }
 
-      await this.repository.updateLesson(id, lessonData);
-      return this.getLessonById(id);
+      await this.repository.updateLesson(id, lessonData)
+      return this.getLessonById(id)
     } catch (error) {
-      throw error;
+      throw error
     }
   }
 
