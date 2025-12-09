@@ -15,8 +15,9 @@ import {
   ExamNotFoundException,
   ExamParticipationNotFoundException,
 } from '@/exceptions/exam.exceptions';
-import { BaseException, ErrorHandler } from '@/exceptions/auth.exceptions';
+import { BaseException, ErrorHandler, UserNotFoundException } from '@/exceptions/auth.exceptions';
 import { z } from 'zod';
+import { th } from 'zod/v4/locales';
 
 export class ExamController {
   constructor(private readonly examService: ExamService) {}
@@ -141,12 +142,52 @@ export class ExamController {
       }
       const userId = req.user?.userId;
       if (!userId) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
+        throw new UserNotFoundException();
       }
 
       const result = await this.examService.getMyParticipation(examId, userId);
 
       return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getOrCreateSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const { examId } = req.params as { examId?: string };
+      if (!examId) throw new ExamIdRequiredException();
+      const userId = req.user?.userId;
+      if (!userId) throw new UserNotFoundException();
+
+      const result = await this.examService.getOrCreateSession(examId, userId);
+      return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async syncSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const { sessionId, answers, clientTimestamp } = req.body as {
+        sessionId?: string;
+        answers?: any;
+        clientTimestamp?: string;
+      };
+      const userId = req.user?.userId;
+      if (!userId) throw new UserNotFoundException();
+      if (!sessionId) throw new BaseException('Session ID is required', 400, 'SESSION_ID_REQUIRED');
+
+      const ok = await this.examService.syncSession(sessionId, answers, clientTimestamp);
+      return res.status(200).json({ success: ok });
     } catch (error) {
       next(error);
     }
@@ -163,7 +204,7 @@ export class ExamController {
       const { password } = req.body as { password?: string };
 
       if (!userId) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
+        throw new UserNotFoundException();
       }
 
       const result = await this.examService.joinExam(id, userId, password || '');
@@ -184,11 +225,11 @@ export class ExamController {
       const { participationId } = req.body as { participationId?: string };
 
       if (!userId) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
+        throw new UserNotFoundException();
       }
 
       if (!participationId) {
-        return res.status(400).json({ success: false, message: 'participationId is required' });
+        throw new BaseException('Participation ID is required', 400, 'PARTICIPATION_ID_REQUIRED');
       }
 
       const result = await this.examService.submitExam(participationId, userId);
@@ -239,8 +280,36 @@ export class ExamController {
       next(error);
     }
   }
+  async getParticipationSubmission(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const { examId, participationId } = req.params as {
+        examId: string;
+        participationId: string;
+      };
+      const userId = (req as any).user?.userId;
+      const userRole = (req as any).user?.role;
 
-  // Error handling middleware
+      if (!userId) {
+        throw new BaseException('User not authenticated', 401, 'UNAUTHORIZED');
+      }
+
+      const result = await this.examService.getParticipationSubmission(
+        examId,
+        participationId,
+        userId,
+        userRole
+      );
+
+      return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static errorHandler(
     error: Error,
     req: Request,

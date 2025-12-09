@@ -19,7 +19,7 @@ import {
 import { eq, inArray, and } from 'drizzle-orm';
 import { NotFoundException } from '@/exceptions/solution.exception';
 import { ProblemVisibility } from '@/enums/problemVisibility.enum';
-import { db } from '@/database/connection';
+// Service should not use raw `db` directly; repositories manage DB access and transactions.
 import { BaseException } from '@/exceptions/auth.exceptions';
 import {
   ExamNotFoundException,
@@ -54,79 +54,218 @@ export class ExamService {
     this.challengeService = new ChallengeService();
   }
 
+  /**
+   * Get or create an exam session for a user. Returns session data including currentAnswers and expiresAt.
+   * If an IN_PROGRESS participation exists, return it. Otherwise create a new one.
+   */
+  async getOrCreateSession(
+    examId: string,
+    userId: string
+  ): Promise<{
+    sessionId: string;
+    examId: string;
+    userId: string;
+    startedAt: string;
+    expiresAt: string;
+    currentAnswers: any;
+    status: string;
+  }> {
+    // Try to find existing IN_PROGRESS participation (only active sessions)
+    const existing = await this.examParticipationRepository.findInProgressByExamAndUser(
+      examId,
+      userId
+    );
+    if (existing) {
+      console.log(
+        `[getOrCreateSession] Found existing IN_PROGRESS participation ${existing.id}. Returning it.`
+      );
+      return {
+        sessionId: existing.id,
+        examId: existing.examId,
+        userId: existing.userId,
+        startedAt:
+          existing.startTime instanceof Date
+            ? existing.startTime.toISOString()
+            : String(existing.startTime),
+        expiresAt:
+          existing.expiresAt instanceof Date
+            ? existing.expiresAt.toISOString()
+            : String(existing.expiresAt),
+        currentAnswers: existing.currentAnswers || {},
+        status: existing.status,
+      };
+    }
+
+    // No IN_PROGRESS participation exists, create a new one
+    console.log(
+      `[getOrCreateSession] No IN_PROGRESS participation found. Creating new session for user ${userId} in exam ${examId}.`
+    );
+
+    const examData = await this.examRepository.findById(examId);
+    if (!examData) throw new Error('Exam not found');
+
+    const now = new Date();
+    const durationMs = (examData.duration || 0) * 60 * 1000;
+    const participationEndByDuration = new Date(now.getTime() + durationMs);
+    const examGlobalEnd =
+      examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
+    const expiresAt =
+      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+        ? participationEndByDuration
+        : examGlobalEnd;
+
+    const [participation] =
+      await this.examParticipationRepository.createExamParticipationWithExpiry(
+        examId,
+        userId,
+        now,
+        expiresAt
+      );
+
+    if (!participation) {
+      throw new BaseException(
+        'Failed to create participation',
+        500,
+        'FAILED_TO_CREATE_PARTICIPATION'
+      );
+    }
+
+    const updated = await this.examParticipationRepository.updateParticipation(participation.id, {
+      currentAnswers: {},
+      lastSyncedAt: now,
+      status: 'IN_PROGRESS',
+    });
+
+    if (!updated) {
+      throw new BaseException(
+        'Failed to update participation with session fields',
+        500,
+        'FAILED_TO_UPDATE_PARTICIPATION'
+      );
+    }
+
+    return {
+      sessionId: updated.id,
+      examId: updated.examId,
+      userId: updated.userId,
+      startedAt:
+        updated.startTime instanceof Date
+          ? updated.startTime.toISOString()
+          : String(updated.startTime),
+      expiresAt:
+        updated.expiresAt instanceof Date
+          ? updated.expiresAt.toISOString()
+          : String(updated.expiresAt),
+      currentAnswers: {},
+      status: updated.status,
+    };
+  }
+
+  async syncSession(sessionId: string, answers: any, clientTimestamp?: string): Promise<boolean> {
+    const now = new Date();
+    console.log(
+      `[syncSession] Starting sync for session ${sessionId}. ClientTimestamp: ${clientTimestamp}`
+    );
+
+    // Merge incoming partial answers with existing currentAnswers to avoid overwriting other problems
+    const existing = await this.examParticipationRepository.findById(sessionId);
+    if (!existing) {
+      console.error(`[syncSession] Session ${sessionId} not found`);
+      throw new ExamParticipationNotFoundException();
+    }
+
+    const existingAnswers = existing.currentAnswers || {};
+    console.log(
+      `[syncSession] Existing answers for session: ${Object.keys(existingAnswers).length} problems`
+    );
+
+    // If incoming answers include per-problem `updatedAt` timestamps, merge per-key
+    // and only accept incoming values that are newer than stored ones. This prevents
+    // a stale autosave (e.g., initial/default code sent early) from overwriting a
+    // newer saved value on the server.
+    const incoming = answers || {};
+    const merged: Record<string, any> = { ...existingAnswers };
+
+    const parseTs = (v: unknown) => {
+      if (!v) return 0;
+      const s = String(v);
+      const n = Number(s);
+      if (!Number.isNaN(n) && isFinite(n)) return n;
+      const p = Date.parse(s);
+      if (!Number.isNaN(p)) return p;
+      return 0;
+    };
+
+    for (const key of Object.keys(incoming)) {
+      try {
+        const incomingItem = incoming[key] || {};
+        const existingItem = existingAnswers[key] || {};
+        const incomingUpdated = parseTs(
+          incomingItem.updatedAt ||
+            incomingItem.updated_at ||
+            incomingItem.ts ||
+            incomingItem.clientTimestamp
+        );
+        const existingUpdated = parseTs(
+          existingItem.updatedAt ||
+            existingItem.updated_at ||
+            existingItem.ts ||
+            existingItem.clientTimestamp
+        );
+
+        // If incoming has no timestamp, accept it (best-effort).
+        const accept = incomingUpdated === 0 ? true : incomingUpdated >= existingUpdated;
+
+        if (accept) {
+          console.log(
+            `[syncSession] Accepting incoming answer for problem ${key} (incoming: ${incomingUpdated}, existing: ${existingUpdated})`
+          );
+          merged[key] = {
+            ...existingItem,
+            ...incomingItem,
+          };
+        } else {
+          // keep existing
+          console.log(
+            `[syncSession] Rejecting incoming answer for problem ${key} (incoming: ${incomingUpdated}, existing: ${existingUpdated})`
+          );
+          merged[key] = existingItem;
+        }
+      } catch (err) {
+        // On any parse/merge error, be conservative and keep existing value
+        console.warn(`[syncSession] Error merging problem ${key}, keeping existing:`, err);
+        merged[key] = existingAnswers[key] || incoming[key];
+      }
+    }
+
+    const updated = await this.examParticipationRepository.updateParticipation(sessionId, {
+      currentAnswers: merged,
+      lastSyncedAt: now,
+    });
+
+    console.log(`[syncSession] ✓ Session ${sessionId} synced. Updated: ${!!updated}`);
+    return !!updated;
+  }
+
   async createExam(examData: CreateExamInput): Promise<ExamResponse> {
     const { challenges, ...examFields } = examData;
 
-    const createdExamId = await db.transaction(async tx => {
-      // 1. Create the exam
-      const examRows = await tx
-        .insert(exam)
-        .values({
-          title: examFields.title,
-          password: examFields.password,
-          duration: examFields.duration,
-          startDate: new Date(examFields.startDate),
-          endDate: new Date(examFields.endDate),
-          isVisible: examFields.isVisible ?? false,
-          maxAttempts: examFields.maxAttempts ?? 1,
-        })
-        .returning();
+    // Delegate the full create-with-challenges operation to the repository so
+    // the service does not open transactions or interact with the DB directly.
+    const createdExamId = await this.examRepository.createExamWithChallenges(
+      {
+        title: examFields.title,
+        password: examFields.password,
+        duration: examFields.duration,
+        startDate: new Date(examFields.startDate),
+        endDate: new Date(examFields.endDate),
+        isVisible: examFields.isVisible ?? false,
+        maxAttempts: examFields.maxAttempts ?? 1,
+      } as any,
+      challenges
+    );
 
-      const createdExam = examRows[0];
-      if (!createdExam) {
-        throw new BaseException('Failed to create exam', 500, 'FAILED_TO_CREATE_EXAM');
-      }
-
-      // 2. Process challenges
-      const challengeIds: string[] = [];
-      const orderMap = new Map<string, number>();
-
-      for (let index = 0; index < challenges.length; index++) {
-        const challengeInput = challenges[index];
-        if (!challengeInput) continue;
-
-        const orderIndex = challengeInput.orderIndex ?? index;
-
-        if (challengeInput.type === 'existing') {
-          // Strategy A: Link existing challenge
-          const existingProblem = await tx
-            .select()
-            .from(problems)
-            .where(eq(problems.id, challengeInput.challengeId))
-            .limit(1);
-
-          if (existingProblem.length === 0) {
-            throw new NotFoundException(
-              `Challenge with ID ${challengeInput.challengeId} not found.`
-            );
-          }
-
-          challengeIds.push(challengeInput.challengeId);
-          orderMap.set(challengeInput.challengeId, orderIndex);
-        } else if (challengeInput.type === 'new') {
-          // Strategy B: Create new challenge
-          const newChallengeData: ProblemInput = challengeInput.challenge;
-
-          // Create challenge using the same transactional method as ProblemRepository
-          const challengeResult = await this.createChallengeInTransaction(tx, newChallengeData);
-          challengeIds.push(challengeResult.problem.id);
-          orderMap.set(challengeResult.problem.id, orderIndex);
-        }
-      }
-
-      // 3. Link challenges to exam
-      const examToProblemsInserts = challengeIds.map(problemId => ({
-        examId: createdExam.id,
-        problemId,
-        orderIndex: orderMap.get(problemId) ?? 0,
-      }));
-
-      await tx.insert(examToProblems).values(examToProblemsInserts);
-
-      // 4. Return created exam id so we can fetch it after transaction commits
-      return createdExam.id;
-    });
-
+    // Previously we fetched/validated problems here; that now lives inside the repository.
     // Fetch created exam with challenges for response (outside transaction, after commit)
     return this.getExamById(createdExamId);
   }
@@ -157,8 +296,8 @@ export class ExamService {
       };
     }
 
-    // Fetch problems data
-    const problemsData = await db.select().from(problems).where(inArray(problems.id, problemIds));
+    // Fetch problems data via repository
+    const problemsData = await this.problemRepository.findByIds(problemIds);
 
     // Create order map
     const orderMap = new Map(examToProblemsData.map(etp => [etp.problemId, etp.orderIndex]));
@@ -226,6 +365,9 @@ export class ExamService {
     startedAt: string;
     endTime?: Date | null;
     isCompleted: boolean;
+    currentAnswers?: any;
+    expiresAt?: string | null;
+    lastSyncedAt?: string | null;
   } | null> {
     const participation = await this.examParticipationRepository.findById(participationId);
 
@@ -253,6 +395,15 @@ export class ExamService {
           : String(participation.startTime),
       endTime: participation.endTime || null,
       isCompleted: !!participation.isCompleted,
+      currentAnswers: participation.currentAnswers || {},
+      expiresAt:
+        participation.expiresAt instanceof Date
+          ? participation.expiresAt.toISOString()
+          : participation.expiresAt || null,
+      lastSyncedAt:
+        participation.lastSyncedAt instanceof Date
+          ? participation.lastSyncedAt.toISOString()
+          : participation.lastSyncedAt || null,
     };
   }
 
@@ -264,10 +415,16 @@ export class ExamService {
     examId: string;
     userId: string;
     startedAt: string;
+    expiresAt?: string | null;
     endTime?: Date | null;
     isCompleted: boolean;
+    status?: string;
   } | null> {
-    const participation = await this.examParticipationRepository.findByExamAndUser(examId, userId);
+    // Only return IN_PROGRESS participations to allow resume
+    const participation = await this.examParticipationRepository.findInProgressByExamAndUser(
+      examId,
+      userId
+    );
 
     if (!participation) return null;
 
@@ -279,8 +436,15 @@ export class ExamService {
         participation.startTime instanceof Date
           ? participation.startTime.toISOString()
           : String(participation.startTime),
+      expiresAt:
+        participation.expiresAt instanceof Date
+          ? participation.expiresAt.toISOString()
+          : participation.expiresAt
+            ? String(participation.expiresAt)
+            : null,
       endTime: participation.endTime || null,
       isCompleted: !!participation.isCompleted,
+      status: participation.status || 'IN_PROGRESS',
     };
   }
 
@@ -334,7 +498,7 @@ export class ExamService {
     examId: string,
     userId: string,
     password: string
-  ): Promise<{ participationId: string; startTime: Date; duration: number }> {
+  ): Promise<{ participationId: string; startTime: Date; expiresAt: Date; duration: number }> {
     // Check exam exists
     const examData = await this.examRepository.findById(examId);
     if (!examData) {
@@ -364,11 +528,25 @@ export class ExamService {
       throw new ExamAlreadyJoinedException();
     }
 
-    // Create participation
-    const [participation] = await this.examParticipationRepository.createExamParticipation(
-      examId,
-      userId
-    );
+    // Calculate expiresAt: min(startTime + duration, exam.endDate)
+    const startTime = new Date();
+    const durationMs = (examData.duration || 0) * 60 * 1000;
+    const participationEndByDuration = new Date(startTime.getTime() + durationMs);
+    const examGlobalEnd =
+      examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
+    const expiresAt =
+      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+        ? participationEndByDuration
+        : examGlobalEnd;
+
+    // Create participation with expiresAt
+    const [participation] =
+      await this.examParticipationRepository.createExamParticipationWithExpiry(
+        examId,
+        userId,
+        startTime,
+        expiresAt
+      );
 
     if (!participation) {
       throw new BaseException('Failed to join exam', 500, 'FAILED_TO_JOIN_EXAM');
@@ -377,6 +555,7 @@ export class ExamService {
     return {
       participationId: participation.id,
       startTime: participation.startTime,
+      expiresAt: participation.expiresAt || expiresAt,
       duration: examData.duration,
     };
   }
@@ -435,10 +614,13 @@ export class ExamService {
       userId
     );
 
-    // Mark participation as completed
+    // Mark participation as completed and set submittedAt, expiresAt, score
     const updated = await this.examParticipationRepository.updateParticipation(participationId, {
       endTime: new Date(),
       isCompleted: true,
+      submittedAt: new Date(),
+      expiresAt: new Date(), // Mark as expired since exam is submitted
+      score: totalScore,
     });
 
     if (!updated) {
@@ -448,7 +630,7 @@ export class ExamService {
     return {
       participationId,
       totalScore,
-      submittedAt: updated.endTime || new Date(),
+      submittedAt: updated.submittedAt || new Date(),
     };
   }
 
@@ -536,9 +718,9 @@ export class ExamService {
   ): Promise<
     Array<{
       userId: string;
-      fullName: string;
-      email: string;
+      user?: { firstname: string; lastname: string; email: string };
       totalScore: number;
+      perProblem: Array<{ problemId: string; obtained: number; maxPoints: number }>;
       submittedAt: string;
       rank: number;
     }>
@@ -549,78 +731,85 @@ export class ExamService {
       throw new ExamNotFoundException();
     }
 
-    const participations = await this.examParticipationRepository.findByExamId(examId);
+    // Query participations from repository with joined user info to avoid N+1 calls
+    const participationRows = await this.examParticipationRepository.getExamLeaderboard(
+      examId,
+      100000,
+      0
+    );
 
     // Filter completed participations and calculate per-problem scores
     const problems = await this.examToProblemsRepository.findByExamId(examId);
     const problemIds = problems.map(pm => pm.problemId);
 
     const leaderboard = await Promise.all(
-      participations
-        .filter(p => p.isCompleted)
-        .map(async p => {
-          // For each problem compute obtained and max points
-          const perProblem = await Promise.all(
-            problemIds.map(async problemId => {
-              const testcases = await this.testcaseRepository.findByProblemId(problemId);
-              const maxPoints = testcases.reduce((s, tc) => s + (tc.point || 0), 0) || 1;
+      participationRows.map(async row => {
+        // For each problem compute obtained and max points
+        const perProblem = await Promise.all(
+          problemIds.map(async problemId => {
+            const testcases = await this.testcaseRepository.findByProblemId(problemId);
+            const maxPoints = testcases.reduce((s, tc) => s + (tc.point || 0), 0) || 1;
 
-              // Prefer submission created for this participation
-              let obtained = 0;
-              const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
-                p.id,
-                problemId
+            // Prefer submission created for this participation
+            let obtained = 0;
+            const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
+              row.participationId as string,
+              problemId
+            );
+
+            // fallback: if none found, try submissions in participation time window
+            if (!sub) {
+              const startMs = (row.startTime as Date).getTime();
+              const durationMs = (examData.duration || 0) * 60 * 1000;
+              const participationEndByDuration = new Date(startMs + durationMs);
+              const examGlobalEnd =
+                examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
+              const effectiveEnd =
+                participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+                  ? participationEndByDuration
+                  : examGlobalEnd;
+
+              const latestByTime = await this.submissionRepository.findLatestByUserProblemBetween(
+                row.userId,
+                problemId,
+                row.startTime as Date,
+                effectiveEnd
               );
+              if (latestByTime) {
+                // use that submission
+                (sub as any) = latestByTime;
+              }
+            }
 
-              // fallback: if none found, try submissions in participation time window
-              if (!sub) {
-                const startMs = p.startTime.getTime();
-                const durationMs = (examData.duration || 0) * 60 * 1000;
-                const participationEndByDuration = new Date(startMs + durationMs);
-                const examGlobalEnd =
-                  examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-                const effectiveEnd =
-                  participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-                    ? participationEndByDuration
-                    : examGlobalEnd;
-
-                const latestByTime = await this.submissionRepository.findLatestByUserProblemBetween(
-                  p.userId,
-                  problemId,
-                  p.startTime,
-                  effectiveEnd
-                );
-                if (latestByTime) {
-                  // use that submission
-                  (sub as any) = latestByTime;
+            if (sub && sub.id) {
+              const results = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
+              const tcMap = new Map(results.map(r => [r.testcaseId, r]));
+              // sum points of passed testcases
+              for (const tc of testcases) {
+                const r = tcMap.get(tc.id);
+                if (r && r.isPassed) {
+                  obtained += tc.point || 0;
                 }
               }
+            }
 
-              if (sub && sub.id) {
-                const results = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
-                const tcMap = new Map(results.map(r => [r.testcaseId, r]));
-                // sum points of passed testcases
-                for (const tc of testcases) {
-                  const r = tcMap.get(tc.id);
-                  if (r && r.isPassed) {
-                    obtained += tc.point || 0;
-                  }
-                }
-              }
+            return { problemId, obtained, maxPoints };
+          })
+        );
 
-              return { problemId, obtained, maxPoints };
-            })
-          );
+        const totalScore = perProblem.reduce((s, p) => s + p.obtained, 0);
 
-          const totalScore = perProblem.reduce((s, p) => s + p.obtained, 0);
-
-          return {
-            userId: p.userId,
-            perProblem,
-            totalScore,
-            submittedAt: p.endTime || new Date(),
-          };
-        })
+        return {
+          participationId: row.participationId,
+          userId: row.userId,
+          userFirstName: row.userFirstName || null,
+          userLastName: row.userLastName || null,
+          email: row.email || null,
+          perProblem,
+          totalScore,
+          submittedAt: row.submittedAt || new Date(),
+        } as any;
+      })
     );
 
     // Sort by totalScore (desc) then by submission time (asc)
@@ -632,21 +821,23 @@ export class ExamService {
     });
 
     // Get user info for results
-    const results = await Promise.all(
-      leaderboard.slice(offset, offset + limit).map(async (entry, index) => {
-        const userRepo = new (await import('@/repositories/user.repository')).UserRepository();
-        const user = await userRepo.findById(entry.userId);
-        return {
-          userId: entry.userId,
-          fullName: (user?.firstName || '') + ' ' + (user?.lastName || '') || 'Unknown',
-          email: user?.email || '',
-          totalScore: entry.totalScore,
-          perProblem: entry.perProblem,
-          submittedAt: entry.submittedAt.toISOString(),
-          rank: offset + index + 1,
-        };
-      })
-    );
+    const results = leaderboard.slice(offset, offset + limit).map((entry, index) => {
+      const firstNameValue = entry.userFirstName || entry.email || '';
+      const lastNameValue = entry.userLastName || '';
+      return {
+        id: entry.participationId,
+        userId: entry.userId,
+        user: {
+          firstname: firstNameValue,
+          lastname: lastNameValue,
+          email: entry.email || '',
+        },
+        totalScore: entry.totalScore,
+        perProblem: entry.perProblem,
+        submittedAt: (entry.submittedAt as Date).toISOString(),
+        rank: offset + index + 1,
+      } as any;
+    });
 
     return results;
   }
@@ -723,99 +914,143 @@ export class ExamService {
     return totalScore;
   }
 
-  private async createChallengeInTransaction(tx: any, challengeData: ProblemInput) {
-    const { testcases: testcaseInputs, solution, ...problemData } = challengeData;
-
-    // Create problem
-    const problemRows = await tx
-      .insert(problems)
-      .values({
-        title: problemData.title,
-        description: problemData.description,
-        difficult: problemData.difficulty ?? 'easy',
-        constraint: problemData.constraint,
-        tags: (problemData.tags ?? []).join(','),
-        lessonId: problemData.lessonid,
-        topicId: problemData.topicid,
-        visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
-      } as any)
-      .returning();
-
-    const createdProblem = problemRows[0];
-    if (!createdProblem) throw new Error('Failed to create problem');
-
-    // Create testcases
-    const createdTestcases = await Promise.all(
-      (testcaseInputs ?? []).map(tc =>
-        tx
-          .insert(testcases)
-          .values({
-            input: tc.input,
-            output: tc.output,
-            isPublic: tc.isPublic ?? false,
-            point: tc.point ?? 0,
-            problemId: createdProblem.id,
-          } as any)
-          .returning()
-          .then((rows: any[]) => {
-            const row = rows[0];
-            if (!row) throw new Error('Failed to create testcase');
-            return row;
-          })
-      )
-    );
-
-    // Create solution if provided
-    let createdSolution: any = null;
-    let createdApproaches: any[] = [];
-
-    if (solution) {
-      const sRows = await tx
-        .insert(solutions)
-        .values({
-          title: solution.title,
-          description: solution.description,
-          videoUrl: solution.videoUrl || null,
-          imageUrl: solution.imageUrl || null,
-          problemId: createdProblem.id,
-          isVisible: solution.isVisible ?? true,
-        } as any)
-        .returning();
-
-      createdSolution = sRows[0];
-      if (!createdSolution) throw new Error('Failed to create solution');
-
-      // Create solution approaches if provided
-      if (solution.solutionApproaches && solution.solutionApproaches.length > 0) {
-        createdApproaches = await Promise.all(
-          solution.solutionApproaches.map(approach =>
-            tx
-              .insert(solutionApproaches)
-              .values({
-                title: approach.title,
-                description: approach.description,
-                sourceCode: approach.sourceCode,
-                language: approach.language,
-                timeComplexity: approach.timeComplexity || null,
-                spaceComplexity: approach.spaceComplexity || null,
-                explanation: approach.explanation || null,
-                order: approach.order,
-                solutionId: createdSolution.id,
-                isVisible: approach.isVisible ?? true,
-              } as any)
-              .returning()
-              .then((rows: any[]) => rows[0])
-          )
-        );
-      }
+  async getParticipationSubmission(
+    examId: string,
+    participationId: string,
+    userId: string,
+    userRole?: string
+  ): Promise<{
+    id: string;
+    userId: string;
+    examId: string;
+    user?: { firstname: string; lastname: string; email?: string };
+    solutions: Array<{
+      challengeId: string;
+      code: string;
+      language: string;
+      score: number;
+      submittedAt: string;
+      results?: Array<{ testCaseId: string; passed: boolean }>;
+    }>;
+    totalScore: number;
+    startedAt: string;
+    submittedAt: string;
+    duration: number;
+  }> {
+    // Verify participation exists and belongs to user or is public
+    const participation = await this.examParticipationRepository.findById(participationId);
+    if (!participation) {
+      throw new BaseException('Participation not found', 404, 'NOT_FOUND');
     }
 
+    // Check authorization: only participation owner or teacher can view
+    const exam = await this.examRepository.findById(examId);
+    if (!exam) {
+      throw new ExamNotFoundException();
+    }
+
+    // Allow owner (participation user) or teachers to view submissions
+    if (participation.userId !== userId && userRole !== 'teacher' && userRole !== 'owner') {
+      throw new BaseException('Unauthorized', 403, 'UNAUTHORIZED');
+    }
+
+    // Get exam problems
+    const problems = await this.examToProblemsRepository.findByExamId(examId);
+    const problemIds = problems.map(p => p.problemId);
+
+    // Get user info
+    const userRepo = new (await import('@/repositories/user.repository')).UserRepository();
+    const user = await userRepo.findById(participation.userId);
+    console.log(user);
+
+    // Get solutions for each problem
+    const solutions = await Promise.all(
+      problemIds.map(async problemId => {
+        const problem = await this.problemRepository.findById(problemId);
+        const testcases = await this.testcaseRepository.findByProblemId(problemId);
+
+        // Get latest submission for this problem in this participation
+        const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
+          participationId,
+          problemId
+        );
+
+        let score = 0;
+        let code = '';
+        let language = '';
+        let submittedAt = new Date().toISOString();
+        let results: Array<{ testCaseId: string; passed: boolean }> = [];
+
+        if (sub) {
+          code = sub.sourceCode || '';
+          language = sub.language || 'unknown';
+          submittedAt = (sub.submittedAt || new Date()).toISOString();
+
+          // Calculate score from results
+          const resultRecords = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
+          const tcMap = new Map(resultRecords.map(r => [r.testcaseId, r]));
+
+          let passedPoints = 0;
+          const maxPoints = testcases.reduce((s, tc) => s + (tc.point || 0), 0) || 1;
+          for (const tc of testcases) {
+            const r = tcMap.get(tc.id);
+            const isPassed = r?.isPassed || false;
+            results.push({ testCaseId: tc.id, passed: isPassed });
+            if (isPassed) {
+              passedPoints += tc.point || 0;
+            }
+          }
+
+          // score = Math.round((passedPoints / maxPoints) * 100);
+          score = passedPoints;
+          console.log(
+            'Score for problem',
+            problemId,
+            ':',
+            score,
+            '/',
+            maxPoints,
+            'points',
+            passedPoints
+          );
+        }
+
+        return {
+          challengeId: problemId,
+          challengeTitle: problem?.title || problemId,
+          code,
+          language,
+          score,
+          submittedAt,
+          results,
+        };
+      })
+    );
+
+    // Calculate total score
+    const totalScore = solutions.reduce((s, sol) => s + sol.score, 0);
+    const avgScore = solutions.length > 0 ? Math.round(totalScore / solutions.length) : 0;
+
     return {
-      problem: createdProblem,
-      testcases: createdTestcases,
-      solution: createdSolution
-        ? { ...createdSolution, solutionApproaches: createdApproaches }
-        : null,
+      id: participationId,
+      userId: participation.userId,
+      examId,
+      user: user
+        ? {
+            firstname: user.firstName || '',
+            lastname: user.lastName || '',
+            email: user.email || '',
+          }
+        : undefined,
+      solutions,
+      totalScore: totalScore,
+      startedAt: participation.startTime.toISOString(),
+      submittedAt: (participation.endTime || new Date()).toISOString(),
+      duration: participation.endTime
+        ? Math.round((participation.endTime.getTime() - participation.startTime.getTime()) / 60000)
+        : 0,
     };
   }
+
+  // Problem creation and related DB operations were moved to ProblemRepository.
 }

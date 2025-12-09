@@ -19,4 +19,14 @@ export class ExamToProblemsRepository extends BaseRepository<
     if (relations.length === 0) return [];
     return this.db.insert(this.table).values(relations).returning();
   }
+
+  /**
+   * Link problems to an exam inside a provided transaction `tx`.
+   */
+  async linkProblemsWithTx(tx: any, examId: string, links: { problemId: string; orderIndex: number }[]) {
+    if (!links || links.length === 0) return [];
+    const inserts = links.map(l => ({ examId, problemId: l.problemId, orderIndex: l.orderIndex }));
+    const rows = await tx.insert(examToProblems).values(inserts).returning();
+    return rows;
+  }
 }

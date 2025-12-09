@@ -10,7 +10,7 @@ import {
 import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@/database/schema/solutionApproaches';
-import { and, desc, eq, gt, ilike, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, lt, or, inArray } from 'drizzle-orm';
 import { ProblemVisibility } from '@/enums/problemVisibility.enum';
 
 export type ChallengeCreationResult = {
@@ -26,103 +26,104 @@ export class ProblemRepository extends BaseRepository<
   constructor() {
     super(problems);
   }
-
-  async createProblemTransactional(input: ProblemInput): Promise<ChallengeCreationResult> {
+  // Single implementation for problem creation (used by both wrappers below)
+  private async _executeCreateProblem(
+    tx: any,
+    input: ProblemInput
+  ): Promise<ChallengeCreationResult> {
     const { testcases: testcaseInputs, solution, ...problemData } = input;
 
-    return this.db.transaction(async tx => {
-      const problemRows = await tx
-        .insert(problems)
+    const problemRows = await tx
+      .insert(problems)
+      .values({
+        title: problemData.title,
+        description: problemData.description,
+        difficult: problemData.difficulty ?? 'easy',
+        constraint: problemData.constraint,
+        tags: (problemData.tags ?? []).join(','),
+        lessonId: problemData.lessonid,
+        topicId: problemData.topicid,
+        visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
+      } as any)
+      .returning();
+
+    const createdProblem = problemRows[0];
+    if (!createdProblem) throw new Error('Failed to create problem');
+
+    const createdTestcases = await Promise.all(
+      (testcaseInputs ?? []).map(tc =>
+        tx
+          .insert(testcases)
+          .values({
+            input: tc.input,
+            output: tc.output,
+            isPublic: tc.isPublic ?? false,
+            point: tc.point ?? 0,
+            problemId: createdProblem.id,
+          } as any)
+          .returning()
+          .then((rows: any[]) => {
+            const row = rows[0];
+            if (!row) throw new Error('Failed to create testcase');
+            return row;
+          })
+      )
+    );
+
+    let createdSolution: SolutionEntity | null = null;
+    let createdApproaches: SolutionApproachEntity[] = [];
+
+    if (solution) {
+      const sRows = await tx
+        .insert(solutions)
         .values({
-          title: problemData.title,
-          description: problemData.description,
-          difficult: problemData.difficulty ?? 'easy',
-          constraint: problemData.constraint,
-          tags: (problemData.tags ?? []).join(','),
-          lessonId: problemData.lessonid,
-          topicId: problemData.topicid,
-          visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
+          title: solution.title,
+          description: solution.description,
+          videoUrl: solution.videoUrl || null,
+          imageUrl: solution.imageUrl || null,
+          isVisible: solution.isVisible ?? true,
+          problemId: createdProblem.id,
         } as any)
         .returning();
 
-      const createdProblem = problemRows[0];
-      if (!createdProblem) throw new Error('Failed to create problem');
+      const s = sRows[0];
+      if (!s) throw new Error('Failed to create solution');
+      createdSolution = s;
 
-      const createdTestcases = await Promise.all(
-        (testcaseInputs ?? []).map(tc =>
-          tx
-            .insert(testcases)
-            .values({
-              input: tc.input,
-              output: tc.output,
-              isPublic: tc.isPublic ?? false,
-              point: tc.point ?? 0,
-              problemId: createdProblem.id,
-            } as any)
-            .returning()
-            .then(rows => {
-              const row = rows[0];
-              if (!row) throw new Error('Failed to create testcase');
-              return row;
-            })
-        )
-      );
-
-      let createdSolution: SolutionEntity | null = null;
-      let createdApproaches: SolutionApproachEntity[] = [];
-
-      if (solution) {
-        const sRows = await tx
-          .insert(solutions)
-          .values({
-            title: solution.title,
-            description: solution.description,
-            videoUrl: solution.videoUrl || null,
-            imageUrl: solution.imageUrl || null,
-            isVisible: solution.isVisible ?? true,
-            problemId: createdProblem.id,
-          } as any)
-          .returning();
-
-        const s = sRows[0];
-        if (!s) throw new Error('Failed to create solution');
-        createdSolution = s;
-
-        if (solution.solutionApproaches && solution.solutionApproaches.length > 0) {
-          createdApproaches = await Promise.all(
-            solution.solutionApproaches.map(ap =>
-              tx
-                .insert(solutionApproaches)
-                .values({
-                  solutionId: s.id,
-                  title: ap.title,
-                  description: ap.description,
-                  sourceCode: ap.sourceCode,
-                  language: ap.language,
-                  timeComplexity: ap.timeComplexity,
-                  spaceComplexity: ap.spaceComplexity,
-                  explanation: ap.explanation,
-                  order: ap.order,
-                } as any)
-                .returning()
-                .then(rows => {
-                  const row = rows[0];
-                  if (!row) throw new Error('Failed to create solution approach');
-                  return row;
-                })
-            )
-          );
-        }
+      if (solution.solutionApproaches && solution.solutionApproaches.length > 0) {
+        createdApproaches = await Promise.all(
+          solution.solutionApproaches.map(ap =>
+            tx
+              .insert(solutionApproaches)
+              .values({
+                solutionId: s.id,
+                title: ap.title,
+                description: ap.description,
+                sourceCode: ap.sourceCode,
+                language: ap.language,
+                timeComplexity: ap.timeComplexity,
+                spaceComplexity: ap.spaceComplexity,
+                explanation: ap.explanation,
+                order: ap.order,
+              } as any)
+              .returning()
+              .then((rows: any[]) => {
+                const row = rows[0];
+                if (!row) throw new Error('Failed to create solution approach');
+                return row;
+              })
+          )
+        );
       }
+    }
 
-      return {
-        problem: createdProblem,
-        testcases: createdTestcases,
-        solution: createdSolution
-          ? ({ ...createdSolution, solutionApproaches: createdApproaches } as any)
-          : null,
-      };
-    });
+    return {
+      problem: createdProblem,
+      testcases: createdTestcases,
+      solution: createdSolution
+        ? ({ ...createdSolution, solutionApproaches: createdApproaches } as any)
+        : null,
+    };
   }
 
   getProblemsByTopicId(topicId: string): Promise<ProblemEntity[]> {
@@ -232,5 +233,26 @@ export class ProblemRepository extends BaseRepository<
     const last = items[items.length - 1];
     const nextCursor = hasMore && last ? { createdAt: last.createdAt as Date, id: last.id } : null;
     return { items, nextCursor };
+  }
+
+  async findByIds(ids: string[]): Promise<ProblemEntity[]> {
+    if (!ids || ids.length === 0) return [];
+    return this.db.select().from(problems).where(inArray(problems.id, ids));
+  }
+
+  /**
+   * Create a problem + testcases + solution using provided transaction client `tx`.
+   * This allows callers to compose a larger transaction (e.g., creating exam + problems atomically).
+   */
+  /**
+   * Public convenience API: create a problem. If `tx` is provided the operation
+   * will reuse it; otherwise the repository opens a transaction.
+   */
+  async createProblemTransactional(
+    input: ProblemInput,
+    tx?: any
+  ): Promise<ChallengeCreationResult> {
+    if (tx) return this._executeCreateProblem(tx, input);
+    return this.db.transaction(async t => this._executeCreateProblem(t, input));
   }
 }
