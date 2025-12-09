@@ -105,8 +105,15 @@ export class SubmissionService {
       ...(examParticipationId ? { examParticipationId } : {}),
     });
 
-    // Get queue position
-    const queueLength = await queueService.getQueueLength();
+    // Get queue position (try to be resilient if Redis/queue is unavailable)
+    let queueLength = 0;
+    try {
+      queueLength = await queueService.getQueueLength();
+    } catch (err) {
+      // Log and continue — treat as queue unavailable
+      console.warn('Queue service unavailable, proceeding without queue:', err);
+      queueLength = 0;
+    }
     const estimatedWaitTime = queueLength * 30; // Estimate 30 seconds per job
 
     // Create job for queue
@@ -128,8 +135,15 @@ export class SubmissionService {
       createdAt: new Date().toISOString(),
     };
 
-    // Add job to queue
-    await queueService.addJob(job);
+    // Add job to queue (fail gracefully if queue is unavailable)
+    let enqueued = true;
+    try {
+      await queueService.addJob(job);
+    } catch (err) {
+      // Do not fail submission if queue is unavailable — keep submission record and return
+      enqueued = false;
+      console.warn('Failed to enqueue submission job; submission will remain PENDING:', err);
+    }
 
     // TODO: Emit WebSocket event when WebSocketService is properly implemented
     // emitSubmissionQueued({
@@ -143,7 +157,7 @@ export class SubmissionService {
     return {
       submissionId: submission.id,
       status: ESubmissionStatus.PENDING,
-      queuePosition: queueLength + 1,
+      queuePosition: enqueued ? queueLength + 1 : 0,
       estimatedWaitTime,
     };
   }
@@ -216,7 +230,12 @@ export class SubmissionService {
       else if (resp.data?.results && Array.isArray(resp.data.results)) {
         resp.data.results = addIsPublicToResults(resp.data.results);
       }
+      // Check for sandbox 'result' structure: resp.data.result.results
+      else if (resp.data?.result?.results && Array.isArray(resp.data.result.results)) {
+        resp.data.result.results = addIsPublicToResults(resp.data.result.results);
+      }
 
+      console.log('Sandbox response:', resp.data);
       return resp.data;
     } catch (err: any) {
       // Normalize axios error and include detailed context

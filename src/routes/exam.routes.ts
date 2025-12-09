@@ -17,13 +17,19 @@ const examController = new ExamController(examService);
 // Rate limiting
 const examRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 100,
   message: 'Too many exam requests from this IP, please try again later.',
+});
+
+const examSessionLimit = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000,
+  message: 'Too many exam session requests from this IP, please try again later.',
 });
 
 const createExamRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 exam creation requests per windowMs
+  max: 20, // limit each IP to 10 exam creation requests per windowMs
   message: 'Too many exam creation requests from this IP, please try again later.',
 });
 
@@ -92,6 +98,38 @@ router.get(
   authenticationToken,
   examRateLimit,
   examController.getMyParticipation.bind(examController)
+);
+
+// Get or create live exam session (resume/start)
+router.get(
+  '/:examId/session',
+  authenticationToken,
+  examRateLimit,
+  examController.getOrCreateSession.bind(examController)
+);
+
+router.get(
+  '/:examId/participation/:participationId/submission',
+  authenticationToken,
+  examRateLimit,
+  examController.getParticipationSubmission.bind(examController)
+);
+
+// Get participation by ID (requires auth)
+// This route was missing and causes 404 when frontend calls /exams/:examId/participation/:id
+router.get(
+  '/:examId/participation/:participationId',
+  authenticationToken,
+  examRateLimit,
+  examController.getParticipation.bind(examController)
+);
+
+// Sync session progress
+router.put(
+  '/session/sync',
+  authenticationToken,
+  examSessionLimit,
+  examController.syncSession.bind(examController)
 );
 
 // Protected routes (require authentication and teacher role)

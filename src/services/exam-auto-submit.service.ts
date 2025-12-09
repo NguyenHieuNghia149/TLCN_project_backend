@@ -1,7 +1,7 @@
 import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
 import { ExamRepository } from '@/repositories/exam.repository';
 import { ExamService } from './exam.service';
-import { db } from '@/database/connection';
+// db is intentionally not used here; repositories handle DB access
 import { examParticipations, exam } from '@/database/schema';
 import { lt, and, eq } from 'drizzle-orm';
 

@@ -116,16 +116,41 @@ export const ExamParticipationResponseSchema = z.object({
   endTime: z.string().nullable(),
   isCompleted: z.boolean(),
   totalScore: z.number().optional(),
+  submittedAt: z.string().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  currentAnswers: z.any().optional(),
+  lastSyncedAt: z.string().nullable().optional(),
+  status: z.string().optional(),
+  score: z.number().optional(),
   createdAt: z.string().optional(),
 });
 
 export type ExamParticipationResponse = z.infer<typeof ExamParticipationResponseSchema>;
 
+// Response schema for session/resume endpoint
+export const ExamSessionResponseSchema = z.object({
+  sessionId: z.string(),
+  examId: z.string(),
+  userId: z.string(),
+  startedAt: z.string(),
+  expiresAt: z.string(),
+  currentAnswers: z.any().optional(),
+  status: z.string(),
+});
+
+export type ExamSessionResponse = z.infer<typeof ExamSessionResponseSchema>;
+
 // Exam leaderboard entry schema
 export const ExamLeaderboardEntrySchema = z.object({
+  id: z.string().optional(),
   userId: z.string(),
-  userName: z.string(),
-  email: z.string(),
+  user: z
+    .object({
+      firstname: z.string().optional(),
+      lastname: z.string().optional(),
+      email: z.string().optional(),
+    })
+    .optional(),
   totalScore: z.number(),
   perProblem: z.array(
     z.object({
