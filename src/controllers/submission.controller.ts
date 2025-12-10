@@ -106,25 +106,19 @@ export class SubmissionController {
 
       const { limit, offset, status } = req.query as unknown as GetSubmissionsQuery;
 
-      const result = await this.submissionService.listSubmissions({
-        userId,
+      const result = await this.submissionService.listUserSubmissions(userId, status as any, {
         limit,
         offset,
-        status: status as any,
       });
-
-      // Filter by status if provided
-      const filteredSubmissions = status
-        ? result.data.filter((sub: any) => sub.status === status)
-        : result.data;
+      console.log(result);
 
       res.status(200).json({
         success: true,
         data: {
-          submissions: filteredSubmissions,
-          total: filteredSubmissions.length,
-          limit,
-          offset,
+          submissions: result.data,
+          total: result.pagination.total,
+          limit: result.pagination.limit,
+          offset: (result.pagination.page - 1) * result.pagination.limit,
         },
       });
     } catch (error) {
@@ -139,15 +133,13 @@ export class SubmissionController {
   ): Promise<void | Response> {
     try {
       const { problemId } = req.params;
-      //const { limit, offset, status } = req.query as unknown as GetSubmissionsQuery;
       console.log('Problem ID:', problemId);
 
       if (!problemId) {
         throw new ProblemIdRequiredException();
       }
 
-      const result = await this.submissionService.listSubmissions({
-        problemId,
+      const result = await this.submissionService.listProblemSubmissions(problemId, {
         limit: 10,
         offset: 0,
       });
@@ -188,14 +180,12 @@ export class SubmissionController {
         throw new ProblemIdRequiredException();
       }
 
-      const result = await this.submissionService.listSubmissions({
+      const result = await this.submissionService.listUserProblemSubmissions(
         userId,
         problemId,
         participationId,
-        limit,
-        offset,
-        status: status as any,
-      });
+        { limit, offset, status: status as any }
+      );
 
       res.status(200).json({
         success: true,

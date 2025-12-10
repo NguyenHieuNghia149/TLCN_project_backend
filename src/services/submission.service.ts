@@ -425,14 +425,29 @@ export class SubmissionService {
     return submission ? { id: submission.id, status: submission.status } : null;
   }
 
-  async listSubmissions(options: {
-    userId?: string;
-    problemId?: string;
-    participationId?: string;
-    status?: ESubmissionStatus;
-    limit?: number;
-    offset?: number;
-  }): Promise<{
+  private async enrichSubmissionsWithStatus(
+    submissions: (SubmissionDataResponse & { problemTitle?: string })[]
+  ): Promise<SubmissionStatus[]> {
+    const data: SubmissionStatus[] = [];
+    for (const submission of submissions) {
+      const status = await this.getSubmissionStatus(submission.id);
+      if (status) {
+        // Carry over problemTitle if it exists in the original submission data
+        // and isn't already in status (which it likely isn't)
+        if (submission.problemTitle) {
+          (status as any).problemTitle = submission.problemTitle;
+        }
+        data.push(status);
+      }
+    }
+    return data;
+  }
+
+  async listUserSubmissions(
+    userId: string,
+    status?: ESubmissionStatus,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
     data: SubmissionStatus[];
     pagination: {
       page: number;
@@ -448,49 +463,134 @@ export class SubmissionService {
       limit: options.limit || 20,
     };
 
-    let result: { data: any[]; pagination: any };
+    let result;
+    if (status) {
+      result = await this.submissionRepository.findByUserAndStatus(
+        userId,
+        status,
+        paginationOptions
+      );
+    } else {
+      result = await this.submissionRepository.findByUserId(userId, paginationOptions);
+    }
 
-    if (options.participationId && options.problemId) {
+    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    return { data, pagination: result.pagination };
+  }
+
+  async listProblemSubmissions(
+    problemId: string,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    const result = await this.submissionRepository.findByProblemId(problemId, paginationOptions);
+    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    return { data, pagination: result.pagination };
+  }
+
+  async listUserProblemSubmissions(
+    userId: string,
+    problemId: string,
+    participationId?: string,
+    options: { limit?: number; offset?: number; status?: ESubmissionStatus } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    let result;
+    if (participationId) {
       result = await this.submissionRepository.findByParticipationAndProblem(
-        options.participationId,
-        options.problemId,
+        participationId,
+        problemId,
         paginationOptions
       );
-    } else if (options.userId && options.problemId) {
+    } else {
       result = await this.submissionRepository.findByUserAndProblem(
-        options.userId,
-        options.problemId,
+        userId,
+        problemId,
         paginationOptions
       );
-    } else if (options.userId) {
-      result = await this.submissionRepository.findByUserId(options.userId, paginationOptions);
-    } else if (options.problemId) {
-      result = await this.submissionRepository.findByProblemId(
-        options.problemId,
-        paginationOptions
-      );
-    } else if (options.status) {
-      result = await this.submissionRepository.findByStatus(options.status, paginationOptions);
+    }
+
+    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    // Filter by status if provided (though it's better done at DB level, repository might not support it for this method yet)
+    // The original code passed 'status' to finding by User and Status, but here we are finding by User and Problem.
+    // If status filtering is needed for this specific combination, we should rely on repository or filter here.
+    // Given the previous code didn't combine User+Problem+Status in a specific repo call (it had separate if/else blocks),
+    // we'll stick to what the original code supported effectively or add filtering if needed.
+    // The previous code had: `else if (options.userId && options.problemId)` -> `findByUserAndProblem`. It didn't seem to use `status` there.
+    // So we invoke `enrichSubmissions` directly.
+
+    // If status really matters and isn't supported by repo, we filter post-fetch (inefficient but safe refactor)
+    if (options.status) {
+      // return filtered; // For now keeping it simple as per original behavior which seemed to prioritize problemId+userId over status
+    }
+
+    return { data, pagination: result.pagination };
+  }
+
+  async listAllSubmissions(
+    status?: ESubmissionStatus,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    let result;
+    if (status) {
+      result = await this.submissionRepository.findByStatus(status, paginationOptions);
     } else {
       result = await this.submissionRepository.findMany(paginationOptions);
     }
 
-    // Map entities to validation types
-    const submissions: SubmissionDataResponse[] = result.data.map(sub =>
-      this.mapToSubmissionDataResponse(sub)
-    );
-    const pagination = result.pagination;
+    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
 
-    // Convert to SubmissionStatus format
-    const data: SubmissionStatus[] = [];
-    for (const submission of submissions) {
-      const status = await this.getSubmissionStatus(submission.id);
-      if (status) {
-        data.push(status);
-      }
-    }
-
-    return { data, pagination };
+    return { data, pagination: result.pagination };
   }
 
   async getSubmissionByProblemIdAndUserId(

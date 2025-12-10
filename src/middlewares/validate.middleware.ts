@@ -16,6 +16,12 @@ export const validate =
       return;
     }
     // Gán lại dữ liệu đã parse để service nhận đúng kiểu
-    (req as any)[segment] = result.data;
+    if (segment === 'body') {
+      req.body = result.data;
+    } else {
+      // Với query và params, assign properties thay vì replace object
+      // để tránh lỗi "Cannot set property ... which has only a getter"
+      Object.assign((req as any)[segment], result.data);
+    }
     next();
   };
