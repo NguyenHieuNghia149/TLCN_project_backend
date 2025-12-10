@@ -14,7 +14,8 @@ export class LessonController {
   async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.userId;
-      const result = await this.lessonService.getAllLessons(userId);
+      const topicId = req.query.topicId as string | undefined;
+      const result = await this.lessonService.getAllLessons(userId, topicId);
       res.status(200).json({ success: true, data: result });
     } catch (error) {
       next(error);
