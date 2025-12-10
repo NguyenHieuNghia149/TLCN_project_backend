@@ -71,8 +71,13 @@ export class LessonService {
     };
   }
 
-  async getAllLessons(userId?: string): Promise<(LessonResponse & { isFavorite: boolean })[]> {
-    const lessons = await this.lessonRepository.getAllLessons();
+  async getAllLessons(userId?: string, topicId?: string): Promise<(LessonResponse & { isFavorite: boolean })[]> {
+    let lessons = await this.lessonRepository.getAllLessons();
+
+    // Filter by topicId if provided
+    if (topicId) {
+      lessons = lessons.filter(lesson => lesson.topicId === topicId);
+    }
 
     // If userId provided, fetch favorite status for each lesson
     if (userId) {
