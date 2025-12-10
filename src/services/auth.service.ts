@@ -117,7 +117,6 @@ export class AuthService {
 
     // get rank info
     const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
-
     return {
       user: {
         id: user.id,
