@@ -60,7 +60,7 @@ router.get(
   '/user/my-submissions',
   authenticationToken,
   submissionRateLimit,
-  validate(GetSubmissionsQuerySchema),
+  validate(GetSubmissionsQuerySchema, 'query'),
   submissionController.getUserSubmissions.bind(submissionController)
 );
 
