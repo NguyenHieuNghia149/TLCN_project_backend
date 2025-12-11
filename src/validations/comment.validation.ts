@@ -5,6 +5,7 @@ export const createCommentSchema = z.object({
     content: z.string().min(1, 'Content is required'),
     lessonId: z.string().uuid().optional(),
     problemId: z.string().uuid().optional(),
+    parentCommentId: z.string().uuid().optional(),
   }),
 });
 

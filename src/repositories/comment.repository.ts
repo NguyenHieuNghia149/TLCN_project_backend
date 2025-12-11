@@ -1,6 +1,6 @@
 import { comments, CommentEntity, CommentInsert, lessons, problems, users } from '@/database/schema';
 import { BaseRepository } from './base.repository';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, isNull, and } from 'drizzle-orm';
 
 export type CommentWithUser = {
   comment: CommentEntity;
@@ -14,12 +14,16 @@ export type CommentWithUser = {
   } | null;
 };
 
+export type CommentWithReplies = CommentWithUser & {
+  replies: CommentWithUser[];
+};
+
 export class CommentRepository extends BaseRepository<typeof comments, CommentEntity, CommentInsert> {
   constructor() {
     super(comments);
   }
 
-  async listByLesson(lessonId: string): Promise<CommentWithUser[]> {
+  async listByLesson(lessonId: string): Promise<CommentWithReplies[]> {
     const rows = await this.db
       .select({
         comment: this.table,
@@ -34,13 +38,28 @@ export class CommentRepository extends BaseRepository<typeof comments, CommentEn
       })
       .from(this.table)
       .leftJoin(users, eq(this.table.userId, users.id))
-      .where(eq(this.table.lessonId, lessonId))
+      .where(
+        and(
+          eq(this.table.lessonId, lessonId),
+          isNull(this.table.parentCommentId) // Only get root comments
+        )
+      )
       .orderBy(desc(this.table.createdAt));
 
-    return rows as CommentWithUser[];
+    // Fetch replies for each comment
+    const result: CommentWithReplies[] = [];
+    for (const row of rows) {
+      const replies = await this.getReplies(row.comment.id);
+      result.push({
+        ...row,
+        replies,
+      });
+    }
+
+    return result;
   }
 
-  async listByProblem(problemId: string): Promise<CommentWithUser[]> {
+  async listByProblem(problemId: string): Promise<CommentWithReplies[]> {
     const rows = await this.db
       .select({
         comment: this.table,
@@ -55,10 +74,46 @@ export class CommentRepository extends BaseRepository<typeof comments, CommentEn
       })
       .from(this.table)
       .leftJoin(users, eq(this.table.userId, users.id))
-      .where(eq(this.table.problemId, problemId))
+      .where(
+        and(
+          eq(this.table.problemId, problemId),
+          isNull(this.table.parentCommentId) // Only get root comments
+        )
+      )
       .orderBy(desc(this.table.createdAt));
 
-    return rows as CommentWithUser[];
+    // Fetch replies for each comment
+    const result: CommentWithReplies[] = [];
+    for (const row of rows) {
+      const replies = await this.getReplies(row.comment.id);
+      result.push({
+        ...row,
+        replies,
+      });
+    }
+
+    return result;
+  }
+
+  async getReplies(parentCommentId: string): Promise<CommentWithUser[]> {
+    const replies = await this.db
+      .select({
+        comment: this.table,
+        user: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          avatar: users.avatar,
+          role: users.role,
+        },
+      })
+      .from(this.table)
+      .leftJoin(users, eq(this.table.userId, users.id))
+      .where(eq(this.table.parentCommentId, parentCommentId))
+      .orderBy(this.table.createdAt);
+
+    return replies as CommentWithUser[];
   }
 
   async listByUser(userId: string): Promise<CommentWithUser[]> {

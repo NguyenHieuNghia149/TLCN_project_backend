@@ -13,6 +13,7 @@ export const comments = pgTable('comments', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   lessonId: uuid('lesson_id').references(() => lessons.id),
   problemId: uuid('problem_id').references(() => problems.id),
+  parentCommentId: uuid('parent_comment_id'),
 });
 
 export type CommentEntity = typeof comments.$inferSelect;
@@ -23,6 +24,7 @@ export const insertCommentSchema = createInsertSchema(comments, {
   userId: z.string().uuid(),
   lessonId: z.string().uuid().optional(),
   problemId: z.string().uuid().optional(),
+  parentCommentId: z.string().uuid().optional(),
 });
 
 export const selectCommentSchema = createSelectSchema(comments);

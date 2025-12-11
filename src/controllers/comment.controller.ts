@@ -25,6 +25,7 @@ export class CommentController {
         userId,
         lessonId: parsed.body.lessonId,
         problemId: parsed.body.problemId,
+        parentCommentId: parsed.body.parentCommentId,
       } as any;
 
       const created = await this.commentService.createComment(payload);
@@ -54,6 +55,18 @@ export class CommentController {
 
       const comments = await this.commentService.getCommentsByProblem(problemId);
       res.status(200).json({ success: true, data: comments });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getReplies = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { commentId } = req.params as any;
+      if (!commentId) { res.status(400).json({ success: false, message: 'commentId required' }); return; }
+
+      const replies = await this.commentService.getReplies(commentId);
+      res.status(200).json({ success: true, data: replies });
     } catch (error) {
       next(error);
     }

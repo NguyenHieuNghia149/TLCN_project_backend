@@ -1,4 +1,4 @@
-import { CommentRepository, CommentWithUser } from '@/repositories/comment.repository';
+import { CommentRepository, CommentWithUser, CommentWithReplies } from '@/repositories/comment.repository';
 import { CommentInsert, CommentEntity } from '@/database/schema';
 
 export class CommentService {
@@ -13,12 +13,16 @@ export class CommentService {
     return created;
   }
 
-  async getCommentsByLesson(lessonId: string): Promise<CommentWithUser[]> {
+  async getCommentsByLesson(lessonId: string): Promise<CommentWithReplies[]> {
     return this.repo.listByLesson(lessonId);
   }
 
-  async getCommentsByProblem(problemId: string): Promise<CommentWithUser[]> {
+  async getCommentsByProblem(problemId: string): Promise<CommentWithReplies[]> {
     return this.repo.listByProblem(problemId);
+  }
+
+  async getReplies(parentCommentId: string): Promise<CommentWithUser[]> {
+    return this.repo.getReplies(parentCommentId);
   }
 
   async updateComment(id: string, content: string, userId?: string): Promise<CommentEntity | null> {
