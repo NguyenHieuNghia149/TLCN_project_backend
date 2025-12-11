@@ -7,6 +7,13 @@
       "when": 1764330082627,
       "tag": "20251128114122_chunky_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1765436009903,
+      "tag": "20251211065329_fast_purifiers",
+      "breakpoints": true
     }
   ]
 }
