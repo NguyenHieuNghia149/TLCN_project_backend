@@ -62,9 +62,10 @@ export class TopicService {
   }
 
   async deleteTopic(id: string): Promise<void> {
-    const topic = await this.topicRepository.delete(id);
+    const topic = await this.topicRepository.findById(id);
     if (!topic) {
       throw new NotFoundException(`Topic with ID ${id} not found.`);
     }
+    await this.topicRepository.deleteTopicWithCascade(id);
   }
 }
