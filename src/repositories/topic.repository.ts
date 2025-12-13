@@ -1,9 +1,14 @@
-import { topics, TopicEntity, TopicInsert } from '@/database/schema';
+import { topics, TopicEntity, TopicInsert, lessons, problems } from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { SanitizationUtils } from '@/utils/security';
 import { eq, sql } from 'drizzle-orm';
 import { TopicAlreadyExistsException } from '@/exceptions/topic.exception';
 import { TopicResponse } from '@/validations/topic.validation';
+
+export interface TopicStatsData {
+  totalLessons: number;
+  totalProblems: number;
+}
 
 export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, TopicInsert> {
   constructor() {
@@ -40,5 +45,41 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
       .from(topics);
 
     return topicSelect;
+  }
+
+  async deleteTopicWithCascade(topicId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // Delete all problems related to lessons in this topic
+      await tx
+        .delete(problems)
+        .where(eq(problems.topicId, topicId));
+
+      // Delete all lessons in this topic
+      await tx
+        .delete(lessons)
+        .where(eq(lessons.topicId, topicId));
+
+      // Delete the topic itself
+      await tx
+        .delete(topics)
+        .where(eq(topics.id, topicId));
+    });
+  }
+
+  async getTopicStats(topicId: string): Promise<TopicStatsData> {
+    const lessonCount = await this.db
+      .select()
+      .from(lessons)
+      .where(eq(lessons.topicId, topicId));
+
+    const problemCount = await this.db
+      .select()
+      .from(problems)
+      .where(eq(problems.topicId, topicId));
+
+    return {
+      totalLessons: lessonCount.length,
+      totalProblems: problemCount.length,
+    };
   }
 }
