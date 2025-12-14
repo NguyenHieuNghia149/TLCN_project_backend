@@ -267,7 +267,25 @@ export class ExamService {
 
     // Previously we fetched/validated problems here; that now lives inside the repository.
     // Fetch created exam with challenges for response (outside transaction, after commit)
-    return this.getExamById(createdExamId);
+    const newExam = await this.getExamById(createdExamId);
+
+    if (newExam.isVisible) {
+      setImmediate(async () => {
+        try {
+          const { notificationService } = await import('./notification.service');
+          await notificationService.notifyAllUsers(
+            'NEW_EXAM',
+            `New Exam: ${newExam.title}`,
+            `A new exam has been created. Start: ${new Date(newExam.startDate).toLocaleString()}`,
+            { examId: newExam.id, link: `/exams/${newExam.id}` }
+          );
+        } catch (err) {
+          throw new Error('Failed to send exam notification');
+        }
+      });
+    }
+
+    return newExam;
   }
 
   async getExamById(examId: string): Promise<ExamResponse> {

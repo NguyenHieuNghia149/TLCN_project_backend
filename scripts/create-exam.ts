@@ -170,7 +170,7 @@ function buildExamInput(): CreateExamInput {
   ];
 
   const examInput: CreateExamInput = {
-    title: 'Sample Exam with Mixed Challenges',
+    title: 'Exam Test',
     password: 'exam123',
     duration: 60, // minutes
     startDate: now.toISOString(),
@@ -215,22 +215,30 @@ async function createExam() {
   } catch (error: any) {
     console.error('❌ Failed to create exam');
     console.error('   Error:', error?.message || error);
-  } finally {
-    try {
-      await DatabaseService.disconnect();
-    } catch {
-      // ignore
-    }
   }
 }
 
 // Main execution
 createExam()
-  .then(() => {
+  .then(async () => {
     console.log('\n✨ Script completed!');
+    console.log('Waiting 5s for background tasks (notifications) to finish...');
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    try {
+      await DatabaseService.disconnect();
+    } catch {
+      // ignore
+    }
+
     process.exit(0);
   })
-  .catch(error => {
+  .catch(async error => {
     console.error('\n❌ Script failed:', error);
+    try {
+      await DatabaseService.disconnect();
+    } catch {
+      // ignore
+    }
     process.exit(1);
   });
