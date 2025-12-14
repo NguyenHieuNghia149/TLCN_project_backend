@@ -8,6 +8,7 @@ import {
 } from '@/exceptions/auth.exceptions';
 
 import { SanitizationUtils } from '@/utils/security';
+import { EUserRole } from '@/enums/userRole.enum';
 
 export interface UserFilters {
   email?: string;
@@ -139,7 +140,7 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
       throw new UserNotFoundException(`User with id ${id} not found`);
     }
 
-    console.log('User avatar updated to:', user.avatar)
+    console.log('User avatar updated to:', user.avatar);
     return user;
   }
 
@@ -439,5 +440,16 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
     }
 
     return user;
+  }
+
+  async findAllIds(): Promise<string[]> {
+    console.log('[UserRepository] findAllIds called');
+    console.log('[UserRepository] EUserRole.USER value:', EUserRole.USER);
+    const result = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.status, 'active'), eq(users.role, EUserRole.USER)));
+    console.log('[UserRepository] findAllIds result count:', result.length);
+    return result.map(r => r.id);
   }
 }

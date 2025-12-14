@@ -21,6 +21,7 @@ import learnedLessonRoutes from './learned-lesson.routes';
 import { generalLimiter } from '../middlewares/ratelimit.middleware';
 import leaderboardRoutes from './leaderboard.routes';
 import examRoutes from './exam.routes';
+import notificationRoutes from './notification.routes';
 
 function route(app: Application): void {
   app.use('/api', generalLimiter);
@@ -44,6 +45,7 @@ function route(app: Application): void {
   app.use('/api/learned-lessons', learnedLessonRoutes);
   app.use('/api/exams', examRoutes);
   app.use('/api/leaderboard', leaderboardRoutes);
+  app.use('/api/notifications', notificationRoutes);
 
   // Health check route
 
