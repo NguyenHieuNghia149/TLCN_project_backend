@@ -16,13 +16,13 @@ import {
 // Rate limiting
 const submissionRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // limit each IP to 50 submission requests per windowMs
+  max: 500, // limit each IP to 50 submission requests per windowMs
   message: 'Too many submission requests from this IP, please try again later.',
 });
 
 const createSubmissionRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // limit each IP to 10 submission creation requests per windowMs
+  max: 500, // limit each IP to 10 submission creation requests per windowMs
   message: 'Too many submission creation requests from this IP, please try again later.',
 });
 

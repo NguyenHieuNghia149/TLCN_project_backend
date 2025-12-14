@@ -37,36 +37,36 @@ export const rateLimitMiddleware = (options: RateLimitOptions) => {
 
 export const authLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
+  max: 200,
   message: 'Too many authentication attempts, please try again later.',
 });
 
 export const refreshLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 1000,
   message: 'Too many refresh attempts, please try again later.',
 });
 
 export const generalLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 1000,
   message: 'Too many requests from this IP, please try again later.',
 });
 
 export const strictLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15,
+  max: 1500,
   message: 'Too many attempts from this IP, please try again later.',
 });
 
 export const passwordResetLimiter = rateLimitMiddleware({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
   message: 'Too many password reset attempts, please try again later.',
 });
 
 export const emailVerificationLimiter = rateLimitMiddleware({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
   message: 'Too many email verification requests, please try again later.',
 });
