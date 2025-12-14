@@ -1,5 +1,6 @@
 import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 import { queueService, QueueJob } from './queue.service';
+import crypto from 'crypto';
 import { codeExecutionService } from './code-execution.service';
 import { WebSocketService } from './websocket.service';
 import {
@@ -169,89 +170,46 @@ export class SubmissionService {
     // Validate problem exists
     const problem = await this.problemRepository.findById(input.problemId);
     if (!problem) {
-      throw new BaseException('Problem not found');
+      throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
     // Get testcases for the problem
     const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
     if (testcases.length === 0) {
-      throw new BaseException('No testcases found for this problem');
+      throw new BaseException('No testcases found for this problem', 404, 'TESTCASE_NOT_FOUND');
     }
 
-    // Build execution config expected by sandbox
-    const execConfig = {
+    // Generate ephemeral ID
+    const submissionId = crypto.randomUUID();
+
+    // Create job for queue
+    const job: QueueJob = {
+      submissionId: submissionId,
+      userId: input.userId || 'anonymous',
+      problemId: input.problemId,
       code: input.sourceCode,
       language: input.language,
-      testcases: testcases.map(tc => ({ id: tc.id, input: tc.input, output: tc.output })),
+      testcases: testcases.map(tc => ({
+        id: tc.id,
+        input: tc.input,
+        output: tc.output,
+        point: tc.point,
+        isPublic: tc.isPublic ?? false,
+      })),
       timeLimit: problem.timeLimit || 1000,
       memoryLimit: problem.memoryLimit || '128m',
-    } as any;
+      createdAt: new Date().toISOString(),
+      jobType: 'RUN_CODE',
+    };
 
-    // Call remote sandbox HTTP API instead of direct import to support separate sandbox service
-    // Prefer SANDBOX_URL (set in docker-compose as http://sandbox:4000), otherwise fall back to SANDBOX_HOST/PORT
-    const rawSandboxUrl = process.env.SANDBOX_URL;
-    let url: string;
-    if (rawSandboxUrl) {
-      const base = rawSandboxUrl.replace(/\/$/, '');
-      url = `${base}/api/sandbox/execute`;
-    } else {
-      const sandboxHost = process.env.SANDBOX_HOST || 'localhost';
-      const sandboxPort = process.env.SANDBOX_PORT || '4000';
-      url = `http://${sandboxHost}:${sandboxPort}/api/sandbox/execute`;
-    }
+    // Add job to queue
+    await queueService.addJob(job);
 
-    try {
-      const axiosOpts: any = {
-        timeout: (execConfig.timeLimit + 5) * 1000, // small buffer
-      };
-      if (options?.authHeader) {
-        axiosOpts.headers = { Authorization: options.authHeader };
-      }
-
-      const resp = await axios.post(url, execConfig, axiosOpts);
-
-      // Create a map of testcaseId -> isPublic for quick lookup
-      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
-
-      // Add isPublic to each result in the response
-      // Handle nested response structure: resp.data.data.results or resp.data.results
-      const addIsPublicToResults = (results: any[]) => {
-        return results.map((result: any) => ({
-          ...result,
-          isPublic: testcaseMap.get(result.testcaseId) ?? false,
-        }));
-      };
-
-      // Check for nested structure: resp.data.data.results
-      if (resp.data?.data?.results && Array.isArray(resp.data.data.results)) {
-        resp.data.data.results = addIsPublicToResults(resp.data.data.results);
-      }
-      // Check for direct structure: resp.data.results
-      else if (resp.data?.results && Array.isArray(resp.data.results)) {
-        resp.data.results = addIsPublicToResults(resp.data.results);
-      }
-      // Check for sandbox 'result' structure: resp.data.result.results
-      else if (resp.data?.result?.results && Array.isArray(resp.data.result.results)) {
-        resp.data.result.results = addIsPublicToResults(resp.data.result.results);
-      }
-
-      console.log('Sandbox response:', resp.data);
-      return resp.data;
-    } catch (err: any) {
-      // Normalize axios error and include detailed context
-      if (err.response) {
-        const status = err.response.status;
-        const body = err.response.data;
-        throw new BaseException(
-          `Sandbox error: status=${status}, message=${body?.message || JSON.stringify(body)}`
-        );
-      }
-
-      // Network / timeout / other error
-      throw new BaseException(
-        `Failed to call sandbox service: ${err.message || 'Unknown error'}${err.code ? `, code=${err.code}` : ''}`
-      );
-    }
+    return {
+      submissionId,
+      status: ESubmissionStatus.PENDING,
+      message: 'Queued for execution',
+    };
   }
 
   async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {

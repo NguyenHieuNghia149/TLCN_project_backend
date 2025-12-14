@@ -1,6 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { Request } from 'express';
+import { createClient } from 'redis';
 
 export interface SubmissionUpdate {
   submissionId: string;
@@ -38,6 +39,30 @@ export class WebSocketService {
     });
 
     this.setupEventHandlers();
+    this.setupRedisSubscription();
+  }
+
+  private async setupRedisSubscription(): Promise<void> {
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    const subscriber = createClient({ url: redisUrl });
+
+    subscriber.on('error', err => console.error('Redis Subscriber Error:', err));
+
+    await subscriber.connect();
+    console.log('WebSocketService subscribed to Redis');
+
+    await subscriber.subscribe('submission_updates', message => {
+      try {
+        const payload = JSON.parse(message);
+        // Payload structure: { submissionId, data: { submissionId, status, result, ... } }
+        // We want to emit the inner 'data' as the update
+        if (payload && payload.submissionId && payload.data) {
+          this.emitSubmissionUpdate(payload.submissionId, payload.data);
+        }
+      } catch (err) {
+        console.error('Failed to process Redis message:', err);
+      }
+    });
   }
 
   private setupEventHandlers(): void {

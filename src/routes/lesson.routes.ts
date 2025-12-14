@@ -10,8 +10,8 @@ const router = Router();
 const lessonService = new LessonService();
 const lessonController = new LessonController(lessonService);
 
-const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 100 });
-const mutateLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 20 });
+const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
+const mutateLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 200 });
 
 router.get('/', optionalAuth, generalLimit, lessonController.list.bind(lessonController));
 

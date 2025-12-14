@@ -17,7 +17,7 @@ const favoriteController = new FavoriteController(favoriteService);
 
 const favoriteRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 2000,
   message: 'Too many favorite requests, please try again later.',
 });
 

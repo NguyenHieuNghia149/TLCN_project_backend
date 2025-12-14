@@ -17,7 +17,7 @@ const examController = new ExamController(examService);
 // Rate limiting
 const examRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 1000,
   message: 'Too many exam requests from this IP, please try again later.',
 });
 
@@ -29,7 +29,7 @@ const examSessionLimit = rateLimitMiddleware({
 
 const createExamRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 10 exam creation requests per windowMs
+  max: 100, // limit each IP to 10 exam creation requests per windowMs
   message: 'Too many exam creation requests from this IP, please try again later.',
 });
 

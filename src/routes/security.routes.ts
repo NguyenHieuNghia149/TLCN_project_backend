@@ -9,7 +9,7 @@ const securityController = new SecurityController();
 // Rate limiting for security endpoints
 const securityRateLimit = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 requests per windowMs
+  max: 200, // limit each IP to 20 requests per windowMs
   message: 'Too many security requests from this IP, please try again later.',
 });
 
