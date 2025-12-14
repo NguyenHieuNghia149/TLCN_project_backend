@@ -104,12 +104,12 @@ async function startServer() {
     await examAutoSubmitService.start();
 
     // Connect to Redis (optional)
-    // queueService
-    //   .connect()
-    //   .then(() => console.log('Connected to Redis'))
-    //   .catch(error =>
-    //     console.error('Redis connection failed (continuing without it):', error.message)
-    //   );
+    queueService
+      .connect()
+      .then(() => console.log('Connected to Redis'))
+      .catch(error =>
+        console.error('Redis connection failed (continuing without it):', error.message)
+      );
 
     // Routes
     route(app);

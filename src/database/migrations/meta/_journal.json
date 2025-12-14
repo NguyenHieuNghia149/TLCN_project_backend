@@ -21,6 +21,13 @@
       "when": 1765439675631,
       "tag": "20251211075435_slimy_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765722782813,
+      "tag": "20251214143302_add_submission_type",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ export interface QueueJob {
   timeLimit: number;
   memoryLimit: string;
   createdAt: string;
+  jobType?: 'SUBMISSION' | 'RUN_CODE';
 }
 
 export class QueueService {
@@ -152,6 +153,23 @@ export class QueueService {
         length: 0,
         isHealthy: false,
       };
+    }
+  }
+
+  async publish(channel: string, message: string): Promise<void> {
+    if (!this.isConnected) {
+      // Try to connect if not connected
+      try {
+        await this.connect();
+      } catch (e) {
+        console.warn('Cannot publish to Redis, client disconnected', e);
+        return;
+      }
+    }
+    try {
+      await this.client.publish(channel, message);
+    } catch (error) {
+      console.error(`Failed to publish to ${channel}:`, error);
     }
   }
 }
