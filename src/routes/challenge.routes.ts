@@ -42,6 +42,13 @@ router.get(
 );
 
 router.get(
+  '/tags',
+  challengeRateLimit,
+  optionalAuth,
+  challengeController.getAllTags.bind(challengeController)
+);
+
+router.get(
   '/topics/:topicId/tags',
   challengeRateLimit,
   optionalAuth,
@@ -63,6 +70,14 @@ router.post(
   createChallengeRateLimit,
   validate(CreateChallengeSchema),
   challengeController.createChallenge.bind(challengeController)
+);
+
+router.get(
+  '/all',
+  authenticationToken,
+  requireTeacherOrOwner,
+  challengeRateLimit,
+  challengeController.getAllChallenges.bind(challengeController)
 );
 
 router.get(

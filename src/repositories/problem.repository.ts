@@ -10,8 +10,9 @@ import {
 import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@/database/schema/solutionApproaches';
-import { and, desc, eq, gt, ilike, lt, or, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, lt, or, inArray, sql } from 'drizzle-orm';
 import { ProblemVisibility } from '@/enums/problemVisibility.enum';
+import { topics } from '@/database/schema';
 
 export type ChallengeCreationResult = {
   problem: ProblemEntity;
@@ -191,6 +192,21 @@ export class ProblemRepository extends BaseRepository<
     return Array.from(tagSet);
   }
 
+  async getAllTags(): Promise<string[]> {
+    const rows = await this.db.select({ tags: problems.tags }).from(problems);
+
+    const tagSet = new Set<string>();
+    for (const row of rows) {
+      const csv = (row.tags as unknown as string) || '';
+      csv
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+        .forEach(t => tagSet.add(t));
+    }
+    return Array.from(tagSet);
+  }
+
   async findByTopicWithTagsCursor(params: {
     topicId: string;
     tags: string[];
@@ -240,6 +256,73 @@ export class ProblemRepository extends BaseRepository<
     return this.db.select().from(problems).where(inArray(problems.id, ids));
   }
 
+  async findAllProblems(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    sortField: string = 'createdAt',
+    sortOrder: 'asc' | 'desc' = 'desc'
+  ): Promise<{ data: any[]; total: number }> {
+    const offset = (page - 1) * limit;
+
+    // Build conditions
+    const conditions = [];
+    if (search) {
+      conditions.push(ilike(problems.title, `%${search}%`));
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Build order by
+    let orderBy;
+    const orderFunc = sortOrder === 'asc' ? (col: any) => col : desc;
+
+    switch (sortField) {
+      case 'title':
+        orderBy = orderFunc(problems.title);
+        break;
+      case 'difficulty':
+        orderBy = orderFunc(problems.difficult); // Note: column name is 'difficult'
+        break;
+      case 'visibility':
+        orderBy = orderFunc(problems.visibility);
+        break;
+      case 'createdAt':
+      default:
+        orderBy = orderFunc(problems.createdAt);
+        break;
+    }
+
+    const [totalResult] = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(problems)
+      .where(whereClause);
+    const total = Number(totalResult?.count || 0);
+
+    const data = await this.db
+      .select({
+        id: problems.id,
+        title: problems.title,
+        description: problems.description,
+        difficult: problems.difficult,
+        constraint: problems.constraint,
+        tags: problems.tags,
+        lessonId: problems.lessonId,
+        topicId: problems.topicId,
+        visibility: problems.visibility,
+        createdAt: problems.createdAt,
+        updatedAt: problems.updatedAt,
+        topicName: topics.topicName,
+      })
+      .from(problems)
+      .leftJoin(topics, eq(problems.topicId, topics.id))
+      .where(whereClause)
+      .orderBy(orderBy)
+      .limit(limit)
+      .offset(offset);
+
+    return { data, total };
+  }
+
   /**
    * Create a problem + testcases + solution using provided transaction client `tx`.
    * This allows callers to compose a larger transaction (e.g., creating exam + problems atomically).
@@ -250,9 +333,80 @@ export class ProblemRepository extends BaseRepository<
    */
   async createProblemTransactional(
     input: ProblemInput,
-    tx?: any
+    transaction?: any
   ): Promise<ChallengeCreationResult> {
-    if (tx) return this._executeCreateProblem(tx, input);
+    if (transaction) return this._executeCreateProblem(transaction, input);
     return this.db.transaction(async t => this._executeCreateProblem(t, input));
+  }
+  /**
+   * Update solution and its approaches transactionally.
+   * If solution doesn't exist, create it.
+   */
+  async updateSolutionTransactional(problemId: string, solutionData: any): Promise<void> {
+    await this.db.transaction(async tx => {
+      // 1. Check if solution exists
+      const existingSolution = await tx
+        .select()
+        .from(solutions)
+        .where(eq(solutions.problemId, problemId))
+        .limit(1)
+        .then((rows: any[]) => rows[0]);
+
+      let solutionId: string;
+
+      if (existingSolution) {
+        // Update existing solution
+        solutionId = existingSolution.id;
+        await tx
+          .update(solutions)
+          .set({
+            title: solutionData.title,
+            description: solutionData.description,
+            videoUrl: solutionData.videoUrl || null,
+            imageUrl: solutionData.imageUrl || null,
+            isVisible: solutionData.isVisible ?? true,
+            updatedAt: new Date(),
+          } as any)
+          .where(eq(solutions.id, solutionId));
+      } else {
+        // Create new solution
+        const newSolution = await tx
+          .insert(solutions)
+          .values({
+            problemId,
+            title: solutionData.title || 'Reference Solution',
+            description: solutionData.description,
+            videoUrl: solutionData.videoUrl || null,
+            imageUrl: solutionData.imageUrl || null,
+            isVisible: solutionData.isVisible ?? true,
+          } as any)
+          .returning()
+          .then((rows: any[]) => rows[0]);
+
+        if (!newSolution) throw new Error('Failed to create solution');
+        solutionId = newSolution.id;
+      }
+
+      // 2. Handle approaches: Delete all existing and insert new ones
+      await tx.delete(solutionApproaches).where(eq(solutionApproaches.solutionId, solutionId));
+
+      if (solutionData.solutionApproaches && solutionData.solutionApproaches.length > 0) {
+        await Promise.all(
+          solutionData.solutionApproaches.map((ap: any) =>
+            tx.insert(solutionApproaches).values({
+              solutionId: solutionId,
+              title: ap.title,
+              description: ap.description,
+              sourceCode: ap.sourceCode,
+              language: ap.language,
+              timeComplexity: ap.timeComplexity,
+              spaceComplexity: ap.spaceComplexity,
+              explanation: ap.explanation,
+              order: ap.order,
+            } as any)
+          )
+        );
+      }
+    });
   }
 }
