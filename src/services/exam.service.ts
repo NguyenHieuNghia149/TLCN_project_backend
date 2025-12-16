@@ -76,9 +76,6 @@ export class ExamService {
       userId
     );
     if (existing) {
-      console.log(
-        `[getOrCreateSession] Found existing IN_PROGRESS participation ${existing.id}. Returning it.`
-      );
       return {
         sessionId: existing.id,
         examId: existing.examId,
@@ -97,10 +94,6 @@ export class ExamService {
     }
 
     // No IN_PROGRESS participation exists, create a new one
-    console.log(
-      `[getOrCreateSession] No IN_PROGRESS participation found. Creating new session for user ${userId} in exam ${examId}.`
-    );
-
     const examData = await this.examRepository.findById(examId);
     if (!examData) throw new Error('Exam not found');
 
@@ -163,21 +156,14 @@ export class ExamService {
 
   async syncSession(sessionId: string, answers: any, clientTimestamp?: string): Promise<boolean> {
     const now = new Date();
-    console.log(
-      `[syncSession] Starting sync for session ${sessionId}. ClientTimestamp: ${clientTimestamp}`
-    );
 
     // Merge incoming partial answers with existing currentAnswers to avoid overwriting other problems
     const existing = await this.examParticipationRepository.findById(sessionId);
     if (!existing) {
-      console.error(`[syncSession] Session ${sessionId} not found`);
       throw new ExamParticipationNotFoundException();
     }
 
     const existingAnswers = existing.currentAnswers || {};
-    console.log(
-      `[syncSession] Existing answers for session: ${Object.keys(existingAnswers).length} problems`
-    );
 
     // If incoming answers include per-problem `updatedAt` timestamps, merge per-key
     // and only accept incoming values that are newer than stored ones. This prevents
@@ -217,23 +203,16 @@ export class ExamService {
         const accept = incomingUpdated === 0 ? true : incomingUpdated >= existingUpdated;
 
         if (accept) {
-          console.log(
-            `[syncSession] Accepting incoming answer for problem ${key} (incoming: ${incomingUpdated}, existing: ${existingUpdated})`
-          );
           merged[key] = {
-            ...existingItem,
+            existingItem,
             ...incomingItem,
           };
         } else {
           // keep existing
-          console.log(
-            `[syncSession] Rejecting incoming answer for problem ${key} (incoming: ${incomingUpdated}, existing: ${existingUpdated})`
-          );
           merged[key] = existingItem;
         }
       } catch (err) {
         // On any parse/merge error, be conservative and keep existing value
-        console.warn(`[syncSession] Error merging problem ${key}, keeping existing:`, err);
         merged[key] = existingAnswers[key] || incoming[key];
       }
     }
@@ -243,7 +222,6 @@ export class ExamService {
       lastSyncedAt: now,
     });
 
-    console.log(`[syncSession] ✓ Session ${sessionId} synced. Updated: ${!!updated}`);
     return !!updated;
   }
 
@@ -720,7 +698,6 @@ export class ExamService {
             finalized++;
           } catch (err) {
             // log and continue
-            console.error(`Failed to auto-submit participation ${p.id}:`, err);
           }
         }
       }
@@ -979,7 +956,6 @@ export class ExamService {
     // Get user info
     const userRepo = new (await import('@/repositories/user.repository')).UserRepository();
     const user = await userRepo.findById(participation.userId);
-    console.log(user);
 
     // Get solutions for each problem
     const solutions = await Promise.all(
@@ -1021,16 +997,6 @@ export class ExamService {
 
           // score = Math.round((passedPoints / maxPoints) * 100);
           score = passedPoints;
-          console.log(
-            'Score for problem',
-            problemId,
-            ':',
-            score,
-            '/',
-            maxPoints,
-            'points',
-            passedPoints
-          );
         }
 
         return {

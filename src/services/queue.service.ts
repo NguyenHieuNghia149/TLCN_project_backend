@@ -33,17 +33,14 @@ export class QueueService {
     });
 
     this.client.on('error', err => {
-      console.error('Redis Client Error:', err);
       this.isConnected = false;
     });
 
     this.client.on('connect', () => {
-      console.log('Redis connected successfully');
       this.isConnected = true;
     });
 
     this.client.on('disconnect', () => {
-      console.log('Redis disconnected');
       this.isConnected = false;
     });
   }
@@ -53,7 +50,6 @@ export class QueueService {
       await this.client.connect();
       this.isConnected = true;
     } catch (error) {
-      console.error('Failed to connect to Redis:', error);
       throw error;
     }
   }
@@ -63,7 +59,6 @@ export class QueueService {
       await this.client.quit();
       this.isConnected = false;
     } catch (error) {
-      console.error('Failed to disconnect from Redis:', error);
       throw error;
     }
   }
@@ -84,9 +79,7 @@ export class QueueService {
 
     try {
       await this.client.lPush('judge_queue', JSON.stringify(job));
-      console.log(`Job added to queue: ${job.submissionId}`);
     } catch (error) {
-      console.error('Failed to add job to queue:', error);
       throw error;
     }
   }
@@ -103,7 +96,6 @@ export class QueueService {
       }
       return null;
     } catch (error) {
-      console.error('Failed to get job from queue:', error);
       throw error;
     }
   }
@@ -116,7 +108,6 @@ export class QueueService {
     try {
       return await this.client.lLen('judge_queue');
     } catch (error) {
-      console.error('Failed to get queue length:', error);
       throw error;
     }
   }
@@ -128,9 +119,7 @@ export class QueueService {
 
     try {
       await this.client.del('judge_queue');
-      console.log('Queue cleared');
     } catch (error) {
-      console.error('Failed to clear queue:', error);
       throw error;
     }
   }
@@ -148,7 +137,6 @@ export class QueueService {
         isHealthy,
       };
     } catch (error) {
-      console.error('Failed to get queue status:', error);
       return {
         length: 0,
         isHealthy: false,
@@ -162,14 +150,13 @@ export class QueueService {
       try {
         await this.connect();
       } catch (e) {
-        console.warn('Cannot publish to Redis, client disconnected', e);
         return;
       }
     }
     try {
       await this.client.publish(channel, message);
     } catch (error) {
-      console.error(`Failed to publish to ${channel}:`, error);
+      // Silent error handling
     }
   }
 }

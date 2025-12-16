@@ -116,7 +116,6 @@ export class DashboardService {
         recentExams,
       }
     } catch (error) {
-      console.error('Error getting dashboard stats:', error)
       throw error
     }
   }

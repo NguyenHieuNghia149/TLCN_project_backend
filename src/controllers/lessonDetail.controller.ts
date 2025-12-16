@@ -37,7 +37,6 @@ export class LessonDetailController {
         return;
       }
 
-      console.error('Error getting lesson by ID:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -65,7 +64,6 @@ export class LessonDetailController {
         message: 'Lessons retrieved successfully',
       });
     } catch (error) {
-      console.error('Error getting lessons by topic ID:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -83,7 +81,6 @@ export class LessonDetailController {
         message: 'All lessons retrieved successfully',
       });
     } catch (error) {
-      console.error('Error getting all lessons:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',

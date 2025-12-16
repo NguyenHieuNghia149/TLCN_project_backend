@@ -13,7 +13,6 @@ export class DashboardController {
       const stats = await this.service.getStats()
       res.status(200).json({ success: true, data: stats })
     } catch (error) {
-      console.error('Error in DashboardController.getStats:', error)
       res.status(500).json({
         success: false,
         message: 'Failed to fetch dashboard statistics',

@@ -270,21 +270,16 @@ export class AuthController {
         },
         async (error: any, result?: any) => {
           if (error || !result) {
-            console.error('Cloudinary upload error:', error)
             return res.status(500).json({
               success: false,
               message: 'Failed to upload image',
             });
           }
 
-          console.log('Cloudinary upload success, URL:', result.secure_url)
-
           try {
             // Update user profile with Cloudinary URL
             const updateData = { avatar: result.secure_url };
             const profile = await this.userService.updateProfile(userId, updateData);
-
-            console.log('Profile updated with avatar:', profile.avatar)
 
             return res.status(200).json({
               success: true,
@@ -292,7 +287,6 @@ export class AuthController {
               data: profile,
             });
           } catch (error) {
-            console.error('Profile update error:', error)
             return res.status(500).json({
               success: false,
               message: 'Failed to update profile',

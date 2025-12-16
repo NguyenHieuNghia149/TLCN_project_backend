@@ -27,7 +27,6 @@ export class SecurityService {
   private ensureSecurityDir(): void {
     if (!fs.existsSync(this.securityDir)) {
       fs.mkdirSync(this.securityDir, { recursive: true });
-      console.log(`Created security directory: ${this.securityDir}`);
     }
   }
 
@@ -380,7 +379,6 @@ export class SecurityService {
     // Write seccomp profile to file
     const seccompPath = path.join(this.securityDir, 'seccomp.json');
     fs.writeFileSync(seccompPath, JSON.stringify(this.seccompProfile, null, 2));
-    console.log(`Seccomp profile written to: ${seccompPath}`);
   }
 
   getSecurityProfile(): SecurityProfile {
@@ -433,7 +431,7 @@ export class SecurityService {
 
     for (const pattern of infiniteLoopPatterns) {
       if (pattern.test(code)) {
-        console.warn(`Warning: Code contains potential infinite loop pattern: ${pattern.source}`);
+        // Silent check for infinite loop patterns
       }
     }
 
@@ -445,7 +443,7 @@ export class SecurityService {
 
     for (const pattern of recursionPatterns) {
       if (pattern.test(code)) {
-        console.warn(`Warning: Code contains potential recursion: ${pattern.source}`);
+        // Silent check for recursion patterns
       }
     }
   }
@@ -525,10 +523,9 @@ export class SecurityService {
     try {
       if (fs.existsSync(this.securityDir)) {
         fs.rmSync(this.securityDir, { recursive: true, force: true });
-        console.log(`Cleaned up security directory: ${this.securityDir}`);
       }
     } catch (error) {
-      console.warn(`Failed to cleanup security directory: ${error}`);
+      // Silent error handling for cleanup
     }
   }
 }

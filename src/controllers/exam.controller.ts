@@ -348,9 +348,6 @@ export class ExamController {
       });
     }
 
-    // Log unexpected errors
-    console.error('Unexpected error in ExamController:', error);
-
     // Return generic error response
     return res.status(500).json({
       success: false,

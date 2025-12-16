@@ -18,7 +18,6 @@ export class LearnedLessonService {
 
       return await this.learnedLessonRepository.hasUserCompletedLesson(userId, lessonId);
     } catch (error) {
-      console.error('Error checking lesson completion:', error);
       throw error;
     }
   }
@@ -35,7 +34,6 @@ export class LearnedLessonService {
       const result = await this.learnedLessonRepository.markLessonAsCompleted(userId, lessonId);
       return !!result;
     } catch (error) {
-      console.error('Error marking lesson as completed:', error);
       throw error;
     }
   }
@@ -52,7 +50,6 @@ export class LearnedLessonService {
       const lessons = await this.learnedLessonRepository.getCompletedLessonsByUser(userId);
       return lessons.map(lesson => lesson.lessonId);
     } catch (error) {
-      console.error('Error getting completed lessons:', error);
       throw error;
     }
   }
