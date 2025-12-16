@@ -53,9 +53,6 @@ export class SubmissionController {
       const runData = req.body as CreateSubmissionInput;
       const userId = (req as any).user?.userId; // optional
 
-      console.log('Running code for user:', userId);
-      console.log('Run data:', runData);
-
       const authHeader = req.headers.authorization as string | undefined;
       const result = await this.submissionService.runCode({ ...runData, userId }, { authHeader });
 
@@ -110,7 +107,6 @@ export class SubmissionController {
         limit,
         offset,
       });
-      console.log(result);
 
       res.status(200).json({
         success: true,
@@ -133,7 +129,6 @@ export class SubmissionController {
   ): Promise<void | Response> {
     try {
       const { problemId } = req.params;
-      console.log('Problem ID:', problemId);
 
       if (!problemId) {
         throw new ProblemIdRequiredException();
@@ -302,9 +297,6 @@ export class SubmissionController {
         timestamp: errorResponse.timestamp,
       });
     }
-
-    // Log unexpected errors
-    console.error('Unexpected submission error:', error);
 
     res.status(500).json({
       success: false,

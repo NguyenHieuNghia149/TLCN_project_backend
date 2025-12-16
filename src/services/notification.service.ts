@@ -85,14 +85,10 @@ export class NotificationService {
 
     // 1. Get all users
     const userIds = await this.userRepository.findAllIds();
-    console.log(`[NotificationService] Found ${userIds.length} active users to notify.`);
 
     if (userIds.length === 0) {
-      console.warn('[NotificationService] No users to notify.');
       return;
     }
-
-    console.log(`[Notification] Broadcasting '${title}' to ${userIds.length} users...`);
 
     // 2. Prepare DB inserts
     const notificationsToInsert: CreateNotificationInput[] = userIds.map(userId => ({

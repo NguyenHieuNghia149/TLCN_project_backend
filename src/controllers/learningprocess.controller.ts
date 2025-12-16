@@ -194,8 +194,6 @@ export class LearningProcessController {
       });
     }
 
-    // Log unexpected errors
-    console.error('Learning process error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error',

@@ -142,7 +142,6 @@ export class CodeExecutionService {
   private ensureWorkspaceDir(): void {
     if (!fs.existsSync(this.workspaceDir)) {
       fs.mkdirSync(this.workspaceDir, { recursive: true });
-      console.log(`Created workspace directory: ${this.workspaceDir}`);
     }
   }
 
@@ -347,8 +346,6 @@ export class CodeExecutionService {
     timeout: number = 30000
   ): Promise<ExecutionResult> {
     return new Promise((resolve, reject) => {
-      console.log(`Running: docker ${args.join(' ')}`);
-
       const proc = spawn('docker', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
@@ -419,9 +416,8 @@ export class CodeExecutionService {
     setTimeout(() => {
       try {
         fs.rmSync(jobDir, { recursive: true, force: true });
-        console.log(`Cleaned up job directory: ${jobDir}`);
       } catch (error) {
-        console.warn(`Failed to cleanup ${jobDir}:`, error);
+        // Silent error handling
       }
     }, delay);
   }
@@ -432,8 +428,6 @@ export class CodeExecutionService {
 
     // Add drive letter handling for Windows (C: -> /c/)
     const dockerPath = absJobDir.replace(/^([A-Z]):/, (match, drive) => `/${drive.toLowerCase()}`);
-
-    console.log(`Compiling in: ${dockerPath}`);
 
     // Use security service to generate secure Docker arguments
     const dockerArgs = securityService.generateSecureDockerArgs(
@@ -450,10 +444,7 @@ export class CodeExecutionService {
       if (result.exitCode !== 0) {
         throw new BaseException(`Compilation failed: ${result.stderr}`, 400, 'COMPILATION_FAILED');
       }
-
-      console.log('✅ Compilation successful');
     } catch (error) {
-      console.error('❌ Compilation error:', error);
       throw error;
     }
   }
@@ -470,14 +461,10 @@ export class CodeExecutionService {
 
     const actualTimeLimit = Math.min(timeLimit, config.timeout);
 
-    console.log(`Running code with time limit: ${actualTimeLimit}s`);
-    console.log(`Input provided: "${input}"`);
-
     // Create input file for Docker
     if (input) {
       const inputFile = path.join(jobDir, 'input.txt');
       fs.writeFileSync(inputFile, input, 'utf8');
-      console.log(`Created input file: ${inputFile}`);
     }
 
     // Use input redirection instead of stdin
@@ -492,11 +479,8 @@ export class CodeExecutionService {
       dockerPath
     );
 
-    console.log(`Docker command: docker ${dockerArgs.join(' ')}`);
-
     try {
       const result = await this.runDocker(dockerArgs, '', (actualTimeLimit + 2) * 1000);
-      console.log(`Execution result - stdout: "${result.stdout}", stderr: "${result.stderr}"`);
       return result;
     } catch (error: any) {
       if (error.message.includes('timeout') || error.message.includes('Execution timeout')) {
@@ -518,7 +502,6 @@ export class CodeExecutionService {
 
       // Create job directory
       fs.mkdirSync(jobDir, { recursive: true });
-      console.log(`Created job directory: ${jobDir}`);
 
       // Get language config
       const langConfig = languages[config.language as keyof typeof languages];
@@ -534,13 +517,10 @@ export class CodeExecutionService {
 
       // Write code to file
       fs.writeFileSync(filePath, config.code, 'utf8');
-      console.log(`Code written to: ${filePath}`);
 
       // Compile if needed
       if (langConfig.needsCompilation && langConfig.compileCmd) {
-        console.log(`Compiling ${config.language} code...`);
         await this.compileCode(jobDir, langConfig, config.memoryLimit);
-        console.log('Compilation successful');
       }
 
       // Execute each testcase
@@ -550,16 +530,12 @@ export class CodeExecutionService {
       for (let i = 0; i < config.testcases.length; i++) {
         const testcase = config.testcases[i];
         if (!testcase) {
-          console.warn(`Testcase at index ${i} is undefined, skipping...`);
           continue;
         }
 
         const testStart = Date.now();
 
-        console.log(`Running testcase ${i + 1}/${config.testcases.length}...`);
-
         try {
-          console.log(`Testcase ${i + 1} input: "${testcase.input || ''}"`);
           const result = await this.runCode(
             jobDir,
             langConfig,
@@ -584,15 +560,7 @@ export class CodeExecutionService {
             executionTime: Date.now() - testStart,
             error: result.exitCode !== 0 ? result.stderr : undefined,
           });
-
-          console.log(`Testcase ${i + 1}: ${ok ? '✅ PASS' : '❌ FAIL'}`);
-          if (!ok) {
-            console.log(`  Expected: "${expected}"`);
-            console.log(`  Actual: "${actual}"`);
-          }
         } catch (error: any) {
-          console.log(`Testcase ${i + 1}: ❌ ERROR - ${error.message}`);
-
           results.push({
             index: i,
             input: testcase.input || '',
@@ -615,15 +583,12 @@ export class CodeExecutionService {
             : '0.00',
       };
 
-      console.log(`Batch execution completed: ${passed}/${config.testcases.length} passed`);
-
       return {
         summary,
         results,
         processingTime: Date.now() - startTime,
       };
     } catch (error: any) {
-      console.error('Batch execution error:', error);
       throw error;
     } finally {
       // Cleanup after delay

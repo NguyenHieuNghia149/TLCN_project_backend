@@ -67,7 +67,6 @@ export class FavoriteService {
 
   async listUserFavorites(userId: string): Promise<FavoriteResponse[]> {
     const favorites = await this.favoriteRepository.listFavoritesByUser(userId);
-    console.log('Raw favorites from DB:', JSON.stringify(favorites, null, 2));
 
     const problemIds = favorites
       .map(row => row.favorite.problemId)
@@ -87,7 +86,6 @@ export class FavoriteService {
       return this.mapFavoriteRowToResponse(row, pointsMap, isSolved);
     });
 
-    console.log('Transformed favorites response:', JSON.stringify(result, null, 2));
     return result;
   }
 

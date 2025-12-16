@@ -29,7 +29,6 @@ export class LearningProcessService {
 
       return await this.learningProcessRepository.getUserLearningProgress(userId);
     } catch (error) {
-      console.error('Error in getUserLearningProgress:', error);
       throw error;
     }
   }
@@ -48,7 +47,6 @@ export class LearningProcessService {
 
       return await this.learningProcessRepository.getTopicProgress(userId, topicId);
     } catch (error) {
-      console.error('Error in getTopicProgress:', error);
       throw error;
     }
   }
@@ -65,7 +63,6 @@ export class LearningProcessService {
       const progress = await this.learningProcessRepository.getUserLearningProgress(userId);
       return progress.recentTopic || null;
     } catch (error) {
-      console.error('Error in getRecentTopic:', error);
       throw error;
     }
   }
@@ -81,7 +78,6 @@ export class LearningProcessService {
 
       return await this.learningProcessRepository.getUserLessonProgress(userId);
     } catch (error) {
-      console.error('Error in getUserLessonProgress:', error);
       throw error;
     }
   }
@@ -100,7 +96,6 @@ export class LearningProcessService {
 
       return await this.learningProcessRepository.getLessonProgress(userId, lessonId);
     } catch (error) {
-      console.error('Error in getLessonProgress:', error);
       throw error;
     }
   }
@@ -117,7 +112,6 @@ export class LearningProcessService {
       const progress = await this.learningProcessRepository.getUserLessonProgress(userId);
       return progress.recentLesson || null;
     } catch (error) {
-      console.error('Error in getRecentLesson:', error);
       throw error;
     }
   }
