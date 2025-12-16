@@ -235,6 +235,10 @@ export class ChallengeService {
     return this.problemRepository.getTagsByTopicId(topicId);
   }
 
+  async getAllTags(): Promise<string[]> {
+    return this.problemRepository.getAllTags();
+  }
+
   async listProblemsByTopicAndTags(params: {
     topicId: string;
     tags: string[];
@@ -295,6 +299,47 @@ export class ChallengeService {
         ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
         : null,
     };
+  }
+
+  async getAllChallenges(
+    page: number,
+    limit: number,
+    search?: string,
+    sortField?: string,
+    sortOrder?: 'asc' | 'desc'
+  ): Promise<{
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficulty: string;
+      visibility: boolean;
+      topicId: string;
+      topicName: string;
+      lessonId: string | null;
+      createdAt: Date | string;
+    }>;
+    total: number;
+  }> {
+    const { data, total } = await this.problemRepository.findAllProblems(
+      page,
+      limit,
+      search,
+      sortField,
+      sortOrder
+    );
+    const items = data.map(p => ({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      difficulty: p.difficult,
+      visibility: p.visibility,
+      topicId: p.topicId,
+      topicName: p.topicName,
+      lessonId: p.lessonId,
+      createdAt: p.createdAt,
+    }));
+    return { items, total };
   }
 
   async getChallengeById(challengeId: string, userId?: string): Promise<ChallengeResponse> {
@@ -366,6 +411,11 @@ export class ChallengeService {
     const updatedProblem = await this.problemRepository.update(challengeId, dbUpdateData);
     if (!updatedProblem) {
       throw new NotFoundException(`Failed to update challenge with ID ${challengeId}.`);
+    }
+
+    // Handle solution update if provided
+    if (updateData.solution) {
+      await this.problemRepository.updateSolutionTransactional(challengeId, updateData.solution);
     }
 
     return this.getChallengeById(challengeId);

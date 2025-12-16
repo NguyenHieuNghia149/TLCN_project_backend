@@ -39,6 +39,35 @@ export class ChallengeController {
     }
   }
 
+  async getAllChallenges(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const search = (req.query.q as string) || undefined;
+      const sortField = (req.query.sortField as string) || undefined;
+      const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || undefined;
+
+      const result = await this.challengeService.getAllChallenges(
+        page,
+        limit,
+        search,
+        sortField,
+        sortOrder
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async listProblemsByTopic(
     req: AuthenticatedRequest,
     res: Response,
@@ -128,6 +157,15 @@ export class ChallengeController {
       if (!topicId) throw new BaseException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
       const tags = await this.challengeService.getTopicTags(topicId);
+      return res.status(200).json({ success: true, data: { tags } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAllTags(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    try {
+      const tags = await this.challengeService.getAllTags();
       return res.status(200).json({ success: true, data: { tags } });
     } catch (error) {
       next(error);
