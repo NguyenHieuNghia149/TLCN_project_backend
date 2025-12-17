@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   ChallengeController,
   CreateChallengeSchema,
+  UpdateChallengeSchema,
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
 } from '@/controllers/challenge.controller';
@@ -92,7 +93,7 @@ router.put(
   authenticationToken,
   requireTeacherOrOwner,
   challengeRateLimit,
-  validate(CreateChallengeSchema),
+  validate(UpdateChallengeSchema),
   challengeController.updateChallenge.bind(challengeController)
 );
 

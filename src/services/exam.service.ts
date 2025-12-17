@@ -266,6 +266,132 @@ export class ExamService {
     return newExam;
   }
 
+  async updateExam(
+    examId: string,
+    examData: Partial<CreateExamInput> & { id?: string }
+  ): Promise<ExamResponse> {
+    // Check for existing participations
+    const participations = await this.examParticipationRepository.findByExamId(examId);
+    const hasParticipations = participations.length > 0;
+
+    const { challenges, ...fields } = examData;
+
+    // Map frontend fields back to DB columns if necessary
+    const dbFields: any = {};
+    if (fields.title) dbFields.title = fields.title;
+    if (fields.password) dbFields.password = fields.password;
+    if (fields.duration) dbFields.duration = fields.duration;
+    if (fields.startDate) dbFields.startDate = new Date(fields.startDate);
+    if (fields.endDate) dbFields.endDate = new Date(fields.endDate);
+    if (fields.isVisible !== undefined) dbFields.isVisible = fields.isVisible;
+    if (fields.maxAttempts !== undefined) dbFields.maxAttempts = fields.maxAttempts;
+
+    if (hasParticipations) {
+      // Validate that restricted fields are NOT being changed
+      const existingExam = await this.examRepository.findById(examId);
+      if (!existingExam) {
+        throw new NotFoundException(`Exam with ID ${examId} not found.`);
+      }
+
+      // Helper to check date equality (within 1 second tolerance)
+      const isDateDiff = (d1: Date | string, d2: Date) => {
+        const t1 = new Date(d1).getTime();
+        const t2 = d2.getTime();
+        return Math.abs(t1 - t2) > 1000;
+      };
+
+      const isDurationChanged =
+        fields.duration !== undefined && fields.duration !== existingExam.duration;
+      const isStartChanged =
+        fields.startDate && isDateDiff(fields.startDate, existingExam.startDate);
+      const isEndChanged = fields.endDate && isDateDiff(fields.endDate, existingExam.endDate);
+      const isMaxAttemptsChanged =
+        fields.maxAttempts !== undefined && fields.maxAttempts !== existingExam.maxAttempts;
+
+      if (isDurationChanged || isStartChanged || isEndChanged || isMaxAttemptsChanged) {
+        throw new BaseException(
+          'Cannot update duration, dates, or max attempts: Users have already participated in this exam.',
+          400,
+          'EXAM_HAS_PARTICIPATIONS'
+        );
+      }
+
+      // Check if challenges changed ONLY if challenges are provided in the update
+      if (challenges !== undefined) {
+        const currentLinks = await this.examToProblemsRepository.findByExamId(examId);
+        // Sort and map local challenges
+        const incomingList = challenges
+          .map((ch: any, index: number) => ({
+            id: ch.challengeId || ch.id,
+            order: ch.orderIndex ?? index,
+          }))
+          .sort((a, b) => a.order - b.order);
+
+        const currentList = currentLinks
+          .map(l => ({
+            id: l.problemId,
+            order: l.orderIndex,
+          }))
+          .sort((a, b) => a.order - b.order);
+
+        let isChallengesChanged = incomingList.length !== currentList.length;
+        if (!isChallengesChanged) {
+          for (let i = 0; i < incomingList.length; i++) {
+            const inc = incomingList[i];
+            const cur = currentList[i];
+            if (!inc || !cur || inc.id !== cur.id || inc.order !== cur.order) {
+              isChallengesChanged = true;
+              break;
+            }
+          }
+        }
+
+        if (isChallengesChanged) {
+          throw new BaseException(
+            'Cannot update challenges: Users have already participated in this exam.',
+            400,
+            'EXAM_HAS_PARTICIPATIONS'
+          );
+        }
+      }
+
+      // If we reach here, it's a safe update (only title, password, visibility changed)
+      // We can use the simple update method
+      await this.examRepository.update(examId, dbFields);
+      return this.getExamById(examId);
+    }
+
+    // Normal update for exams without participations
+    // Prepare challenges structure for repository
+    const challengeLinks = (challenges || []).map((ch: any, index: number) => ({
+      challengeId: ch.challengeId || ch.id,
+      orderIndex: ch.orderIndex ?? index,
+    }));
+
+    await this.examRepository.updateExamWithChallenges(examId, dbFields, challengeLinks);
+
+    return this.getExamById(examId);
+  }
+
+  async deleteExam(examId: string): Promise<boolean> {
+    const existing = await this.examRepository.findById(examId);
+    if (!existing) {
+      throw new ExamNotFoundException();
+    }
+
+    // Check for existing participations
+    const participations = await this.examParticipationRepository.findByExamId(examId);
+    if (participations.length > 0) {
+      throw new BaseException(
+        'Cannot delete exam: Users have already participated in this exam.',
+        400,
+        'EXAM_HAS_PARTICIPATIONS'
+      );
+    }
+
+    return this.examRepository.deleteExamWithRelations(examId);
+  }
+
   async getExamById(examId: string): Promise<ExamResponse> {
     const examData = await this.examRepository.findById(examId);
     if (!examData) {
@@ -304,6 +430,7 @@ export class ExamService {
         id: p.id,
         title: p.title,
         difficulty: p.difficult,
+        visibility: p.visibility,
         orderIndex: orderMap.get(p.id) ?? 0,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
@@ -449,11 +576,13 @@ export class ExamService {
     offset = 0,
     search?: string,
     filterType?: 'all' | 'my' | 'participated',
-    userId?: string
+    userId?: string,
+    isVisible?: boolean
   ): Promise<{ data: ExamResponse[]; total: number }> {
     // Build options for repository
     const options: any = {};
     if (search) options.search = search;
+    if (isVisible !== undefined) options.isVisible = isVisible;
 
     // If filterType is 'participated' and userId provided, get exam ids participated by user
     if (filterType === 'participated' && userId) {

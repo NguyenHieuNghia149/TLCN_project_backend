@@ -40,6 +40,9 @@ export const CreateProblemSchema = z.object({
 
 export type ProblemInput = z.infer<typeof CreateProblemSchema>;
 
+export const UpdateProblemSchema = CreateProblemSchema.partial();
+export type UpdateProblemInput = z.infer<typeof UpdateProblemSchema>;
+
 export const ProblemResponseSchema = z.object({
   id: z.string(),
   title: z.string(),
