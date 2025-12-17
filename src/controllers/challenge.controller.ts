@@ -7,6 +7,7 @@ import {
   UpdateSolutionVisibilityInput,
   CreateProblemSchema,
   UpdateSolutionVisibilitySchema,
+  UpdateProblemSchema,
 } from '@/validations/problem.validation';
 import { z } from 'zod';
 
@@ -310,6 +311,7 @@ export class ChallengeController {
 // Export validation schemas for use in routes
 export {
   CreateProblemSchema as CreateChallengeSchema,
+  UpdateProblemSchema as UpdateChallengeSchema,
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
 };

@@ -4,6 +4,7 @@ import {
   JoinExamSchema,
   SubmitExamSchema,
   GetExamLeaderboardSchema,
+  UpdateExamSchema,
 } from '@/validations/exam.validation';
 import { ExamService } from '@/services/exam.service';
 import { authenticationToken, requireTeacher } from '@/middlewares/auth.middleware';
@@ -139,7 +140,23 @@ router.post(
   requireTeacher,
   createExamRateLimit,
   validate(CreateExamSchema),
+  validate(CreateExamSchema),
   examController.createExam.bind(examController)
+);
+
+router.put(
+  '/:id',
+  authenticationToken,
+  requireTeacher,
+  validate(UpdateExamSchema),
+  examController.updateExam.bind(examController)
+);
+
+router.delete(
+  '/:id',
+  authenticationToken,
+  requireTeacher,
+  examController.deleteExam.bind(examController)
 );
 
 // Error handling middleware (must be last)
