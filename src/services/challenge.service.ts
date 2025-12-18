@@ -418,6 +418,11 @@ export class ChallengeService {
       await this.problemRepository.updateSolutionTransactional(challengeId, updateData.solution);
     }
 
+    // Handle testcases update if provided
+    if (updateData.testcases) {
+      await this.testcaseRepository.updateTestcasesTransactional(challengeId, updateData.testcases);
+    }
+
     return this.getChallengeById(challengeId);
   }
 

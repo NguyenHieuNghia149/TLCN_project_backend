@@ -12,6 +12,10 @@ export class TopicController {
 
   async create(req: Request, res: Response, next: NextFunction) {
     const { topicName } = CreateTopicSchema.parse(req.body);
+    const topic = await this.topicService.getTopicByName(topicName);
+    if (topic) {
+      throw new BaseException('Topic name already exists', 409, 'DUPLICATE_TOPIC');
+    }
     const result = await this.topicService.createTopic({ topicName });
     res.status(201).json({ success: true, message: 'Topic created', data: result });
   }
