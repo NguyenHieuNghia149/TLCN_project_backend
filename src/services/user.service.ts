@@ -16,6 +16,7 @@ export class UserService {
   async getProfile(userId: string) {
     const user = await this.userRepository.findByIdOrThrow(userId);
     const statistics = await this.userRepository.getUserStatistics(userId);
+    const { rank, rankingPoint } = await this.userRepository.getUserRank(userId);
 
     return {
       id: user.id,
@@ -27,6 +28,8 @@ export class UserService {
       dateOfBirth: user.dateOfBirth,
       role: user.role,
       status: user.status,
+      rank,
+      rankingPoint,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
