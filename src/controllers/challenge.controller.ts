@@ -235,6 +235,7 @@ export class ChallengeController {
     try {
       const { challengeId } = req.params;
       const updateData = req.body as Partial<ProblemInput>;
+      console.log('Update Challenge Payload:', JSON.stringify(updateData, null, 2));
 
       if (!challengeId) {
         throw new BaseException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
@@ -288,6 +289,17 @@ export class ChallengeController {
       });
     }
 
+    // Handle Postgres foreign key violation (e.g., cannot delete testcase heavily used)
+    if (anyError && anyError.code === '23503') {
+      return res.status(409).json({
+        success: false,
+        message:
+          'Cannot update challenge because it has existing submissions or usage history. Please create a new version instead.',
+        code: 'CHALLENGE_IN_USE',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     if (error instanceof BaseException) {
       const errorResponse = ErrorHandler.getErrorResponse(error);
       return res.status(errorResponse.statusCode).json({
@@ -299,6 +311,7 @@ export class ChallengeController {
     }
 
     // Log unexpected errors
+    console.error('Unexpected Challenge Error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

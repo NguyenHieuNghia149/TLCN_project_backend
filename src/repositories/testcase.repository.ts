@@ -39,8 +39,6 @@ export class TestcaseRepository extends BaseRepository<
   }
 
   async sumPointsByProblemIds(problemIds: string[]): Promise<Record<string, number>> {
-    if (problemIds.length === 0) return {};
-
     const rows = await this.db
       .select({ problemId: this.table.problemId, total: sql<number>`SUM(${this.table.point})` })
       .from(this.table)
@@ -52,5 +50,30 @@ export class TestcaseRepository extends BaseRepository<
       map[row.problemId] = Number(row.total ?? 0);
     }
     return map;
+  }
+
+  /**
+   * Update testcases transactionally: delete all existing and insert new ones.
+   */
+  async updateTestcasesTransactional(problemId: string, testcasesData: any[]): Promise<void> {
+    await this.db.transaction(async tx => {
+      // 1. Delete all existing testcases for this problem
+      await tx.delete(this.table).where(eq(this.table.problemId, problemId));
+
+      // 2. Insert new testcases
+      if (testcasesData && testcasesData.length > 0) {
+        await Promise.all(
+          testcasesData.map(tc =>
+            tx.insert(this.table).values({
+              problemId: problemId,
+              input: tc.input,
+              output: tc.output,
+              isPublic: tc.isPublic ?? false,
+              point: tc.point ?? 0,
+            } as any)
+          )
+        );
+      }
+    });
   }
 }
