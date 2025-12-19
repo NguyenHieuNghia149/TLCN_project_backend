@@ -420,7 +420,10 @@ export class ChallengeService {
 
     // Handle testcases update if provided
     if (updateData.testcases) {
+      console.log('Updating testcases:', updateData.testcases.length);
       await this.testcaseRepository.updateTestcasesTransactional(challengeId, updateData.testcases);
+    } else {
+      console.log('No testcases provided in updateData');
     }
 
     return this.getChallengeById(challengeId);
