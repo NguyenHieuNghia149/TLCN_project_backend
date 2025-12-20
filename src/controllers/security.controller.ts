@@ -139,9 +139,6 @@ export class SecurityController {
       });
     }
 
-    // Log unexpected errors
-    console.error('Unexpected submission error:', error);
-
     res.status(500).json({
       success: false,
       message: 'Internal server error',

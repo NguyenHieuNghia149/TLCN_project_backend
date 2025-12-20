@@ -27,12 +27,10 @@ export class ExamAutoSubmitService {
    */
   async start(checkIntervalMs: number = 30000): Promise<void> {
     if (this.isRunning) {
-      console.log('Exam auto-submit service is already running');
       return;
     }
 
     this.isRunning = true;
-    console.log('Starting Exam Auto-Submit Service...');
 
     // Run initial check
     await this.checkAndAutoSubmitExpiredExams();
@@ -42,7 +40,7 @@ export class ExamAutoSubmitService {
       try {
         await this.checkAndAutoSubmitExpiredExams();
       } catch (error) {
-        console.error('Error in auto-submit check:', error);
+        // Silent error handling
       }
     }, checkIntervalMs);
   }
@@ -56,7 +54,6 @@ export class ExamAutoSubmitService {
       this.checkInterval = null;
     }
     this.isRunning = false;
-    console.log('Exam auto-submit service stopped');
   }
 
   /**
@@ -68,11 +65,8 @@ export class ExamAutoSubmitService {
       // This ensures we catch participations that expired by start+duration even when exam.endDate
       // hasn't passed yet (previous implementation only checked exam.endDate).
       const finalized = await this.examService.finalizeExpiredParticipations();
-      if (finalized && finalized > 0) {
-        console.log(`Auto-finalizer completed: finalized ${finalized} participations`);
-      }
     } catch (error) {
-      console.error('Error checking for expired exams:', error);
+      // Silent error handling
     }
   }
 

@@ -46,10 +46,11 @@ export class WebSocketService {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     const subscriber = createClient({ url: redisUrl });
 
-    subscriber.on('error', err => console.error('Redis Subscriber Error:', err));
+    subscriber.on('error', err => {
+      // Silent error handling for Redis subscription
+    });
 
     await subscriber.connect();
-    console.log('WebSocketService subscribed to Redis');
 
     await subscriber.subscribe('submission_updates', message => {
       try {
@@ -60,14 +61,13 @@ export class WebSocketService {
           this.emitSubmissionUpdate(payload.submissionId, payload.data);
         }
       } catch (err) {
-        console.error('Failed to process Redis message:', err);
+        // Silent error handling for Redis message processing
       }
     });
   }
 
   private setupEventHandlers(): void {
     this.io.on('connection', socket => {
-      console.log('Client connected:', socket.id);
 
       // Handle user authentication
       socket.on('authenticate', (data: { userId: string }) => {
@@ -77,26 +77,21 @@ export class WebSocketService {
           }
           this.connectedClients.get(data.userId)?.add(socket.id);
           socket.join(`user_${data.userId}`);
-          console.log(`Socket ${socket.id} authenticated as user ${data.userId}`);
         }
       });
 
       // Handle joining submission room
       socket.on('join_submission', (data: { submissionId: string }) => {
         socket.join(`submission_${data.submissionId}`);
-        console.log(`Socket ${socket.id} joined submission ${data.submissionId}`);
       });
 
       // Handle leaving submission room
       socket.on('leave_submission', (data: { submissionId: string }) => {
         socket.leave(`submission_${data.submissionId}`);
-        console.log(`Socket ${socket.id} left submission ${data.submissionId}`);
       });
 
       // Handle disconnect
       socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
-
         // Remove socket from user's connected clients
         for (const [userId, socketIds] of this.connectedClients.entries()) {
           if (socketIds.has(socket.id)) {
@@ -121,13 +116,11 @@ export class WebSocketService {
     estimatedWaitTime: number;
   }): void {
     this.io.emit('submission_queued', data);
-    console.log(`Emitted submission_queued: ${data.submissionId}`);
   }
 
   // Emit submission status update
   emitSubmissionUpdate(submissionId: string, update: SubmissionUpdate): void {
     this.io.to(`submission_${submissionId}`).emit('submission_update', update);
-    console.log(`Emitted submission_update for ${submissionId}:`, update.status);
   }
 
   // Emit submission completed
@@ -138,19 +131,16 @@ export class WebSocketService {
     score?: number;
   }): void {
     this.io.emit('submission_completed', data);
-    console.log(`Emitted submission_completed: ${data.submissionId}`);
   }
 
   // Emit to specific user
   emitToUser(userId: string, event: string, data: any): void {
     this.io.to(`user_${userId}`).emit(event, data);
-    console.log(`Emitted ${event} to user ${userId}`);
   }
 
   // Emit to specific submission room
   emitToSubmission(submissionId: string, event: string, data: any): void {
     this.io.to(`submission_${submissionId}`).emit(event, data);
-    console.log(`Emitted ${event} to submission ${submissionId}`);
   }
 
   // Get connected clients count

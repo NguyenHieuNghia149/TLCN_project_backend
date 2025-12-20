@@ -15,6 +15,7 @@ export * from './completed_lesson';
 export * from './exam';
 export * from './examsToProblems';
 export * from './examParticipations';
+export * from './notification';
 
 // Relations
 import { relations } from 'drizzle-orm';
@@ -34,11 +35,13 @@ import { learnedLessons } from './completed_lesson';
 import { examToProblems } from './examsToProblems';
 import { examParticipations } from './examParticipations';
 import { exam } from './exam';
+import { notifications } from './notification';
 
 export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
   submissions: many(submissions),
   learnedLessons: many(learnedLessons),
+  notifications: many(notifications),
 }));
 
 export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
@@ -188,5 +191,12 @@ export const examToProblemsRelations = relations(examToProblems, ({ one }) => ({
   problem: one(problems, {
     fields: [examToProblems.problemId],
     references: [problems.id],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
   }),
 }));

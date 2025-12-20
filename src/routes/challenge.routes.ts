@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   ChallengeController,
   CreateChallengeSchema,
+  UpdateChallengeSchema,
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
 } from '@/controllers/challenge.controller';
@@ -42,6 +43,13 @@ router.get(
 );
 
 router.get(
+  '/tags',
+  challengeRateLimit,
+  optionalAuth,
+  challengeController.getAllTags.bind(challengeController)
+);
+
+router.get(
   '/topics/:topicId/tags',
   challengeRateLimit,
   optionalAuth,
@@ -66,6 +74,14 @@ router.post(
 );
 
 router.get(
+  '/all',
+  authenticationToken,
+  requireTeacherOrOwner,
+  challengeRateLimit,
+  challengeController.getAllChallenges.bind(challengeController)
+);
+
+router.get(
   '/:challengeId',
   challengeRateLimit,
   optionalAuth,
@@ -77,7 +93,7 @@ router.put(
   authenticationToken,
   requireTeacherOrOwner,
   challengeRateLimit,
-  validate(CreateChallengeSchema),
+  validate(UpdateChallengeSchema),
   challengeController.updateChallenge.bind(challengeController)
 );
 

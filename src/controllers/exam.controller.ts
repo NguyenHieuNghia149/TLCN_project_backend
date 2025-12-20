@@ -41,6 +41,54 @@ export class ExamController {
     }
   }
 
+  async updateExam(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        throw new ExamIdRequiredException();
+      }
+
+      const examData = req.body;
+      const result = await this.examService.updateExam(id, examData);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Exam updated successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteExam(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        throw new ExamIdRequiredException();
+      }
+
+      await this.examService.deleteExam(id);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Exam deleted successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getExamById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
       const { id } = req.params;
@@ -70,7 +118,19 @@ export class ExamController {
       // try to extract userId from authenticated request if present
       const userId = (req as any).user?.userId || undefined;
 
-      const result = await this.examService.getExams(limit, offset, search, filterType, userId);
+      let isVisible: boolean | undefined = undefined;
+      if (req.query.isVisible !== undefined) {
+        isVisible = req.query.isVisible === 'true';
+      }
+
+      const result = await this.examService.getExams(
+        limit,
+        offset,
+        search,
+        filterType,
+        userId,
+        isVisible
+      );
 
       return res.status(200).json({
         success: true,
@@ -347,9 +407,6 @@ export class ExamController {
         timestamp: errorResponse.timestamp,
       });
     }
-
-    // Log unexpected errors
-    console.error('Unexpected error in ExamController:', error);
 
     // Return generic error response
     return res.status(500).json({

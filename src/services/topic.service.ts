@@ -10,6 +10,17 @@ export class TopicService {
     this.topicRepository = new TopicRepository();
   }
 
+  async getTopicByName(topicName: string): Promise<TopicResponse | null> {
+    const topic = await this.topicRepository.findByName(topicName);
+    if (!topic) {
+      return null;
+    }
+    return {
+      id: topic.id,
+      topicName: topic.topicName,
+    };
+  }
+
   async createTopic(topicData: CreateTopicInput): Promise<TopicResponse> {
     try {
       const topic = await this.topicRepository.createTopic({ topicName: topicData.topicName });

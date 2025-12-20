@@ -60,7 +60,9 @@ export const CreateExamSchema = z
     }
   );
 
+export const UpdateExamSchema = CreateExamSchema.partial();
 export type CreateExamInput = z.infer<typeof CreateExamSchema>;
+export type UpdateExamInput = z.infer<typeof UpdateExamSchema>;
 
 // Exam response schema - support both basic and detailed challenge info
 export const ExamChallengeResponseSchema = z.object({
@@ -68,6 +70,7 @@ export const ExamChallengeResponseSchema = z.object({
   title: z.string(),
   description: z.string().nullable().optional(),
   difficulty: z.string(),
+  visibility: z.string(),
   topic: z.string().optional(),
   totalPoints: z.number().optional(),
   constraint: z.string().optional(),

@@ -18,9 +18,13 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
   async getExamsPaginated(
     limit = 50,
     offset = 0,
-    options?: { search?: string; createdBy?: string; examIds?: string[] }
+    options?: { search?: string; createdBy?: string; examIds?: string[]; isVisible?: boolean }
   ): Promise<{ items: ExamEntity[]; total: number }> {
-    const predicates: any[] = [eq(exam.isVisible, true)];
+    const predicates: any[] = [];
+
+    if (options?.isVisible !== undefined) {
+      predicates.push(eq(exam.isVisible, options.isVisible));
+    }
 
     // Note: createdBy filter not supported because `exam` table does not include creator column
 
@@ -117,5 +121,61 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
     const created = rows && rows[0];
     if (!created) throw new Error('Failed to create exam');
     return created as ExamEntity;
+  }
+
+  /**
+   * Update an existing exam and replace its challenge links.
+   */
+  async updateExamWithChallenges(
+    examId: string,
+    examFields: Partial<ExamInsert>,
+    challenges: { challengeId: string; orderIndex: number }[]
+  ): Promise<boolean> {
+    return this.db.transaction(async tx => {
+      // 1. Update exam details
+      const [updated] = await tx
+        .update(exam)
+        .set({ ...examFields, updatedAt: new Date() })
+        .where(eq(exam.id, examId))
+        .returning();
+
+      if (!updated) {
+        throw new Error('Exam not found or update failed');
+      }
+
+      // 2. Clear existing problems links
+      await tx.delete(examToProblems).where(eq(examToProblems.examId, examId));
+
+      // 3. Insert new problem links
+      if (challenges && challenges.length > 0) {
+        const inserts = challenges.map(ch => ({
+          examId: examId,
+          problemId: ch.challengeId,
+          orderIndex: ch.orderIndex,
+        }));
+        await tx.insert(examToProblems).values(inserts);
+      }
+
+      return true;
+    });
+  }
+
+  /**
+   * Delete an exam and all related data (links, participations).
+   */
+  async deleteExamWithRelations(examId: string): Promise<boolean> {
+    const { examParticipations } = await import('@/database/schema');
+    return this.db.transaction(async tx => {
+      // 1. Delete exam_to_problems links
+      await tx.delete(examToProblems).where(eq(examToProblems.examId, examId));
+
+      // 2. Delete participations
+      await tx.delete(examParticipations).where(eq(examParticipations.examId, examId));
+
+      // 3. Delete the exam itself
+      const [deleted] = await tx.delete(exam).where(eq(exam.id, examId)).returning();
+
+      return !!deleted;
+    });
   }
 }

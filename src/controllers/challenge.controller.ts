@@ -7,6 +7,7 @@ import {
   UpdateSolutionVisibilityInput,
   CreateProblemSchema,
   UpdateSolutionVisibilitySchema,
+  UpdateProblemSchema,
 } from '@/validations/problem.validation';
 import { z } from 'zod';
 
@@ -32,6 +33,35 @@ export class ChallengeController {
       res.status(201).json({
         success: true,
         message: 'Challenge created successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAllChallenges(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const search = (req.query.q as string) || undefined;
+      const sortField = (req.query.sortField as string) || undefined;
+      const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || undefined;
+
+      const result = await this.challengeService.getAllChallenges(
+        page,
+        limit,
+        search,
+        sortField,
+        sortOrder
+      );
+
+      res.status(200).json({
+        success: true,
         data: result,
       });
     } catch (error) {
@@ -134,6 +164,15 @@ export class ChallengeController {
     }
   }
 
+  async getAllTags(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    try {
+      const tags = await this.challengeService.getAllTags();
+      return res.status(200).json({ success: true, data: { tags } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async listProblemsByTopicAndTags(
     req: AuthenticatedRequest,
     res: Response,
@@ -196,6 +235,7 @@ export class ChallengeController {
     try {
       const { challengeId } = req.params;
       const updateData = req.body as Partial<ProblemInput>;
+      console.log('Update Challenge Payload:', JSON.stringify(updateData, null, 2));
 
       if (!challengeId) {
         throw new BaseException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
@@ -249,6 +289,17 @@ export class ChallengeController {
       });
     }
 
+    // Handle Postgres foreign key violation (e.g., cannot delete testcase heavily used)
+    if (anyError && anyError.code === '23503') {
+      return res.status(409).json({
+        success: false,
+        message:
+          'Cannot update challenge because it has existing submissions or usage history. Please create a new version instead.',
+        code: 'CHALLENGE_IN_USE',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     if (error instanceof BaseException) {
       const errorResponse = ErrorHandler.getErrorResponse(error);
       return res.status(errorResponse.statusCode).json({
@@ -260,6 +311,7 @@ export class ChallengeController {
     }
 
     // Log unexpected errors
+    console.error('Unexpected Challenge Error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -272,6 +324,7 @@ export class ChallengeController {
 // Export validation schemas for use in routes
 export {
   CreateProblemSchema as CreateChallengeSchema,
+  UpdateProblemSchema as UpdateChallengeSchema,
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
 };

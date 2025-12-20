@@ -2,8 +2,16 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { LeaderboardController } from '@/controllers/leaderboard.controller';
 import { LeaderboardService } from '@/services/leaderboard.service';
 import { LeaderboardRepository } from '@/repositories/leaderboard.repository';
+import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
 
 const router = Router();
+
+// Rate limiting
+const leaderboardReadLimit = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500,
+  message: 'Too many leaderboard requests, please try again later.',
+});
 
 // Initialize repository, service, and controller
 const leaderboardRepository = new LeaderboardRepository();
@@ -18,7 +26,7 @@ const leaderboardController = new LeaderboardController(leaderboardService);
  * - limit: number (default: 20, max: 100)
  * - search: string (optional, for searching users by name/email)
  */
-router.get('/', (req: Request, res: Response, next: NextFunction) =>
+router.get('/', leaderboardReadLimit, (req: Request, res: Response, next: NextFunction) =>
   leaderboardController.getLeaderboard(req, res, next)
 );
 
@@ -28,7 +36,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) =>
  * Query params:
  * - limit: number (default: 10, max: 100)
  */
-router.get('/top', (req: Request, res: Response, next: NextFunction) =>
+router.get('/top', leaderboardReadLimit, (req: Request, res: Response, next: NextFunction) =>
   leaderboardController.getTopUsers(req, res, next)
 );
 
@@ -36,7 +44,7 @@ router.get('/top', (req: Request, res: Response, next: NextFunction) =>
  * GET /api/leaderboard/stats
  * Get leaderboard statistics
  */
-router.get('/stats', (req: Request, res: Response, next: NextFunction) =>
+router.get('/stats', leaderboardReadLimit, (req: Request, res: Response, next: NextFunction) =>
   leaderboardController.getLeaderboardStats(req, res, next)
 );
 
@@ -44,7 +52,7 @@ router.get('/stats', (req: Request, res: Response, next: NextFunction) =>
  * GET /api/leaderboard/user/:userId
  * Get user's rank information
  */
-router.get('/user/:userId', (req: Request, res: Response, next: NextFunction) =>
+router.get('/user/:userId', leaderboardReadLimit, (req: Request, res: Response, next: NextFunction) =>
   leaderboardController.getUserRank(req, res, next)
 );
 
@@ -54,7 +62,7 @@ router.get('/user/:userId', (req: Request, res: Response, next: NextFunction) =>
  * Query params:
  * - contextSize: number (default: 5)
  */
-router.get('/user/:userId/context', (req: Request, res: Response, next: NextFunction) =>
+router.get('/user/:userId/context', leaderboardReadLimit, (req: Request, res: Response, next: NextFunction) =>
   leaderboardController.getUserRankContext(req, res, next)
 );
 

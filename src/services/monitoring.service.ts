@@ -33,7 +33,6 @@ export class MonitoringService {
   private ensureLogDir(): void {
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
-      console.log(`Created logs directory: ${this.logDir}`);
     }
   }
 
@@ -53,7 +52,6 @@ export class MonitoringService {
         files: stats.files,
       };
     } catch (error) {
-      console.error('Failed to monitor container:', error);
       return {
         memory: 0,
         cpu: 0,
@@ -150,10 +148,7 @@ export class MonitoringService {
 
     fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
 
-    // Console warning for high severity events
-    if (event.severity === 'HIGH' || event.severity === 'CRITICAL') {
-      console.warn(`🚨 SECURITY ALERT [${event.severity}]: ${event.message}`);
-    }
+    // Security events are logged to file but not printed to console
   }
 
   /**
@@ -365,11 +360,10 @@ export class MonitoringService {
 
         if (now - stats.mtime.getTime() > maxAge) {
           fs.unlinkSync(filePath);
-          console.log(`Cleaned up old log file: ${file}`);
         }
       }
     } catch (error) {
-      console.warn(`Failed to cleanup logs: ${error}`);
+      // Silent error handling for cleanup
     }
   }
 
@@ -385,7 +379,6 @@ export class MonitoringService {
     };
 
     fs.writeFileSync(exportFile, JSON.stringify(data, null, 2));
-    console.log(`Security events exported to: ${exportFile}`);
 
     return exportFile;
   }
