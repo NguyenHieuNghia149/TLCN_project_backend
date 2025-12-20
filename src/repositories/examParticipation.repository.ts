@@ -4,7 +4,8 @@ import {
   examParticipations,
 } from '@/database/schema';
 import { BaseRepository } from './base.repository';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
+import { EExamParticipationStatus } from '@/enums/examParticipationStatus.enum';
 import { db } from '@/database/connection';
 import { submissions, users } from '@/database/schema';
 
@@ -27,7 +28,7 @@ export class ExamParticipationRepository extends BaseRepository<
         examId,
         userId,
         startTime: new Date(),
-        isCompleted: false,
+        status: EExamParticipationStatus.IN_PROGRESS,
       })
       .returning();
   }
@@ -45,7 +46,7 @@ export class ExamParticipationRepository extends BaseRepository<
         userId,
         startTime,
         expiresAt,
-        isCompleted: false,
+        status: EExamParticipationStatus.IN_PROGRESS,
       })
       .returning();
   }
@@ -109,7 +110,38 @@ export class ExamParticipationRepository extends BaseRepository<
     return this.db
       .select()
       .from(examParticipations)
-      .where(and(eq(examParticipations.examId, examId), eq(examParticipations.isCompleted, false)));
+      .where(
+        and(
+          eq(examParticipations.examId, examId),
+          eq(examParticipations.status, EExamParticipationStatus.IN_PROGRESS)
+        )
+      );
+  }
+
+  /**
+   * Find completed (SUBMITTED or EXPIRED) participation by exam and user
+   */
+  async findCompletedByExamAndUser(
+    examId: string,
+    userId: string
+  ): Promise<ExamParticipationEntity | null> {
+    const [participation] = await this.db
+      .select()
+      .from(examParticipations)
+      .where(
+        and(
+          eq(examParticipations.examId, examId),
+          eq(examParticipations.userId, userId),
+          inArray(examParticipations.status, [
+            EExamParticipationStatus.SUBMITTED,
+            EExamParticipationStatus.EXPIRED,
+          ])
+        )
+      )
+      .orderBy(desc(examParticipations.submittedAt))
+      .limit(1);
+
+    return participation || null;
   }
 
   async updateParticipation(
@@ -174,7 +206,15 @@ export class ExamParticipationRepository extends BaseRepository<
       .from(examParticipations)
       .innerJoin(users, eq(examParticipations.userId, users.id))
       // .leftJoin(submissions, and(eq(submissions.userId, examParticipations.userId)))
-      .where(and(eq(examParticipations.examId, examId), eq(examParticipations.isCompleted, true)))
+      .where(
+        and(
+          eq(examParticipations.examId, examId),
+          inArray(examParticipations.status, [
+            EExamParticipationStatus.SUBMITTED,
+            EExamParticipationStatus.EXPIRED,
+          ])
+        )
+      )
       .orderBy(desc(examParticipations.endTime));
 
     // Apply pagination only if provided (limit > 0)

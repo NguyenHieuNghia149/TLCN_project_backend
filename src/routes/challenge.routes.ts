@@ -65,6 +65,27 @@ router.post(
   challengeController.createChallenge.bind(challengeController)
 );
 
+// ⚠️ IMPORTANT: /all MUST come BEFORE /:challengeId to avoid route collision
+// Admin route to get all challenges with pagination
+router.get('/all', authenticationToken, challengeRateLimit, async (req, res, next) => {
+  try {
+    console.log('📋 [GET /all] Request received:', { query: req.query });
+
+    // TODO: Implement proper getAllChallenges in ChallengeService
+    // For now, return empty list to prevent 500 errors
+    res.json({
+      success: true,
+      data: {
+        items: [],
+        total: 0,
+      },
+    });
+  } catch (error) {
+    console.error('❌ [GET /all] Error:', error);
+    next(error);
+  }
+});
+
 router.get(
   '/:challengeId',
   challengeRateLimit,
