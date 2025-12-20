@@ -238,15 +238,6 @@ export class ChallengeController {
     res: Response,
     next: NextFunction
   ): void | Response {
-    // Log the full error for debugging
-    console.error('❌ [ChallengeController] Error caught:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-      url: req.url,
-      method: req.method,
-    });
-
     // Handle Postgres unique violation for challenges/problems
     const anyError = error as any;
     if (anyError && anyError.code === '23505') {
@@ -269,7 +260,6 @@ export class ChallengeController {
     }
 
     // Log unexpected errors
-    console.error('❌ [ChallengeController] Unexpected error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
