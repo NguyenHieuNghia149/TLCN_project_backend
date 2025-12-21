@@ -345,17 +345,17 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
     // Count submissions by status
     const totalSubmissions = allSubmissions.length;
 
-    const acceptedSubmissions = allSubmissions.filter(s => s.status === 'ACCEPTED').length;
-    const wrongAnswerSubmissions = allSubmissions.filter(s => s.status === 'WRONG_ANSWER').length;
+    const acceptedSubmissions = allSubmissions.filter(s => s.status === 'accepted').length;
+    const wrongAnswerSubmissions = allSubmissions.filter(s => s.status === 'wrong_answer').length;
     const timeLimitExceededSubmissions = allSubmissions.filter(
-      s => s.status === 'TIME_LIMIT_EXCEEDED'
+      s => s.status === 'time_limit_exceeded'
     ).length;
     const memoryLimitExceededSubmissions = allSubmissions.filter(
-      s => s.status === 'MEMORY_LIMIT_EXCEEDED'
+      s => s.status === 'memory_limit_exceeded'
     ).length;
-    const runtimeErrorSubmissions = allSubmissions.filter(s => s.status === 'RUNTIME_ERROR').length;
+    const runtimeErrorSubmissions = allSubmissions.filter(s => s.status === 'runtime_error').length;
     const compilationErrorSubmissions = allSubmissions.filter(
-      s => s.status === 'COMPILATION_ERROR'
+      s => s.status === 'compilation_error'
     ).length;
 
     // Get unique problems attempted
@@ -364,7 +364,7 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
 
     // Get problems solved (with at least one ACCEPTED submission)
     const problemsSolved = new Set(
-      allSubmissions.filter(s => s.status === 'ACCEPTED').map(s => s.problemId)
+      allSubmissions.filter(s => s.status === 'accepted').map(s => s.problemId)
     );
     const totalProblemsSolved = problemsSolved.size;
 
