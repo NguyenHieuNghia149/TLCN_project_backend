@@ -19,6 +19,7 @@ import {
 import { eq, inArray, and } from 'drizzle-orm';
 import { NotFoundException } from '@/exceptions/solution.exception';
 import { ProblemVisibility } from '@/enums/problemVisibility.enum';
+import { EExamParticipationStatus } from '@/enums/examParticipationStatus.enum';
 // Service should not use raw `db` directly; repositories manage DB access and transactions.
 import { BaseException } from '@/exceptions/auth.exceptions';
 import {
@@ -70,12 +71,27 @@ export class ExamService {
     currentAnswers: any;
     status: string;
   }> {
-    // Try to find existing IN_PROGRESS participation (only active sessions)
+    // Step 1: Try to find existing IN_PROGRESS participation
     const existing = await this.examParticipationRepository.findInProgressByExamAndUser(
       examId,
       userId
     );
+
     if (existing) {
+      // Step 2: Validate expiration BEFORE returning
+      const now = new Date();
+      if (existing.expiresAt && now > existing.expiresAt) {
+        // Auto-finalize as EXPIRED
+        await this.examParticipationRepository.updateParticipation(existing.id, {
+          status: EExamParticipationStatus.EXPIRED,
+          endTime: now,
+          submittedAt: existing.expiresAt, // Use original expiry time
+        });
+
+        throw new ExamTimeoutException();
+      }
+
+      // Step 3: Return valid session
       return {
         sessionId: existing.id,
         examId: existing.examId,
@@ -93,9 +109,23 @@ export class ExamService {
       };
     }
 
-    // No IN_PROGRESS participation exists, create a new one
+    // Step 4: Check if user already completed this exam
+    const completed = await this.examParticipationRepository.findCompletedByExamAndUser(
+      examId,
+      userId
+    );
+
+    if (completed) {
+      throw new BaseException(
+        'You have already completed this exam',
+        400,
+        'EXAM_ALREADY_COMPLETED'
+      );
+    }
+
+    // Step 5: No existing participation → create new one
     const examData = await this.examRepository.findById(examId);
-    if (!examData) throw new Error('Exam not found');
+    if (!examData) throw new ExamNotFoundException();
 
     const now = new Date();
     const durationMs = (examData.duration || 0) * 60 * 1000;
@@ -126,7 +156,7 @@ export class ExamService {
     const updated = await this.examParticipationRepository.updateParticipation(participation.id, {
       currentAnswers: {},
       lastSyncedAt: now,
-      status: 'IN_PROGRESS',
+      status: EExamParticipationStatus.IN_PROGRESS,
     });
 
     if (!updated) {
@@ -487,7 +517,7 @@ export class ExamService {
     userId: string;
     startedAt: string;
     endTime?: Date | null;
-    isCompleted: boolean;
+    status: string;
     currentAnswers?: any;
     expiresAt?: string | null;
     lastSyncedAt?: string | null;
@@ -517,7 +547,7 @@ export class ExamService {
           ? participation.startTime.toISOString()
           : String(participation.startTime),
       endTime: participation.endTime || null,
-      isCompleted: !!participation.isCompleted,
+      status: participation.status,
       currentAnswers: participation.currentAnswers || {},
       expiresAt:
         participation.expiresAt instanceof Date
@@ -540,16 +570,18 @@ export class ExamService {
     startedAt: string;
     expiresAt?: string | null;
     endTime?: Date | null;
-    isCompleted: boolean;
-    status?: string;
+    status: string;
   } | null> {
-    // Only return IN_PROGRESS participations to allow resume
-    const participation = await this.examParticipationRepository.findInProgressByExamAndUser(
+    // Get latest participation regardless of status
+    const participations = await this.examParticipationRepository.findAllByExamAndUser(
       examId,
       userId
     );
+    const participation = participations[0];
 
-    if (!participation) return null;
+    if (!participation) {
+      return null;
+    }
 
     return {
       id: participation.id,
@@ -566,8 +598,7 @@ export class ExamService {
             ? String(participation.expiresAt)
             : null,
       endTime: participation.endTime || null,
-      isCompleted: !!participation.isCompleted,
-      status: participation.status || 'IN_PROGRESS',
+      status: participation.status,
     };
   }
 
@@ -644,13 +675,25 @@ export class ExamService {
       throw new InvalidPasswordException();
     }
 
-    // Check if user already joined
-    const existingParticipation = await this.examParticipationRepository.findByExamAndUser(
+    // Check max attempts
+    const previousParticipations = await this.examParticipationRepository.findAllByExamAndUser(
       examId,
       userId
     );
-    if (existingParticipation && !existingParticipation.isCompleted) {
+
+    // Check if user already joined and is IN_PROGRESS
+    const existingInProgress = previousParticipations.find(p => p.status === 'IN_PROGRESS');
+    if (existingInProgress) {
       throw new ExamAlreadyJoinedException();
+    }
+
+    // Check strict max attempts
+    if (examData.maxAttempts && previousParticipations.length >= examData.maxAttempts) {
+      throw new BaseException(
+        'You have reached the maximum number of attempts for this exam',
+        400,
+        'MAX_ATTEMPTS_REACHED'
+      );
     }
 
     // Calculate expiresAt: min(startTime + duration, exam.endDate)
@@ -705,7 +748,7 @@ export class ExamService {
     }
 
     // Check if already completed
-    if (participation.isCompleted) {
+    if (participation.status === 'SUBMITTED' || participation.status === 'EXPIRED') {
       throw new BaseException('Exam already submitted', 400, 'ALREADY_SUBMITTED');
     }
 
@@ -742,7 +785,7 @@ export class ExamService {
     // Mark participation as completed and set submittedAt, expiresAt, score
     const updated = await this.examParticipationRepository.updateParticipation(participationId, {
       endTime: new Date(),
-      isCompleted: true,
+      status: 'SUBMITTED',
       submittedAt: new Date(),
       expiresAt: new Date(), // Mark as expired since exam is submitted
       score: totalScore,
@@ -761,7 +804,11 @@ export class ExamService {
 
   async autoSubmitExam(participationId: string): Promise<void> {
     const participation = await this.examParticipationRepository.findById(participationId);
-    if (!participation || participation.isCompleted) {
+    if (
+      !participation ||
+      participation.status === 'SUBMITTED' ||
+      participation.status === 'EXPIRED'
+    ) {
       return;
     }
 
@@ -788,7 +835,7 @@ export class ExamService {
     // Mark as completed
     await this.examParticipationRepository.updateParticipation(participationId, {
       endTime: effectiveEnd,
-      isCompleted: true,
+      status: 'EXPIRED',
     });
   }
 

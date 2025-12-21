@@ -28,13 +28,6 @@
       "when": 1765722782813,
       "tag": "20251214143302_add_submission_type",
       "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1765735472351,
-      "tag": "20251214180432_reflective_karnak",
-      "breakpoints": true
     }
   ]
 }

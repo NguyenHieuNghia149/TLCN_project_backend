@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, boolean, json, integer, text } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, json, integer, varchar } from 'drizzle-orm/pg-core';
 import { exam } from './exam';
 import { users } from './user';
 
@@ -16,9 +16,8 @@ export const examParticipations = pgTable('exam_participations', {
   expiresAt: timestamp('expires_at'),
   currentAnswers: json('current_answers').$type<Record<string, any> | null>(),
   lastSyncedAt: timestamp('last_synced_at'),
-  status: text('status').default('IN_PROGRESS').notNull(),
+  status: varchar('status', { length: 20 }).default('IN_PROGRESS').notNull(),
   score: integer('score'),
-  isCompleted: boolean('is_completed').default(false).notNull(),
 });
 
 export type ExamParticipationEntity = typeof examParticipations.$inferSelect;
