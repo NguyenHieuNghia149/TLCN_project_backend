@@ -323,7 +323,8 @@ export class SubmissionService {
     }
 
     // Chỉ cộng điểm khi submission ACCEPTED và user chưa solve problem này trước đó
-    if (data.status === ESubmissionStatus.ACCEPTED) {
+    // VÀ submission không phải là bài thi (examParticipationId phải undefined/null)
+    if (data.status === ESubmissionStatus.ACCEPTED && !submissionBeforeUpdate.examParticipationId) {
       // Check TRƯỚC KHI update status - xem user đã có submission ACCEPTED nào cho problem này chưa
       const hasSolvedBefore = await this.submissionRepository.hasUserSolvedProblem(
         submissionBeforeUpdate.userId,

@@ -392,13 +392,18 @@ export class ExamService {
     }
 
     // Normal update for exams without participations
-    // Prepare challenges structure for repository
-    const challengeLinks = (challenges || []).map((ch: any, index: number) => ({
-      challengeId: ch.challengeId || ch.id,
-      orderIndex: ch.orderIndex ?? index,
-    }));
+    if (challenges !== undefined) {
+      // Update exam AND challenges (wipe existing logic in repo is fine here because we provide new set)
+      const challengeLinks = challenges.map((ch: any, index: number) => ({
+        challengeId: ch.challengeId || ch.id,
+        orderIndex: ch.orderIndex ?? index,
+      }));
 
-    await this.examRepository.updateExamWithChallenges(examId, dbFields, challengeLinks);
+      await this.examRepository.updateExamWithChallenges(examId, dbFields, challengeLinks);
+    } else {
+      // Only update fields, preserve existing challenges
+      await this.examRepository.update(examId, dbFields);
+    }
 
     return this.getExamById(examId);
   }
