@@ -61,6 +61,14 @@ export class ExamParticipationRepository extends BaseRepository<
     return participation || null;
   }
 
+  async findAllByExamAndUser(examId: string, userId: string): Promise<ExamParticipationEntity[]> {
+    return this.db
+      .select()
+      .from(examParticipations)
+      .where(and(eq(examParticipations.examId, examId), eq(examParticipations.userId, userId)))
+      .orderBy(desc(examParticipations.startTime));
+  }
+
   async findInProgressByExamAndUser(
     examId: string,
     userId: string

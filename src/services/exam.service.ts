@@ -78,17 +78,9 @@ export class ExamService {
     );
 
     if (existing) {
-      console.log(
-        `[getOrCreateSession] Found existing IN_PROGRESS participation ${existing.id}. Validating expiration...`
-      );
-
       // Step 2: Validate expiration BEFORE returning
       const now = new Date();
       if (existing.expiresAt && now > existing.expiresAt) {
-        console.log(
-          `[getOrCreateSession] Session ${existing.id} has expired. Auto-finalizing as EXPIRED.`
-        );
-
         // Auto-finalize as EXPIRED
         await this.examParticipationRepository.updateParticipation(existing.id, {
           status: EExamParticipationStatus.EXPIRED,
@@ -118,20 +110,12 @@ export class ExamService {
     }
 
     // Step 4: Check if user already completed this exam
-    console.log(
-      `[getOrCreateSession] No IN_PROGRESS participation found. Checking if exam already completed...`
-    );
-
     const completed = await this.examParticipationRepository.findCompletedByExamAndUser(
       examId,
       userId
     );
 
     if (completed) {
-      console.log(
-        `[getOrCreateSession] User ${userId} already completed exam ${examId} with status ${completed.status}`
-      );
-
       throw new BaseException(
         'You have already completed this exam',
         400,
@@ -140,7 +124,6 @@ export class ExamService {
     }
 
     // Step 5: No existing participation → create new one
-    console.log(`[getOrCreateSession] Creating new session for user ${userId} in exam ${examId}.`);
     const examData = await this.examRepository.findById(examId);
     if (!examData) throw new ExamNotFoundException();
 
@@ -589,13 +572,16 @@ export class ExamService {
     endTime?: Date | null;
     status: string;
   } | null> {
-    // Only return IN_PROGRESS participations to allow resume
-    const participation = await this.examParticipationRepository.findInProgressByExamAndUser(
+    // Get latest participation regardless of status
+    const participations = await this.examParticipationRepository.findAllByExamAndUser(
       examId,
       userId
     );
+    const participation = participations[0];
 
-    if (!participation) return null;
+    if (!participation) {
+      return null;
+    }
 
     return {
       id: participation.id,
@@ -689,13 +675,25 @@ export class ExamService {
       throw new InvalidPasswordException();
     }
 
-    // Check if user already joined
-    const existingParticipation = await this.examParticipationRepository.findByExamAndUser(
+    // Check max attempts
+    const previousParticipations = await this.examParticipationRepository.findAllByExamAndUser(
       examId,
       userId
     );
-    if (existingParticipation && existingParticipation.status === 'IN_PROGRESS') {
+
+    // Check if user already joined and is IN_PROGRESS
+    const existingInProgress = previousParticipations.find(p => p.status === 'IN_PROGRESS');
+    if (existingInProgress) {
       throw new ExamAlreadyJoinedException();
+    }
+
+    // Check strict max attempts
+    if (examData.maxAttempts && previousParticipations.length >= examData.maxAttempts) {
+      throw new BaseException(
+        'You have reached the maximum number of attempts for this exam',
+        400,
+        'MAX_ATTEMPTS_REACHED'
+      );
     }
 
     // Calculate expiresAt: min(startTime + duration, exam.endDate)
