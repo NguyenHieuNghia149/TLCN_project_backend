@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, count, sql, inArray, getTableColumns } from 'drizzle-orm';
+import { eq, and, desc, asc, count, sql, inArray, getTableColumns, isNull } from 'drizzle-orm';
 import { BaseRepository, PaginationOptions, PaginationResult } from './base.repository';
 import { submissions, SubmissionEntity, SubmissionInsert, problems } from '@/database/schema';
 import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
@@ -407,7 +407,8 @@ export class SubmissionRepository extends BaseRepository<
         and(
           eq(submissions.userId, userId),
           inArray(submissions.problemId, problemIds),
-          eq(submissions.status, ESubmissionStatus.ACCEPTED)
+          eq(submissions.status, ESubmissionStatus.ACCEPTED),
+          isNull(submissions.examParticipationId)
         )
       )
       .groupBy(submissions.problemId);
@@ -423,7 +424,8 @@ export class SubmissionRepository extends BaseRepository<
         and(
           eq(submissions.userId, userId),
           eq(submissions.problemId, problemId),
-          eq(submissions.status, ESubmissionStatus.ACCEPTED)
+          eq(submissions.status, ESubmissionStatus.ACCEPTED),
+          isNull(submissions.examParticipationId)
         )
       )
       .limit(1);
