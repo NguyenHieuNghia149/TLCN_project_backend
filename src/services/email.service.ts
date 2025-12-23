@@ -49,30 +49,54 @@ export class EMailService {
   }
 
   async sendVerificationCode(email: string): Promise<void> {
-    const otp = this.generateOTP();
-    const expires = new Date(Date.now() + config.otp.expiryMinutes * 60000);
+    try {
+      const otp = this.generateOTP();
+      const expires = new Date(Date.now() + config.otp.expiryMinutes * 60000);
 
-    otpStore.set(email, { otp, expires, email });
+      otpStore.set(email, { otp, expires, email });
 
-    const emailTemplate = {
-      from: config.email.from,
-      to: email,
-      subject: 'Your Verification Code',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2>Verification Code</h2>
-          <p>Your verification code is:</p>
-          <div style="background: #007bff; color: white; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; border-radius: 5px; margin: 20px 0;">
-            ${otp}
+      const emailTemplate = {
+        from: config.email.from,
+        to: email,
+        subject: 'Your Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2>Verification Code</h2>
+            <p>Your verification code is:</p>
+            <div style="background: #007bff; color: white; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; border-radius: 5px; margin: 20px 0;">
+              ${otp}
+            </div>
+            <p>This code will expire in ${config.otp.expiryMinutes} minutes.</p>
+            <p>Please do not share this code with anyone.</p>
           </div>
-          <p>This code will expire in ${config.otp.expiryMinutes} minutes.</p>
-          <p>Please do not share this code with anyone.</p>
-        </div>
-      `,
-      text: `Your verification code is ${otp}. It will expire in ${config.otp.expiryMinutes} minutes.`,
-    };
+        `,
+        text: `Your verification code is ${otp}. It will expire in ${config.otp.expiryMinutes} minutes.`,
+      };
 
-    await this.transporter.sendMail(emailTemplate);
+      console.log(`[Email Service] Attempting to send OTP to ${email}`);
+      console.log(
+        `[Email Service] SMTP Config: ${config.email.host}:${config.email.port}, User: ${config.email.user}`
+      );
+
+      await this.transporter.sendMail(emailTemplate);
+
+      console.log(`[Email Service] ✅ OTP sent successfully to ${email}`);
+    } catch (error) {
+      console.error(`[Email Service] ❌ Failed to send OTP to ${email}:`, error);
+
+      // Log SMTP configuration status (without exposing password)
+      console.error('[Email Service] SMTP Config Check:', {
+        host: config.email.host,
+        port: config.email.port,
+        user: config.email.user,
+        hasPassword: !!config.email.pass,
+        from: config.email.from,
+      });
+
+      throw new ValidationException(
+        `Failed to send verification email. Please check SMTP configuration. Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   async verifyOTP(email: string, providedOTP: string): Promise<boolean> {
