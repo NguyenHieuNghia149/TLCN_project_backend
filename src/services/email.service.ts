@@ -36,10 +36,15 @@ export class EMailService {
     this.transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
-      secure: config.email.secure,
+      secure: false,
       auth: {
         user: config.email.user,
         pass: config.email.pass,
+      },
+      tls: {
+        // Thêm dòng này để Nodejs không từ chối chứng chỉ của Brevo
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false,
       },
       // Connection timeout settings
       connectionTimeout: 10000, // 10 seconds
@@ -51,10 +56,6 @@ export class EMailService {
       maxMessages: 10,
       rateDelta: 1000,
       rateLimit: 5,
-      // TLS settings
-      tls: {
-        rejectUnauthorized: false, // Allow self-signed certs in dev
-      },
       // Debug
       logger: true,
       debug: process.env.NODE_ENV === 'production',

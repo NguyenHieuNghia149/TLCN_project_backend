@@ -5,7 +5,6 @@ export const config = {
     port: parseInt(process.env.SMTP_PORT || '2525'),
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASSWORD || '',
-    secure: process.env.SMTP_SECURE === 'false', // Convert to boolean
   },
   otp: {
     length: 6,
