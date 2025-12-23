@@ -84,6 +84,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
   next();
 });
+app.set('trust proxy', 1);
 
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
