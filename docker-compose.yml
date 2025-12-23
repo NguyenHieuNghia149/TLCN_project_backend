@@ -4,8 +4,10 @@ services:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # ports:
+    #   - "6379:6379"
+    expose:
+      - "6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -18,8 +20,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    ports:
-      - "3001:3001"
+    # ports:
+    #   - "3001:3001"
+    expose:
+      - "3001"
     environment:
       - NODE_ENV=${NODE_ENV}
       - PORT=${PORT}
@@ -51,8 +55,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.sandbox
-    ports:
-      - "4000:4000"
+    # ports:
+    #   - "4000:4000"
+    expose:
+      - "4000"
     environment:
       - NODE_ENV=${NODE_ENV}
       - SANDBOX_PORT=${SANDBOX_PORT:-4000}
