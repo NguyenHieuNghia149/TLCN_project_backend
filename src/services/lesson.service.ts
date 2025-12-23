@@ -130,9 +130,19 @@ export class LessonService {
   }
 
   async deleteLesson(id: string): Promise<void> {
-    const lesson = await this.lessonRepository.delete(id);
+    const lesson = await this.lessonRepository.findById(id);
     if (!lesson) {
       throw new NotFoundException(`Lesson with ID ${id} not found.`);
+    }
+
+    try {
+      await this.lessonRepository.deleteWithRelations(id);
+    } catch (error) {
+      throw new BaseException(
+        'Failed to delete lesson and related records',
+        500,
+        'FAILED_TO_DELETE_LESSON'
+      );
     }
   }
 }

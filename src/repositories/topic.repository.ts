@@ -1,4 +1,4 @@
-import { topics, TopicEntity, TopicInsert, lessons, problems } from '@/database/schema';
+import { topics, TopicEntity, TopicInsert, lessons, problems, comments, learnedLessons } from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { SanitizationUtils } from '@/utils/security';
 import { eq, sql } from 'drizzle-orm';
@@ -49,6 +49,26 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
 
   async deleteTopicWithCascade(topicId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // Get all lessons in this topic
+      const topicLessons = await tx
+        .select({ id: lessons.id })
+        .from(lessons)
+        .where(eq(lessons.topicId, topicId));
+
+      const lessonIds = topicLessons.map(l => l.id);
+
+      // Delete all comments related to lessons in this topic
+      if (lessonIds.length > 0) {
+        await tx
+          .delete(comments)
+          .where(sql`${comments.lessonId} IN (${sql.join(lessonIds)})`);
+
+        // Delete all learned_lessons related to lessons in this topic
+        await tx
+          .delete(learnedLessons)
+          .where(sql`${learnedLessons.lessonId} IN (${sql.join(lessonIds)})`);
+      }
+
       // Delete all problems related to lessons in this topic
       await tx
         .delete(problems)
