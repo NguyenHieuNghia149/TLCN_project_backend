@@ -1,4 +1,4 @@
-import { LessonEntity, LessonInsert, lessons, topics } from '@/database/schema';
+import { LessonEntity, LessonInsert, lessons, topics, comments, learnedLessons } from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { LessonResponse } from '@/validations/lesson.validation';
 import { eq } from 'drizzle-orm';
@@ -50,5 +50,16 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
       .where(eq(lessons.topicId, topicId));
 
     return result;
+  }
+
+  async deleteWithRelations(lessonId: string): Promise<boolean> {
+    // Delete all comments related to this lesson
+    await this.db.delete(comments).where(eq(comments.lessonId, lessonId));
+
+    // Delete all learned_lessons records related to this lesson
+    await this.db.delete(learnedLessons).where(eq(learnedLessons.lessonId, lessonId));
+
+    // Delete the lesson itself
+    return await this.delete(lessonId);
   }
 }
