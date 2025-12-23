@@ -33,10 +33,11 @@ export class EMailService {
   private transporter;
 
   constructor() {
+    const isSecure = config.email.port === 465; // Tự động nhận diện
     this.transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
-      secure: false, // true for 465, false for other ports
+      secure: isSecure, // true for 465, false for other ports
       auth: {
         user: config.email.user,
         pass: config.email.pass,
