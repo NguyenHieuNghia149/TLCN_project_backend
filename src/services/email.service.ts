@@ -36,11 +36,28 @@ export class EMailService {
     this.transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
-      secure: false,
+      secure: false, // true for 465, false for other ports
       auth: {
         user: config.email.user,
         pass: config.email.pass,
       },
+      // Connection timeout settings
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 5000, // 5 seconds
+      socketTimeout: 15000, // 15 seconds
+      // Connection pool settings
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 10,
+      rateDelta: 1000,
+      rateLimit: 5,
+      // TLS settings
+      tls: {
+        rejectUnauthorized: false, // Allow self-signed certs in dev
+      },
+      // Debug
+      logger: true,
+      debug: process.env.NODE_ENV === 'development',
     });
   }
 
