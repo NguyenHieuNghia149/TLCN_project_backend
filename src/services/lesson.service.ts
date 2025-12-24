@@ -27,6 +27,7 @@ export class LessonService {
       const lesson = await this.lessonRepository.createLesson({
         title: lessonData.title,
         content: lessonData.content || null,
+        videoUrl: lessonData.videoUrl || null,
         topicId: lessonData.topicId,
       });
 
@@ -40,6 +41,7 @@ export class LessonService {
         id: lesson.id,
         title: lesson.title,
         content: lesson.content,
+        videoUrl: lesson.videoUrl || null,
         topicId: lesson.topicId,
         topicName: topicForName?.topicName || null,
         isFavorite: false,
@@ -63,6 +65,7 @@ export class LessonService {
       id: lesson.id,
       title: lesson.title,
       content: lesson.content,
+      videoUrl: lesson.videoUrl || null,
       topicId: lesson.topicId,
       topicName: topicForName?.topicName || null,
       isFavorite: false,
@@ -106,11 +109,29 @@ export class LessonService {
       }
     }
 
-    const lesson = await this.lessonRepository.update(id, {
-      title: lessonData.title,
-      content: lessonData.content,
-      topicId: lessonData.topicId,
-    });
+    // Build update object, only include fields that are explicitly set
+    const updateData: Record<string, any> = {};
+    
+    if (lessonData.title !== undefined) updateData.title = lessonData.title;
+    if (lessonData.content !== undefined) updateData.content = lessonData.content;
+    if (lessonData.topicId !== undefined) updateData.topicId = lessonData.topicId;
+    
+    // Handle videoUrl - remove if empty, null, or undefined
+    if (lessonData.videoUrl === undefined || lessonData.videoUrl === '' || lessonData.videoUrl === null) {
+      updateData.videoUrl = null;
+    } else {
+      updateData.videoUrl = lessonData.videoUrl;
+    }
+
+    // Only proceed with update if there are fields to update
+    let lesson;
+    if (Object.keys(updateData).length > 0) {
+      console.log('Updating with data:', updateData);
+      lesson = await this.lessonRepository.update(id, updateData);
+      console.log('Updated lesson:', lesson);
+    } else {
+      lesson = await this.lessonRepository.findById(id);
+    }
 
     if (!lesson) {
       throw new NotFoundException(`Lesson with ID ${id} not found.`);
@@ -120,6 +141,7 @@ export class LessonService {
     return {
       id: lesson.id,
       title: lesson.title,
+      videoUrl: lesson.videoUrl || null,
       content: lesson.content,
       topicId: lesson.topicId,
       topicName: topicForName?.topicName || null,

@@ -139,9 +139,14 @@ export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
   }
 
   async update(id: string, data: Partial<TInsert>): Promise<TSelect | null> {
+    // Filter out undefined values but keep null values (for explicitly setting to null)
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, value]) => value !== undefined)
+    );
+    
     const [result] = await this.db
       .update(this.table as any)
-      .set({ ...data, updatedAt: new Date() } as any)
+      .set({ ...cleanData, updatedAt: new Date() } as any)
       .where(eq((this.table as any).id, id))
       .returning();
 

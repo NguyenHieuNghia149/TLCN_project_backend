@@ -6,6 +6,7 @@ import {
   CreateLessonInput,
   CreateLessonSchema,
   UpdateLessonInput,
+  UpdateLessonSchema,
 } from '../validations/lesson.validation';
 
 export class LessonController {
@@ -33,8 +34,8 @@ export class LessonController {
   }
 
   async create(req: Request, res: Response, next: NextFunction) {
-    const { title, content, topicId } = CreateLessonSchema.parse(req.body);
-    const result = await this.lessonService.createLesson({ title, content, topicId });
+    const { title, content, videoUrl, topicId } = CreateLessonSchema.parse(req.body);
+    const result = await this.lessonService.createLesson({ title, content, videoUrl, topicId });
     res.status(201).json({ success: true, message: 'Lesson created', data: result });
   }
 
@@ -43,8 +44,8 @@ export class LessonController {
     if (!lessonId) {
       return res.status(400).json({ success: false, message: 'Lesson ID is required' });
     }
-    const { title, content, topicId } = req.body;
-    const result = await this.lessonService.updateLesson(lessonId, { title, content, topicId });
+    const parsedData = UpdateLessonSchema.parse(req.body);
+    const result = await this.lessonService.updateLesson(lessonId, parsedData);
     res.status(200).json({ success: true, message: 'Lesson updated', data: result });
   }
 

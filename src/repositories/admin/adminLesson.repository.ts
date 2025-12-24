@@ -141,9 +141,14 @@ export class AdminLessonRepository extends BaseRepository<typeof lessons, Lesson
   }
 
   async updateLesson(id: string, payload: Partial<LessonInsert>): Promise<LessonEntity> {
+    // Filter out undefined values but keep null values (for explicitly setting to null)
+    const cleanPayload = Object.fromEntries(
+      Object.entries(payload).filter(([_, value]) => value !== undefined)
+    );
+    
     const [lesson] = await db
       .update(lessons)
-      .set({ ...payload, updatedAt: new Date() })
+      .set({ ...cleanPayload, updatedAt: new Date() })
       .where(eq(lessons.id, id))
       .returning();
 

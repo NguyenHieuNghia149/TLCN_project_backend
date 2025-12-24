@@ -59,7 +59,13 @@ export class AdminLessonService {
         }
       }
 
-      await this.repository.updateLesson(id, lessonData)
+      // Handle videoUrl - remove if empty, null, or undefined
+      const updateData = { ...lessonData };
+      if (lessonData.videoUrl === undefined || lessonData.videoUrl === '' || lessonData.videoUrl === null) {
+        updateData.videoUrl = null;
+      }
+
+      await this.repository.updateLesson(id, updateData)
       return this.getLessonById(id)
     } catch (error) {
       throw error
