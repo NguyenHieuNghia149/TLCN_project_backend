@@ -220,7 +220,12 @@ export class ChallengeController {
         throw new BaseException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
       }
 
-      const result = await this.challengeService.getChallengeById(challengeId, req.user?.userId);
+      // Check query parameter to show all testcases (for admin create/edit pages)
+      const showAllTestcases = req.query.showAll === 'true';
+
+      const result = await this.challengeService.getChallengeById(challengeId, req.user?.userId, {
+        showAllTestcases,
+      });
 
       res.status(200).json({
         success: true,
