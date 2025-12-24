@@ -115,3 +115,11 @@ export const GoogleLoginSchema = z.object({
 });
 
 export type GoogleLoginInput = z.infer<typeof GoogleLoginSchema>;
+
+// OTP Verification Schema
+export const VerifyOTPSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  otp: z.string().min(6, 'OTP must be 6 digits').max(6, 'OTP must be 6 digits'),
+});
+
+export type VerifyOTPInput = z.infer<typeof VerifyOTPSchema>;

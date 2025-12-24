@@ -16,6 +16,7 @@ import {
   PasswordResetSchema,
   SendVerificationEmailSchema,
   GoogleLoginSchema,
+  VerifyOTPSchema,
 } from '@/validations/auth.validation';
 import { upload } from '@/middlewares/upload.middleware';
 import { UserService } from '@/services/user.service';
@@ -89,9 +90,18 @@ router.post(
   authController.sendVerificationCode.bind(authController)
 );
 
-router.post('/send-reset-otp', authRateLimit, authController.sendResetOTP.bind(authController));
-
-router.post('/verify-otp', authRateLimit, authController.verifyOTP.bind(authController));
+router.post(
+  '/send-reset-otp',
+  authRateLimit,
+  validate(SendVerificationEmailSchema),
+  authController.sendResetOTP.bind(authController)
+);
+router.post(
+  '/verify-otp',
+  authRateLimit,
+  validate(VerifyOTPSchema),
+  authController.verifyOTP.bind(authController)
+);
 
 router.get('/health', authRateLimit, (req, res) => {
   res.json({ status: 'ok' });

@@ -46,7 +46,12 @@ app.use(
   })
 );
 
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5000', 'http://localhost:3001'];
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://app.algoforge.site',
+  'https://sandbox.algoforge.site',
+  'https://api.algoforge.site',
+];
 
 app.use(
   cors({
@@ -79,6 +84,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
   next();
 });
+app.set('trust proxy', 1);
 
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
