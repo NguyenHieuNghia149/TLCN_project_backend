@@ -342,14 +342,21 @@ export class ChallengeService {
     return { items, total };
   }
 
-  async getChallengeById(challengeId: string, userId?: string): Promise<ChallengeResponse> {
+  async getChallengeById(
+    challengeId: string,
+    userId?: string,
+    options?: { showAllTestcases?: boolean }
+  ): Promise<ChallengeResponse> {
     const problem = await this.problemRepository.findById(challengeId);
 
     if (!problem) {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
     }
 
-    const testcases = await this.testcaseRepository.findPublicByProblemId(challengeId);
+    // Admin/Teacher can view all testcases, regular users see only public testcases
+    const testcases = options?.showAllTestcases
+      ? await this.testcaseRepository.findByProblemId(challengeId)
+      : await this.testcaseRepository.findPublicByProblemId(challengeId);
     const visibleSolution = await this.fetchVisibleSolutionWithApproaches(challengeId);
 
     const isSolved = userId
@@ -426,7 +433,7 @@ export class ChallengeService {
       console.log('No testcases provided in updateData');
     }
 
-    return this.getChallengeById(challengeId);
+    return this.getChallengeById(challengeId, undefined, { showAllTestcases: true });
   }
 
   async deleteChallenge(challengeId: string): Promise<void> {
