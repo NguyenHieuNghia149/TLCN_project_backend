@@ -248,16 +248,13 @@ export class SubmissionService {
         }),
       };
 
-      // Calculate score from testcases
-      const totalPoints = testcases.reduce((sum, tc) => sum + tc.point, 0);
-      const achievedPoints = resultSubmissions
+      // Calculate score as absolute points (sum of passed test cases)
+      score = resultSubmissions
         .filter(rs => rs.isPassed)
         .reduce((sum, rs) => {
           const testcase = testcaseMap.get(rs.testcaseId);
           return sum + (testcase?.point || 0);
         }, 0);
-
-      score = totalPoints > 0 ? Math.round((achievedPoints / totalPoints) * 100) : 0;
     }
 
     return {
@@ -604,19 +601,15 @@ export class SubmissionService {
   ): number {
     const testcaseMap = new Map(testcases.map(tc => [tc.id, tc]));
     let totalScore = 0;
-    let maxScore = 0;
 
     results.forEach(result => {
       const testcase = testcaseMap.get(result.testcaseId);
-      if (testcase) {
-        maxScore += testcase.point;
-        if (result.isPassed) {
-          totalScore += testcase.point;
-        }
+      if (testcase && result.isPassed) {
+        totalScore += testcase.point;
       }
     });
 
-    return maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    return totalScore;
   }
 
   async getSubmissionStats(
