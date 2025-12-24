@@ -287,8 +287,15 @@ export class ExamService {
             `A new exam has been created. Start: ${new Date(newExam.startDate).toLocaleString()}`,
             { examId: newExam.id, link: `/exams/${newExam.id}` }
           );
+          console.log(
+            `✅ Notification sent successfully for exam: ${newExam.title} (ID: ${newExam.id})`
+          );
         } catch (err) {
-          throw new Error('Failed to send exam notification');
+          console.error(
+            '❌ Failed to send exam notification:',
+            err instanceof Error ? err.message : err
+          );
+          console.error('Exam details:', { id: newExam.id, title: newExam.title });
         }
       });
     }
