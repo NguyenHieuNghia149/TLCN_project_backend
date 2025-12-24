@@ -426,14 +426,9 @@ export class SandboxService {
             );
           }
 
-          // Validate output format
-          const output = stdout.trim();
-          if (!output.startsWith('[') || !output.endsWith(']')) {
-            return reject(new Error('Invalid output format. Expected JSON array format [i,j].'));
-          }
-
+          // Return the output as-is for comparison with expected output
           resolve({
-            stdout: output,
+            stdout: stdout.trim(),
             stderr: stderr.trim(),
             exitCode: code,
             executionTime: 0,
