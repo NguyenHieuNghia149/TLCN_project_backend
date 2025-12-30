@@ -285,7 +285,7 @@ export class ExamService {
             'NEW_EXAM',
             `New Exam: ${newExam.title}`,
             `A new exam has been created. Start: ${new Date(newExam.startDate).toLocaleString()}`,
-            { examId: newExam.id, link: `/exams/${newExam.id}` }
+            { examId: newExam.id, link: `/exam/${newExam.id}` }
           );
           console.log(
             `✅ Notification sent successfully for exam: ${newExam.title} (ID: ${newExam.id})`
