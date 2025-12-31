@@ -16,8 +16,8 @@ export const RegisterSchema = z.object({
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
       'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
     ),
-  firstname: z.string().min(1, 'Firstname must be at least 1 characters'),
-  lastname: z.string().min(1, 'Lastname must be at least 1 characters'),
+  firstName: z.string().min(1, 'Firstname must be at least 1 characters'),
+  lastName: z.string().min(1, 'Lastname must be at least 1 characters'),
   otp: z.string().min(6, 'otp idvalid'),
 });
 
