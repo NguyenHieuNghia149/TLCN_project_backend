@@ -1,4 +1,5 @@
 import { NotFoundException } from '@/exceptions/solution.exception';
+import { ChallengeHasSubmissionsException } from '@/exceptions/challenge.exceptions';
 import { ProblemRepository } from '@/repositories/problem.repository';
 import { SolutionRepository } from '@/repositories/solution.repository';
 import { TestcaseRepository } from '@/repositories/testcase.repository';
@@ -394,6 +395,15 @@ export class ChallengeService {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
     }
 
+    // Check if challenge has any submissions
+    const submissions = await this.submissionRepository.findByProblemId(challengeId, {
+      page: 1,
+      limit: 1,
+    });
+    if (submissions.data.length > 0) {
+      throw new ChallengeHasSubmissionsException();
+    }
+
     // Validate topic and lesson if provided
     if (updateData.topicid || updateData.lessonid) {
       await this.validateTopicAndLesson(updateData.topicid, updateData.lessonid);
@@ -440,6 +450,15 @@ export class ChallengeService {
     const existingProblem = await this.problemRepository.findById(challengeId);
     if (!existingProblem) {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
+    }
+
+    // Check if challenge has any submissions
+    const submissions = await this.submissionRepository.findByProblemId(challengeId, {
+      page: 1,
+      limit: 1,
+    });
+    if (submissions.data.length > 0) {
+      throw new ChallengeHasSubmissionsException();
     }
 
     const deletedSolution = await this.solutionRepository.deleteByProblemId(challengeId);
