@@ -19,7 +19,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
     # ports:
     #   - "3001:3001"
     expose:
@@ -54,7 +54,7 @@ services:
   sandbox:
     build:
       context: .
-      dockerfile: Dockerfile.sandbox
+      dockerfile: docker/Dockerfile.sandbox
     # ports:
     #   - "4000:4000"
     expose:
@@ -80,7 +80,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: docker/Dockerfile.worker
     environment:
       - NODE_ENV=${NODE_ENV}
       - DATABASE_URL=${DATABASE_URL}
@@ -109,7 +109,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf
       - ./ssl:/etc/nginx/ssl
     depends_on:
       - api
