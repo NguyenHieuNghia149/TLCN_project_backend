@@ -38,7 +38,7 @@ router.delete(
   favoriteController.removeLessonFavorite.bind(favoriteController)
 );
 
-// Toggle lesson favorite - thêm hoặc xóa yêu thích
+// Toggle lesson favorite - add or remove favorite
 router.put(
   '/lesson/:lessonId/toggle',
   validate(LessonFavoriteParamsSchema, 'params'),
@@ -60,7 +60,7 @@ router.delete(
   favoriteController.removeFavorite.bind(favoriteController)
 );
 
-// Toggle favorite - thêm hoặc xóa yêu thích
+// Toggle favorite - add or remove favorite
 router.put(
   '/:problemId/toggle',
   validate(FavoriteParamsSchema, 'params'),

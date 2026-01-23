@@ -126,7 +126,7 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
         ? SanitizationUtils.sanitizeName(userData.firstName)
         : undefined,
       lastName: userData.lastName ? SanitizationUtils.sanitizeName(userData.lastName) : undefined,
-      // Avatar URL từ Cloudinary - không sanitize
+      // Avatar URL from Cloudinary - do not sanitize
       avatar: userData.avatar,
     };
 

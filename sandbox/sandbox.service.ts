@@ -239,7 +239,7 @@ export class SandboxService {
 
         if (ok) passed++;
 
-        // Chi tiết lỗi khi output không khớp
+        // Detailed error when output does not match
         let errorMessage = null;
         let stderrMessage = null;
 
@@ -247,7 +247,7 @@ export class SandboxService {
           errorMessage = `Wrong Answer\nExpected: ${expected}\nActual: ${actual}`;
           stderrMessage = `Test case ${i + 1} failed:\n- Input: ${testcase.input}\n- Expected: ${expected}\n- Your output: ${actual}`;
         } else if (result.exitCode !== 0) {
-          // Nếu có lỗi runtime
+          // If there is a runtime error
           errorMessage = result.stderr;
           stderrMessage = `Runtime Error:\n${result.stderr}`;
         }
@@ -309,12 +309,12 @@ export class SandboxService {
           proc.stderr.on('data', d => (stderr += d.toString()));
           proc.on('close', code => {
             if (code === 0) return resolve();
-            // Định dạng lỗi compile chi tiết hơn
+            // Detailed compile error format
             const errorLines = stderr.trim().split('\n');
             const formattedError = errorLines
               .map(line => {
-                // Loại bỏ đường dẫn tuyệt đối để tránh lộ thông tin hệ thống
-                return line.replace(new RegExp(jobDir, 'g'), '').replace(/\.+\\/g, ''); // Loại bỏ đường dẫn tương đối
+                // Remove absolute paths to avoid exposing system information
+                return line.replace(new RegExp(jobDir, 'g'), '').replace(/\.+\\/g, ''); // Remove relative paths
               })
               .join('\n');
             return reject(new Error(`Compilation Error:\n${formattedError}`));

@@ -1,10 +1,10 @@
 import { Request } from 'express';
 import multer from 'multer';
 
-// Cấu hình multer để lưu file tạm thời trong memory
+// Configure multer to store files temporarily in memory
 const storage = multer.memoryStorage();
 
-// Giới hạn kích thước file là 5MB và chỉ cho phép file ảnh
+// Limit file size to 5MB and only allow image files
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   if (!file.mimetype.startsWith('image/')) {
     cb(new Error('Only image files are allowed!'));

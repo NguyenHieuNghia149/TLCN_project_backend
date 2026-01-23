@@ -42,7 +42,7 @@ export class EMailService {
         pass: config.email.pass,
       },
       tls: {
-        // Thêm dòng này để Nodejs không từ chối chứng chỉ của Brevo
+        // Add this line so Node.js does not reject Brevo's certificate
         ciphers: 'SSLv3',
         rejectUnauthorized: false,
       },

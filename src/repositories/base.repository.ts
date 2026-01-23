@@ -39,14 +39,14 @@ export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
   async findMany(paginationOptions: PaginationOptions = {}): Promise<PaginationResult<TSelect>> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = paginationOptions;
 
-    // Kiểm tra giá trị hợp lệ
+    // Validate values
     if (page < 1 || limit < 1) {
       throw new Error('Page and limit must be positive numbers');
     }
 
     const offset = (page - 1) * limit;
 
-    // Truy vấn dữ liệu
+    // Query data
     const query = this.db.select().from(this.table as any);
     const dataQuery = query
       .limit(limit)
@@ -55,13 +55,13 @@ export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
         sortOrder === 'asc' ? asc((this.table as any)[sortBy]) : desc((this.table as any)[sortBy])
       );
 
-    // Đếm tổng số bản ghi
+    // Count total records
     const queryTotal = await this.db.select({ total: count() }).from(this.table as any);
     const total = queryTotal[0]?.total || 0;
-    // Thực hiện truy vấn lấy dữ liệu
+    // Execute query to retrieve data
     const data = await dataQuery;
 
-    // Tính toán phân trang
+    // Calculate pagination
     const totalPages = Math.ceil(total / limit);
     const hasNext = page < totalPages;
     const hasPrev = page > 1;
@@ -90,7 +90,7 @@ export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
 
     const offset = (page - 1) * limit;
 
-    // Truy vấn dữ liệu
+    // Query data
     const query = this.db.select().from(this.table as any);
     const dataQuery = query
       .limit(limit)
@@ -99,14 +99,14 @@ export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
         sortOrder === 'asc' ? asc((this.table as any)[sortBy]) : desc((this.table as any)[sortBy])
       );
 
-    // Đếm tổng số bản ghi
+    // Count total records
     const queryTotal = await this.db.select({ total: count() }).from(this.table as any);
 
     const total = queryTotal[0]?.total || 0;
-    // Thực hiện truy vấn lấy dữ liệu
+    // Execute query to retrieve data
     const data = await dataQuery;
 
-    // Tính toán phân trang
+    // Calculate pagination
     const totalPages = Math.ceil(total / limit);
     const hasNext = page < totalPages;
     const hasPrev = page > 1;
@@ -143,7 +143,7 @@ export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
     const cleanData = Object.fromEntries(
       Object.entries(data).filter(([_, value]) => value !== undefined)
     );
-    
+
     const [result] = await this.db
       .update(this.table as any)
       .set({ ...cleanData, updatedAt: new Date() } as any)

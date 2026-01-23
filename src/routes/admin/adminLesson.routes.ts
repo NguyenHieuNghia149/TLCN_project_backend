@@ -26,14 +26,50 @@ const adminMutateLimit = rateLimitMiddleware({
 
 const idSchema = z.object({ id: z.string().uuid('Invalid lesson ID') });
 
-// Frontend đã xử lý Word→HTML, chỉ nhận HTML qua parse-content endpoint
-router.post('/parse-content', authenticationToken, requireTeacherOrOwner, adminMutateLimit, validate(z.object({ content: z.string() })), uploadController.parseContent)
+// Frontend has processed Word->HTML, only receive HTML via parse-content endpoint
+router.post(
+  '/parse-content',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminMutateLimit,
+  validate(z.object({ content: z.string() })),
+  uploadController.parseContent
+);
 
 // CRUD routes
 router.get('/', authenticationToken, requireTeacherOrOwner, adminReadLimit, controller.list);
-router.get('/:id', authenticationToken, requireTeacherOrOwner, adminReadLimit, validate(idSchema, 'params'), controller.getById);
-router.post('/', authenticationToken, requireTeacherOrOwner, adminMutateLimit, validate(CreateLessonSchema), controller.create);
-router.put('/:id', authenticationToken, requireTeacherOrOwner, adminMutateLimit, validate(idSchema, 'params'), validate(UpdateLessonSchema.partial()), controller.update);
-router.delete('/:id', authenticationToken, requireTeacherOrOwner, adminMutateLimit, validate(idSchema, 'params'), controller.remove);
+router.get(
+  '/:id',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminReadLimit,
+  validate(idSchema, 'params'),
+  controller.getById
+);
+router.post(
+  '/',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminMutateLimit,
+  validate(CreateLessonSchema),
+  controller.create
+);
+router.put(
+  '/:id',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminMutateLimit,
+  validate(idSchema, 'params'),
+  validate(UpdateLessonSchema.partial()),
+  controller.update
+);
+router.delete(
+  '/:id',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminMutateLimit,
+  validate(idSchema, 'params'),
+  controller.remove
+);
 
 export default router;

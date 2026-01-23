@@ -56,7 +56,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Cho phép requests không có origin (như mobile apps hoặc curl requests)
+      // Allow requests without origin (like mobile apps or curl requests)
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -70,14 +70,14 @@ app.use(
   })
 );
 
-// Middleware để xác định CORS một cách rõ ràng cho preflight requests
+// Middleware to explicitly define CORS for preflight requests
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,PATCH,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.header('Access-Control-Allow-Credentials', 'true');
 
-  // Xử lý preflight requests (OPTIONS)
+  // Handle preflight requests (OPTIONS)
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
     return;

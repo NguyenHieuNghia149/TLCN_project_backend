@@ -21,9 +21,9 @@ const pool = new Pool({
   min: process.env.DB_POOL_MIN ? parseInt(process.env.DB_POOL_MIN) : 2,
   max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX) : 10,
   idleTimeoutMillis: 300000,
-  connectionTimeoutMillis: 100000, // Tăng từ 2s lên 100s
-  keepAlive: true, // Giữ kết nối sống
-  keepAliveInitialDelayMillis: 10000, // Delay trước khi bắt đầu keep-alive
+  connectionTimeoutMillis: 100000, // Increased from 2s to 100s
+  keepAlive: true, // Keep connection alive
+  keepAliveInitialDelayMillis: 10000, // Delay before starting keep-alive
 });
 
 // Create Drizzle instance

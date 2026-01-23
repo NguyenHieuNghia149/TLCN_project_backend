@@ -315,24 +315,22 @@ export class SubmissionService {
       judgedAt?: string;
     }
   ): Promise<{ id: string; status: string } | null> {
-    // ⚠️ QUAN TRỌNG: Lấy submission TRƯỚC KHI update status
-    // Để có thể check xem user đã solve problem này chưa
+    // To check if user has already solved this problem
     const submissionBeforeUpdate = await this.submissionRepository.findById(submissionId);
     if (!submissionBeforeUpdate) {
       return null;
     }
 
-    // Chỉ cộng điểm khi submission ACCEPTED và user chưa solve problem này trước đó
-    // VÀ submission không phải là bài thi (examParticipationId phải undefined/null)
+    // AND the submission is not an exam (examParticipationId must be undefined/null)
     if (data.status === ESubmissionStatus.ACCEPTED && !submissionBeforeUpdate.examParticipationId) {
-      // Check TRƯỚC KHI update status - xem user đã có submission ACCEPTED nào cho problem này chưa
+      // Check BEFORE updating status - see if user already has an ACCEPTED submission for this problem
       const hasSolvedBefore = await this.submissionRepository.hasUserSolvedProblem(
         submissionBeforeUpdate.userId,
         submissionBeforeUpdate.problemId
       );
 
       if (!hasSolvedBefore) {
-        // Tính tổng điểm từ tất cả testcases của problem
+        // Calculate total score from all testcases of the problem
         const testcases = await this.testcaseRepository.findByProblemId(
           submissionBeforeUpdate.problemId
         );
@@ -351,7 +349,6 @@ export class SubmissionService {
       }
     }
 
-    // Sau đó mới update submission status
     const submission = await this.submissionRepository.updateStatus(
       submissionId,
       data.status,

@@ -14,7 +14,7 @@ export class LessonUploadController {
         return;
       }
 
-      // Trả về content gốc (frontend đã xử lý Word→HTML)
+      // Return original content (frontend processed Word->HTML)
       res.status(200).json({
         success: true,
         data: {
