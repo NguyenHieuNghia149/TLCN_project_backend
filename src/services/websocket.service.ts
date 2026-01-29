@@ -31,7 +31,7 @@ export class WebSocketService {
   constructor(server: HTTPServer) {
     this.io = new SocketIOServer(server, {
       cors: {
-        origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+        origin: process.env.CORS_ORIGIN?.split(','),
         methods: ['GET', 'POST'],
         credentials: true,
       },
@@ -43,11 +43,11 @@ export class WebSocketService {
   }
 
   private async setupRedisSubscription(): Promise<void> {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    const redisUrl = process.env.REDIS_URL;
     const subscriber = createClient({ url: redisUrl });
 
     subscriber.on('error', err => {
-      // Silent error handling for Redis subscription
+      throw err;
     });
 
     await subscriber.connect();
@@ -68,7 +68,6 @@ export class WebSocketService {
 
   private setupEventHandlers(): void {
     this.io.on('connection', socket => {
-
       // Handle user authentication
       socket.on('authenticate', (data: { userId: string }) => {
         if (data.userId) {

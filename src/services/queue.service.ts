@@ -29,7 +29,7 @@ export class QueueService {
 
   constructor() {
     this.client = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
+      url: process.env.REDIS_URL,
     });
 
     this.client.on('error', err => {
@@ -68,7 +68,7 @@ export class QueueService {
       await this.client.ping();
       return true;
     } catch (error) {
-      return false;
+      throw error;
     }
   }
 
@@ -150,13 +150,14 @@ export class QueueService {
       try {
         await this.connect();
       } catch (e) {
+        throw e;
         return;
       }
     }
     try {
       await this.client.publish(channel, message);
     } catch (error) {
-      // Silent error handling
+      throw error;
     }
   }
 }

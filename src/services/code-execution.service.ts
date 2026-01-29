@@ -6,7 +6,6 @@ import { ExecutionResult, Testcase, ExecutionConfig } from '@/validations/submis
 import { securityService } from './security.service';
 import { monitoringService } from './monitoring.service';
 import { BaseException } from '@/exceptions/auth.exceptions';
-import { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 // Security configuration
 interface SecurityConfig {
@@ -417,7 +416,7 @@ export class CodeExecutionService {
       try {
         fs.rmSync(jobDir, { recursive: true, force: true });
       } catch (error) {
-        // Silent error handling
+        throw error;
       }
     }, delay);
   }

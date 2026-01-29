@@ -1,9 +1,6 @@
 import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
 import { ExamRepository } from '@/repositories/exam.repository';
 import { ExamService } from './exam.service';
-// db is intentionally not used here; repositories handle DB access
-import { examParticipations, exam } from '@/database/schema';
-import { lt, and, eq } from 'drizzle-orm';
 
 /**
  * Service to handle automatic exam submission for expired exams
@@ -40,7 +37,7 @@ export class ExamAutoSubmitService {
       try {
         await this.checkAndAutoSubmitExpiredExams();
       } catch (error) {
-        // Silent error handling
+        console.error('Error in auto-submit service:', error);
       }
     }, checkIntervalMs);
   }
@@ -66,7 +63,7 @@ export class ExamAutoSubmitService {
       // hasn't passed yet (previous implementation only checked exam.endDate).
       const finalized = await this.examService.finalizeExpiredParticipations();
     } catch (error) {
-      // Silent error handling
+      console.error('Error finalizing expired participations:', error);
     }
   }
 
