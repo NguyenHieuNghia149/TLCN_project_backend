@@ -1,7 +1,14 @@
-import { LessonEntity, LessonInsert, lessons, topics, comments, learnedLessons } from '@/database/schema';
+import {
+  LessonEntity,
+  LessonInsert,
+  lessons,
+  topics,
+  comments,
+  learnedLessons,
+} from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { LessonResponse } from '@/validations/lesson.validation';
-import { eq } from 'drizzle-orm';
+import { eq, count, desc } from 'drizzle-orm';
 
 export class LessonRepository extends BaseRepository<typeof lessons, LessonEntity, LessonInsert> {
   constructor() {
@@ -46,10 +53,7 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
   }
 
   async getLessonsByTopicId(topicId: string): Promise<LessonEntity[]> {
-    const result = await this.db
-      .select()
-      .from(lessons)
-      .where(eq(lessons.topicId, topicId));
+    const result = await this.db.select().from(lessons).where(eq(lessons.topicId, topicId));
 
     return result;
   }
@@ -63,5 +67,30 @@ export class LessonRepository extends BaseRepository<typeof lessons, LessonEntit
 
     // Delete the lesson itself
     return await this.delete(lessonId);
+  }
+
+  // --- Dashboard Methods ---
+
+  async countTotal(): Promise<number> {
+    const result = await this.db.select({ count: count() }).from(lessons);
+    return result[0]?.count || 0;
+  }
+
+  async getRecent(limit: number = 3): Promise<
+    Array<{
+      id: string;
+      title: string | null;
+      createdAt: Date;
+    }>
+  > {
+    return await this.db
+      .select({
+        id: lessons.id,
+        title: lessons.title,
+        createdAt: lessons.createdAt,
+      })
+      .from(lessons)
+      .orderBy(desc(lessons.createdAt))
+      .limit(limit);
   }
 }

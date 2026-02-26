@@ -1,4 +1,17 @@
-import { eq, and, desc, asc, count, sql, inArray, getTableColumns, isNull } from 'drizzle-orm';
+import {
+  eq,
+  and,
+  desc,
+  asc,
+  count,
+  sql,
+  inArray,
+  getTableColumns,
+  isNull,
+  gte,
+  lte,
+} from 'drizzle-orm';
+import { subDays, startOfDay, endOfDay } from 'date-fns';
 import { BaseRepository, PaginationOptions, PaginationResult } from './base.repository';
 import { submissions, SubmissionEntity, SubmissionInsert, problems } from '@/database/schema';
 import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
@@ -485,5 +498,74 @@ export class SubmissionRepository extends BaseRepository<
         hasPrev,
       },
     };
+  }
+
+  // --- Dashboard Methods ---
+
+  async countTotal(): Promise<number> {
+    const result = await this.db.select({ count: count() }).from(submissions);
+    return result[0]?.count || 0;
+  }
+
+  async getDailyTrend(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+    const submissionTrend: Array<{ date: string; count: number }> = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const date = subDays(new Date(), i);
+      const start = startOfDay(date);
+      const end = endOfDay(date);
+
+      const result = await this.db
+        .select({ count: count() })
+        .from(submissions)
+        .where(and(gte(submissions.submittedAt, start), lte(submissions.submittedAt, end)));
+
+      const dateStr = date.toISOString().split('T')[0] || '';
+      submissionTrend.push({
+        date: dateStr,
+        count: result[0]?.count || 0,
+      });
+    }
+
+    return submissionTrend;
+  }
+
+  async getStatusDistribution(): Promise<{
+    accepted: number;
+    rejected: number;
+    pending: number;
+  }> {
+    const submissionStatusResult = await this.db
+      .select({
+        status: submissions.status,
+        count: count(),
+      })
+      .from(submissions)
+      .groupBy(submissions.status);
+
+    const submissionStatus = {
+      accepted: 0,
+      rejected: 0,
+      pending: 0,
+    };
+
+    submissionStatusResult.forEach((item: { status: string; count: number }) => {
+      if (item.status === ESubmissionStatus.ACCEPTED) submissionStatus.accepted = item.count;
+      else if (
+        item.status === ESubmissionStatus.WRONG_ANSWER ||
+        item.status === ESubmissionStatus.RUNTIME_ERROR ||
+        item.status === ESubmissionStatus.COMPILATION_ERROR ||
+        item.status === ESubmissionStatus.TIME_LIMIT_EXCEEDED ||
+        item.status === ESubmissionStatus.MEMORY_LIMIT_EXCEEDED
+      )
+        submissionStatus.rejected = item.count;
+      else if (
+        item.status === ESubmissionStatus.PENDING ||
+        item.status === ESubmissionStatus.RUNNING
+      )
+        submissionStatus.pending = item.count;
+    });
+
+    return submissionStatus;
   }
 }

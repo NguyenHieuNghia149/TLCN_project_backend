@@ -178,4 +178,29 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       return !!deleted;
     });
   }
+
+  // --- Dashboard Methods ---
+
+  async countTotal(): Promise<number> {
+    const result = await this.db.select({ count: count() }).from(exam);
+    return result[0]?.count || 0;
+  }
+
+  async getRecent(limit: number = 3): Promise<
+    Array<{
+      id: string;
+      title: string | null;
+      createdAt: Date;
+    }>
+  > {
+    return await this.db
+      .select({
+        id: exam.id,
+        title: exam.title,
+        createdAt: exam.createdAt,
+      })
+      .from(exam)
+      .orderBy(desc(exam.createdAt))
+      .limit(limit);
+  }
 }

@@ -10,7 +10,7 @@ import {
 import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@/database/schema/solutionApproaches';
-import { and, desc, eq, gt, ilike, lt, or, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, lt, or, inArray, sql, count } from 'drizzle-orm';
 import { ProblemVisibility } from '@/enums/problemVisibility.enum';
 import { topics } from '@/database/schema';
 
@@ -408,5 +408,30 @@ export class ProblemRepository extends BaseRepository<
         );
       }
     });
+  }
+
+  // --- Dashboard Methods ---
+
+  async countTotal(): Promise<number> {
+    const result = await this.db.select({ count: count() }).from(problems);
+    return result[0]?.count || 0;
+  }
+
+  async getRecent(limit: number = 3): Promise<
+    Array<{
+      id: string;
+      title: string | null;
+      createdAt: Date;
+    }>
+  > {
+    return await this.db
+      .select({
+        id: problems.id,
+        title: problems.title,
+        createdAt: problems.createdAt,
+      })
+      .from(problems)
+      .orderBy(desc(problems.createdAt))
+      .limit(limit);
   }
 }

@@ -1,6 +1,7 @@
 import { users, UserEntity, UserInsert, submissions } from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { eq, ilike, and, or, desc, asc, gte, lte, count, sql, gt } from 'drizzle-orm';
+import { subDays, startOfDay, endOfDay } from 'date-fns';
 import {
   UserAlreadyExistsException,
   UserNotFoundException,
@@ -451,5 +452,64 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
       .where(and(eq(users.status, 'active'), eq(users.role, EUserRole.USER)));
     console.log('[UserRepository] findAllIds result count:', result.length);
     return result.map(r => r.id);
+  }
+
+  // --- Dashboard Methods ---
+
+  async countTotal(): Promise<number> {
+    const result = await this.db.select({ count: count() }).from(users);
+    return result[0]?.count || 0;
+  }
+
+  async countActive(days: number = 30): Promise<number> {
+    const dateThreshold = subDays(new Date(), days);
+    const result = await this.db
+      .select({ count: count() })
+      .from(users)
+      .where(gte(users.createdAt, dateThreshold));
+    return result[0]?.count || 0;
+  }
+
+  async getGrowthStats(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+    const userGrowth: Array<{ date: string; count: number }> = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const date = subDays(new Date(), i);
+      const start = startOfDay(date);
+      const end = endOfDay(date);
+
+      const result = await this.db
+        .select({ count: count() })
+        .from(users)
+        .where(and(gte(users.createdAt, start), lte(users.createdAt, end)));
+
+      const dateStr = date.toISOString().split('T')[0] || '';
+      userGrowth.push({
+        date: dateStr,
+        count: result[0]?.count || 0,
+      });
+    }
+
+    return userGrowth;
+  }
+
+  async getRecent(limit: number = 3): Promise<
+    Array<{
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      createdAt: Date;
+    }>
+  > {
+    return await this.db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .orderBy(desc(users.createdAt))
+      .limit(limit);
   }
 }
