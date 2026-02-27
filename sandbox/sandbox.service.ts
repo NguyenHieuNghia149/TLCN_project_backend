@@ -1,7 +1,9 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as yaml from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
+import { SandboxConfig as GlobalSandboxConfig } from '../config/sandbox.config';
 import {
   ExecutionResult,
   Testcase,
@@ -43,7 +45,9 @@ export interface SandboxResponse {
 export class SandboxService {
   private config: SandboxConfig;
   private workspaceDir: string;
+  private hostWorkspaceDir: string = '';
   private activeJobs: Map<string, any> = new Map();
+  private yamlConfig: GlobalSandboxConfig | null = null;
 
   constructor() {
     this.config = {
@@ -54,7 +58,24 @@ export class SandboxService {
     };
 
     this.workspaceDir = process.env.WORKSPACE_DIR || path.join(process.cwd(), 'workspace');
+    this.hostWorkspaceDir = process.env.HOST_WORKSPACE_DIR || this.workspaceDir;
     this.ensureWorkspaceDir();
+    this.loadSandboxYamlConfig();
+  }
+
+  private loadSandboxYamlConfig(): void {
+    try {
+      const configPath = path.join(process.cwd(), 'config', 'sandbox.yaml');
+      if (fs.existsSync(configPath)) {
+        const fileContents = fs.readFileSync(configPath, 'utf8');
+        this.yamlConfig = yaml.parse(fileContents);
+        console.log('Successfully loaded sandbox.yaml configuration');
+      } else {
+        console.warn(`Sandbox YAML config not found at ${configPath}`);
+      }
+    } catch (error) {
+      console.error('Failed to parse sandbox.yaml', error);
+    }
   }
 
   private ensureWorkspaceDir(): void {
@@ -171,7 +192,12 @@ export class SandboxService {
 
       // Get language configuration
       const langConfig = this.getLanguageConfig(config.language);
-      const filePath = path.join(jobDir, langConfig.fileName);
+
+      const fileName =
+        langConfig.compile?.source_file_name ||
+        langConfig.test_case_run?.source_file_name ||
+        'main';
+      const filePath = path.join(jobDir, fileName);
 
       // Write code to file
       fs.writeFileSync(filePath, config.code, 'utf8');
@@ -196,9 +222,9 @@ export class SandboxService {
     let passed = 0;
 
     // Compile if needed
-    if (langConfig.needsCompilation) {
+    if (langConfig.compile) {
       try {
-        await this.compileCode(jobDir, langConfig, config.memoryLimit);
+        await this.compileCode(jobDir, langConfig, config.memoryLimit, path.basename(jobDir));
       } catch (compileError: any) {
         // Return compilation error for all test cases
         return {
@@ -231,7 +257,13 @@ export class SandboxService {
       const testStart = Date.now();
 
       try {
-        const result = await this.runTestCase(jobDir, langConfig, testcase, config);
+        const result = await this.runTestCase(
+          jobDir,
+          langConfig,
+          testcase,
+          config,
+          path.basename(jobDir)
+        );
 
         const expected = this.trimOutput(testcase?.output || '');
         const actual = this.trimOutput(result.stdout || '');
@@ -290,56 +322,61 @@ export class SandboxService {
     };
   }
 
-  private async compileCode(jobDir: string, langConfig: any, memoryLimit?: string): Promise<void> {
-    // Prefer local compilation inside the sandbox container (no nested docker mounts)
+  private async compileCode(
+    jobDir: string,
+    langConfig: any,
+    memoryLimit?: string,
+    executionId?: string
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         const cwd = jobDir;
-        // Determine compile command for local execution (split into args)
-        // For C/C++ we expect compileCmd to reference workspace paths; convert to local args
-        if (langConfig.compileCmd && langConfig.compileCmd.startsWith('g++')) {
-          // Build args like: g++ -std=c++17 -O2 -Wall -o solution main.cpp
-          const args = [] as string[];
-          // crude parsing, prefer explicit config
-          // If compileCmd contains /workspace paths, use filenames in cwd
-          args.push('-std=c++17', '-O2', '-Wall', '-o', 'solution', langConfig.fileName);
-
-          const proc = spawn('g++', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-          let stderr = '';
-          proc.stderr.on('data', d => (stderr += d.toString()));
-          proc.on('close', code => {
-            if (code === 0) return resolve();
-            // Detailed compile error format
-            const errorLines = stderr.trim().split('\n');
-            const formattedError = errorLines
-              .map(line => {
-                // Remove absolute paths to avoid exposing system information
-                return line.replace(new RegExp(jobDir, 'g'), '').replace(/\.+\\/g, ''); // Remove relative paths
-              })
-              .join('\n');
-            return reject(new Error(`Compilation Error:\n${formattedError}`));
-          });
-          proc.on('error', err => {
-            const errorMsg = `Compiler Error: ${err.message}\nPlease check your code syntax.`;
-            reject(new Error(errorMsg));
-          });
-        } else if (langConfig.compileCmd) {
-          // Fallback: run the compile command in a shell inside cwd
-          const proc = spawn('sh', ['-c', langConfig.compileCmd], {
-            cwd,
-            stdio: ['ignore', 'pipe', 'pipe'],
-          });
-          let stderr = '';
-          proc.stderr.on('data', d => (stderr += d.toString()));
-          proc.on('close', code => {
-            if (code === 0) return resolve();
-            return reject(new Error(`Compilation failed: ${stderr.trim()}`));
-          });
-          proc.on('error', err => reject(err));
-        } else {
-          // Nothing to compile
+        const hostCwd = executionId ? path.join(this.hostWorkspaceDir, executionId) : cwd;
+        if (!langConfig.compile || !langConfig.compile.command_template) {
           return resolve();
         }
+
+        const sourceFile = langConfig.compile.source_file_name || 'main';
+        const programFile = langConfig.compile.program_file_name || 'a.out';
+        const cmdTemplate: string[] = langConfig.compile.command_template;
+        const image: string = langConfig.compile.image;
+        const memory: string = langConfig.compile.memory || '512m';
+        const cpuQuota: number = langConfig.compile.cpu_quota || 100000;
+
+        const args = cmdTemplate.map((arg: string) =>
+          arg.replace('$SOURCE', sourceFile).replace('$PROGRAM', programFile)
+        );
+
+        const dockerArgs = [
+          'run',
+          '--rm',
+          '-v',
+          `${hostCwd}:/workspace`,
+          '-w',
+          '/workspace',
+          `--memory=${memory}`,
+          `--cpu-quota=${cpuQuota}`,
+          '--network',
+          'none',
+          image,
+          ...args,
+        ];
+
+        const proc = spawn('docker', dockerArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+        let stderr = '';
+        proc.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+        proc.on('close', (code: number | null) => {
+          if (code === 0) return resolve();
+          // Detailed compile error format
+          const errorLines = stderr.trim().split('\n');
+          const formattedError = errorLines
+            .map(line => line.replace(new RegExp(jobDir, 'g'), '').replace(/\.+\\/g, ''))
+            .join('\n');
+          return reject(new Error(`Compilation Error:\n${formattedError}`));
+        });
+        proc.on('error', (err: Error) => {
+          reject(new Error(`Compiler Error: ${err.message}\nPlease check your code syntax.`));
+        });
       } catch (err) {
         return reject(err);
       }
@@ -350,7 +387,8 @@ export class SandboxService {
     jobDir: string,
     langConfig: any,
     testcase: any,
-    config: ExecutionConfig
+    config: ExecutionConfig,
+    executionId: string
   ): Promise<ExecutionResult> {
     // Local execution path (run compiled binary or interpreter in the sandbox container)
     // Convert JSON-style judge inputs like {"nums": [...], "target": x} into plain-text
@@ -375,23 +413,53 @@ export class SandboxService {
     return new Promise<ExecutionResult>((resolve, reject) => {
       try {
         const cwd = jobDir;
+        const hostCwd = path.join(this.hostWorkspaceDir, executionId);
         let cmd: string;
         let args: string[] = [];
 
-        if (langConfig.needsCompilation) {
-          // run the produced binary
-          cmd = path.join(cwd, 'solution');
-          args = [];
+        if (langConfig.test_case_run && langConfig.test_case_run.command_template) {
+          const sourceFile =
+            langConfig.test_case_run.source_file_name ||
+            langConfig.compile?.source_file_name ||
+            'main';
+          const programFile =
+            langConfig.test_case_run.program_file_name ||
+            langConfig.compile?.program_file_name ||
+            'a.out';
+          const timeLimitStr = `${Math.max(1, Math.ceil(config.timeLimit / 1000))}s`;
+          const image: string = langConfig.test_case_run.image;
+          const cpuQuota: number = langConfig.test_case_run.cpu_quota || 100000;
+          // Note: memory limits should be added here too based on config.memoryLimit if desired
+
+          const cmdTemplate: string[] = langConfig.test_case_run.command_template;
+          const argsTemplate = cmdTemplate.map((arg: string) =>
+            arg
+              .replace('$SOURCE', sourceFile)
+              .replace('$PROGRAM', programFile)
+              .replace('$TIME_LIMIT', timeLimitStr)
+          );
+
+          cmd = 'docker';
+          args = [
+            'run',
+            '-i',
+            '--rm',
+            '-v',
+            `${hostCwd}:/workspace`,
+            '-w',
+            '/workspace',
+            `--memory=${config.memoryLimit || '256m'}`,
+            `--cpu-quota=${cpuQuota}`,
+            '--network',
+            'none',
+            image,
+            ...argsTemplate,
+          ];
         } else {
-          // interpreter run (python, node, java etc.)
-          const parts = langConfig.runCmd.split(' ');
-          cmd = parts[0];
-          args = parts
-            .slice(1)
-            .map((p: string) => p.replace('/work/', `${cwd}/`).replace('/workspace/', `${cwd}/`));
+          return reject(new Error('Missing test_case_run command_template configuration'));
         }
 
-        const proc = spawn(cmd, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+        const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
         let killed = false;
@@ -415,7 +483,15 @@ export class SandboxService {
 
           // Check for runtime errors
           if (code !== 0) {
-            const errorMsg = stderr.trim() || `Process exited with code ${code}`;
+            let errorMsg = stderr.trim() || `Process exited with code ${code}`;
+
+            // Map common Docker exit codes back to worker-friendly strings
+            if (code === 137) {
+              errorMsg = `Memory limit exceeded (Docker OOM Kill). ${errorMsg}`;
+            } else if (code === 124) {
+              errorMsg = `Time limit exceeded (Execution timeout). ${errorMsg}`;
+            }
+
             return reject(new Error(`Runtime Error: ${errorMsg}`));
           }
 
@@ -449,115 +525,17 @@ export class SandboxService {
     });
   }
 
-  private runDocker(
-    args: string[],
-    input: string = '',
-    timeout: number = 30000
-  ): Promise<ExecutionResult> {
-    return new Promise((resolve, reject) => {
-      // Find Docker executable
-      const dockerCmd = process.platform === 'win32' ? 'docker.exe' : 'docker';
-
-      const proc = spawn(dockerCmd, args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          // Don't override PATH on Windows
-          ...(process.platform !== 'win32' && {
-            PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-          }),
-        },
-      });
-
-      let stdout = '';
-      let stderr = '';
-      let isTimeout = false;
-      const startTime = Date.now();
-
-      const timer = setTimeout(() => {
-        isTimeout = true;
-        proc.kill('SIGKILL');
-        reject(new Error('Execution timeout'));
-      }, timeout);
-
-      proc.stdout.on('data', data => {
-        stdout += data.toString();
-        if (stdout.length > 1000000) {
-          // 1MB limit
-          proc.kill('SIGKILL');
-          clearTimeout(timer);
-          reject(new Error('Output size limit exceeded'));
-        }
-      });
-
-      proc.stderr.on('data', data => {
-        stderr += data.toString();
-        if (stderr.length > 100000) {
-          // 100KB limit
-          proc.kill('SIGKILL');
-          clearTimeout(timer);
-          reject(new Error('Error output size limit exceeded'));
-        }
-      });
-
-      proc.on('close', code => {
-        clearTimeout(timer);
-        if (!isTimeout) {
-          resolve({
-            stdout: stdout.trim(),
-            stderr: stderr.trim(),
-            exitCode: code || 0,
-            executionTime: Date.now() - startTime,
-          });
-        }
-      });
-
-      proc.on('error', error => {
-        clearTimeout(timer);
-        reject(error);
-      });
-
-      proc.stdin.end();
-    });
-  }
-
   private getLanguageConfig(language: string): any {
-    const languages = {
-      cpp: {
-        image: 'gcc:11.3.0',
-        fileName: 'main.cpp',
-        compileCmd: 'g++ -std=c++17 -O2 -Wall -o /workspace/solution /workspace/main.cpp',
-        runCmd: '/workspace/solution',
-        needsCompilation: true,
-      },
-      python: {
-        image: 'python:3.11-slim',
-        fileName: 'main.py',
-        compileCmd: null,
-        runCmd: 'python3 -u /work/main.py',
-        needsCompilation: false,
-      },
-      java: {
-        image: 'openjdk:17-slim',
-        fileName: 'Main.java',
-        compileCmd: 'javac /work/Main.java',
-        runCmd: 'java -cp /work Main',
-        needsCompilation: true,
-      },
-      javascript: {
-        image: 'node:18-slim',
-        fileName: 'main.js',
-        compileCmd: null,
-        runCmd: 'node /work/main.js',
-        needsCompilation: false,
-      },
-    };
+    if (!this.yamlConfig || !this.yamlConfig.judge || !this.yamlConfig.judge.languages) {
+      throw new Error('Sandbox YAML configuration not loaded properly');
+    }
 
-    const config = languages[language as keyof typeof languages];
-    if (!config) {
+    const langConfig = this.yamlConfig.judge.languages.find((l: any) => l.value === language);
+    if (!langConfig) {
       throw new Error(`Unsupported language: ${language}`);
     }
-    return config;
+
+    return langConfig;
   }
 
   private trimOutput(output: string): string {

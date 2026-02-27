@@ -1,0 +1,14 @@
+{
+  "language": "cpp",
+  "code": "#include <iostream>\n#include <vector>\nusing namespace std;\nint main() {\n    // TLE Test: Infinite loop\n    while(true) {\n        // Memory Limit Test: Allocate large chunks\n        vector<int> v(1000000, 1);\n    }\n    return 0;\n}",
+  "testcases": [
+    {
+      "id": "1",
+      "input": "1",
+      "output": "1",
+      "point": 10
+    }
+  ],
+  "timeLimit": 2000,
+  "memoryLimit": "128m"
+}

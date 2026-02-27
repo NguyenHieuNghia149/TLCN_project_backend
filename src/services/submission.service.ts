@@ -1,7 +1,6 @@
 import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
 import { queueService, QueueJob } from './queue.service';
 import crypto from 'crypto';
-import { codeExecutionService } from './code-execution.service';
 import { WebSocketService } from './websocket.service';
 import {
   CreateSubmissionInput,
@@ -165,22 +164,18 @@ export class SubmissionService {
     input: CreateSubmissionInput & { userId?: string },
     options?: { authHeader?: string }
   ) {
-    // Validate problem exists
     const problem = await this.problemRepository.findById(input.problemId);
     if (!problem) {
       throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
-    // Get testcases for the problem
     const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
     if (testcases.length === 0) {
       throw new BaseException('No testcases found for this problem', 404, 'TESTCASE_NOT_FOUND');
     }
 
-    // Generate ephemeral ID
     const submissionId = crypto.randomUUID();
 
-    // Create job for queue
     const job: QueueJob = {
       submissionId: submissionId,
       userId: input.userId || 'anonymous',
@@ -200,7 +195,6 @@ export class SubmissionService {
       jobType: 'RUN_CODE',
     };
 
-    // Add job to queue
     await queueService.addJob(job);
 
     return {
