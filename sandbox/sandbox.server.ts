@@ -6,9 +6,23 @@ import { config } from 'dotenv';
 import { createServer } from 'http';
 import { sandboxService } from './sandbox.service';
 import sandboxRoutes from './sandbox.routes';
+import winston from 'winston';
 
 // Load environment variables
 config();
+
+// Standardized logger for sandbox
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'sandbox' },
+  transports: [
+    new winston.transports.Console()
+  ],
+});
 
 const app = express();
 const server = createServer(app);
@@ -92,7 +106,7 @@ app.get('/', (req, res) => {
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Sandbox service error:', err);
+  logger.error('Sandbox service error', { error: err.message, stack: err.stack });
 
   res.status(500).json({
     success: false,
@@ -113,25 +127,25 @@ app.use((req, res) => {
 
 // Graceful shutdown
 const shutdown = async (signal: string) => {
-  console.log(`\n[Sandbox] Received ${signal}, shutting down gracefully...`);
+  logger.info(`Stopping sandbox...`, { signal });
 
   try {
     // Cleanup active jobs
-    console.log('Cleaning up active jobs...');
+    logger.info('Cleaning up active jobs...');
 
     // Stop accepting new requests
     server.close(() => {
-      console.log('[Sandbox] Server closed');
+      logger.info('Sandbox server closed');
       process.exit(0);
     });
 
     // Force exit after 10 seconds
     setTimeout(() => {
-      console.log('[Sandbox] Force exit');
+      logger.error('Force exit');
       process.exit(1);
     }, 10000);
   } catch (error) {
-    console.error('[Sandbox] Shutdown error:', error);
+    logger.error('Shutdown error', { error });
     process.exit(1);
   }
 };
@@ -142,22 +156,22 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Handle uncaught exceptions
 process.on('uncaughtException', error => {
-  console.error('❌ Uncaught Exception:', error);
+  logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
   shutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', reason => {
-  console.error('❌ Unhandled Rejection:', reason);
+  logger.error('Unhandled Rejection', { reason });
 });
 
 // Start server
 server.listen(PORT, () => {
-  console.log('🏗️  Sandbox Service Started');
-  console.log(`📡 Server running on port ${PORT}`);
-  console.log(`🔒 Security features enabled`);
-  console.log(`📊 Monitoring active`);
-  console.log(`🌐 Health check: http://localhost:${PORT}/health`);
-  console.log(`📋 API docs: http://localhost:${PORT}/`);
+  logger.info('🚀 Sandbox Service Started', {
+    port: PORT,
+    security: 'enabled',
+    monitoring: 'active',
+    healthCheck: `http://localhost:${PORT}/health`
+  });
 });
 
 // Test sandbox on startup
@@ -165,11 +179,11 @@ sandboxService
   .healthCheck()
   .then(isHealthy => {
     if (isHealthy) {
-      console.log('✅ Sandbox is ready for code execution');
+      logger.info('✅ Sandbox is ready for code execution');
     } else {
-      console.log('❌ Sandbox health check failed');
+      logger.error('❌ Sandbox health check failed');
     }
   })
   .catch(error => {
-    console.error('❌ Sandbox initialization error:', error);
+    logger.error('❌ Sandbox initialization error', { error });
   });

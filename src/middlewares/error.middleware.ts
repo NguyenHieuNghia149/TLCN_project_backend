@@ -1,0 +1,17 @@
+import { Request, Response, NextFunction } from 'express';
+import { AppException } from '../exceptions/base.exception';
+import { errorResponse } from '../utils/response';
+
+export const errorMiddleware = (err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof AppException) {
+    return res.status(err.statusCode).json(errorResponse(err.code, err.message, err.details));
+  }
+
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json(errorResponse('CORS_ERROR', 'CORS error: Origin not allowed'));
+  }
+
+  // Default to 500 server error
+  console.error('[ErrorMiddleware]', err);
+  return res.status(500).json(errorResponse('INTERNAL_ERROR', 'Internal Server Error'));
+};
