@@ -98,7 +98,4 @@ router.post(
   submissionController.runCode.bind(submissionController)
 );
 
-// Error handling middleware
-router.use(SubmissionController.errorHandler);
-
 export default router;

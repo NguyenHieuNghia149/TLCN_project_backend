@@ -38,7 +38,7 @@ export class ChallengeService {
     const { testcases: testcaseInputs, solution, ...problemData } = challengeData;
 
     // Validate topic and lesson existence
-    await this.validateTopicAndLesson(problemData.topicid, problemData.lessonid);
+    await this.validateTopicAndLesson(problemData.topicId, problemData.lessonId);
 
     // Create challenge using repository
     const result = await this.problemRepository.createProblemTransactional(challengeData);
@@ -405,22 +405,22 @@ export class ChallengeService {
     }
 
     // Validate topic and lesson if provided
-    if (updateData.topicid || updateData.lessonid) {
-      await this.validateTopicAndLesson(updateData.topicid, updateData.lessonid);
+    if (updateData.topicId || updateData.lessonId) {
+      await this.validateTopicAndLesson(updateData.topicId, updateData.lessonId);
     }
 
     // Convert updateData to match database schema
     const dbUpdateData: any = {
       ...updateData,
       tags: updateData.tags ? updateData.tags.join(',') : undefined,
-      topicId: updateData.topicid,
-      lessonId: updateData.lessonid,
+      topicId: updateData.topicId,
+      lessonId: updateData.lessonId,
       difficult: updateData.difficulty,
     };
 
     // Remove fields that shouldn't be updated directly
-    delete dbUpdateData.topicid;
-    delete dbUpdateData.lessonid;
+    delete dbUpdateData.topicId;
+    delete dbUpdateData.lessonId;
     delete dbUpdateData.difficulty;
     delete dbUpdateData.testcases;
     delete dbUpdateData.solution;

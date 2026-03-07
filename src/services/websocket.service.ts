@@ -44,26 +44,36 @@ export class WebSocketService {
 
   private async setupRedisSubscription(): Promise<void> {
     const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      console.warn('Redis URL not provided, skipping Redis subscription');
+      return;
+    }
+
     const subscriber = createClient({ url: redisUrl });
 
     subscriber.on('error', err => {
-      throw err;
+      console.error('WebSocket Redis subscriber error:', err.message);
     });
 
-    await subscriber.connect();
+    try {
+      await subscriber.connect();
+      console.log('WebSocket Redis subscriber connected');
 
-    await subscriber.subscribe('submission_updates', message => {
-      try {
-        const payload = JSON.parse(message);
-        // Payload structure: { submissionId, data: { submissionId, status, result, ... } }
-        // We want to emit the inner 'data' as the update
-        if (payload && payload.submissionId && payload.data) {
-          this.emitSubmissionUpdate(payload.submissionId, payload.data);
+      await subscriber.subscribe('submission_updates', message => {
+        try {
+          const payload = JSON.parse(message);
+          // Payload structure: { submissionId, data: { submissionId, status, result, ... } }
+          // We want to emit the inner 'data' as the update
+          if (payload && payload.submissionId && payload.data) {
+            this.emitSubmissionUpdate(payload.submissionId, payload.data);
+          }
+        } catch (err) {
+          // Silent error handling for Redis message processing
         }
-      } catch (err) {
-        // Silent error handling for Redis message processing
-      }
-    });
+      });
+    } catch (err: any) {
+      console.error('Failed to connect WebSocket Redis subscriber:', err.message);
+    }
   }
 
   private setupEventHandlers(): void {

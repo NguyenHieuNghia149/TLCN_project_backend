@@ -159,7 +159,4 @@ router.delete(
   examController.deleteExam.bind(examController)
 );
 
-// Error handling middleware (must be last)
-router.use(ExamController.errorHandler);
-
 export default router;

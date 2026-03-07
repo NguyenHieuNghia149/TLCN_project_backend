@@ -1,81 +1,55 @@
 import { Request, Response, NextFunction } from 'express';
 import { LessonService } from '../services/lesson.service';
-import { BaseException, ErrorHandler } from '../exceptions/auth.exceptions';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import {
-  CreateLessonInput,
   CreateLessonSchema,
-  UpdateLessonInput,
   UpdateLessonSchema,
 } from '../validations/lesson.validation';
+import { AppException } from '@/exceptions/base.exception';
 
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}
 
   async list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-      const userId = req.user?.userId;
-      const topicId = req.query.topicId as string | undefined;
-      const result = await this.lessonService.getAllLessons(userId, topicId);
-      res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
+    const userId = req.user?.userId;
+    const topicId = req.query.topicId as string | undefined;
+    const result = await this.lessonService.getAllLessons(userId, topicId);
+    res.status(200).json(result);
   }
 
   async getById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const lessonId = req.params.lessonId;
 
     if (!lessonId) {
-      return res.status(400).json({ success: false, message: 'Lesson ID is required' });
+      throw new AppException('Lesson ID is required', 400, 'MISSING_LESSON_ID');
     }
     const result = await this.lessonService.getLessonById(lessonId);
-    res.status(200).json({ success: true, data: result });
+    res.status(200).json(result);
   }
 
   async create(req: Request, res: Response, next: NextFunction) {
     const { title, content, videoUrl, topicId } = CreateLessonSchema.parse(req.body);
     const result = await this.lessonService.createLesson({ title, content, videoUrl, topicId });
-    res.status(201).json({ success: true, message: 'Lesson created', data: result });
+    res.status(201).json({ message: 'Lesson created', ...result });
   }
 
   async update(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const { lessonId } = req.params;
     if (!lessonId) {
-      return res.status(400).json({ success: false, message: 'Lesson ID is required' });
+      throw new AppException('Lesson ID is required', 400, 'MISSING_LESSON_ID');
     }
     const parsedData = UpdateLessonSchema.parse(req.body);
     const result = await this.lessonService.updateLesson(lessonId, parsedData);
-    res.status(200).json({ success: true, message: 'Lesson updated', data: result });
+    res.status(200).json({ message: 'Lesson updated', ...result });
   }
 
   async delete(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const { lessonId } = req.params;
     if (!lessonId) {
-      return res.status(400).json({ success: false, message: 'Lesson ID is required' });
+      throw new AppException('Lesson ID is required', 400, 'MISSING_LESSON_ID');
     }
     await this.lessonService.deleteLesson(lessonId);
-    res.status(200).json({ success: true, message: 'Lesson deleted' });
-  }
-
-  static errorHandler(
-    error: Error,
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): void | Response {
-    if (error instanceof BaseException) {
-      const er = ErrorHandler.getErrorResponse(error);
-      return res
-        .status(er.statusCode)
-        .json({ success: false, message: er.message, code: er.code, timestamp: er.timestamp });
-    }
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      code: 'INTERNAL_ERROR',
-      timestamp: new Date().toISOString(),
-    });
+    res.status(200).json({ message: 'Lesson deleted' });
   }
 }
 

@@ -26,5 +26,4 @@ router.patch(
   notificationController.markAllAsRead.bind(notificationController)
 );
 
-router.use(NotificationController.errorHandler);
 export default router;

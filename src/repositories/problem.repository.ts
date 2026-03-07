@@ -42,8 +42,8 @@ export class ProblemRepository extends BaseRepository<
         difficult: problemData.difficulty ?? 'easy',
         constraint: problemData.constraint,
         tags: (problemData.tags ?? []).join(','),
-        lessonId: problemData.lessonid,
-        topicId: problemData.topicid,
+        lessonId: problemData.lessonId,
+        topicId: problemData.topicId,
         visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
       } as any)
       .returning();
@@ -51,25 +51,21 @@ export class ProblemRepository extends BaseRepository<
     const createdProblem = problemRows[0];
     if (!createdProblem) throw new Error('Failed to create problem');
 
-    const createdTestcases = await Promise.all(
-      (testcaseInputs ?? []).map(tc =>
-        tx
-          .insert(testcases)
-          .values({
+    let createdTestcases: TestcaseEntity[] = [];
+    if (testcaseInputs && testcaseInputs.length > 0) {
+      createdTestcases = await tx
+        .insert(testcases)
+        .values(
+          testcaseInputs.map(tc => ({
             input: tc.input,
             output: tc.output,
             isPublic: tc.isPublic ?? false,
             point: tc.point ?? 0,
             problemId: createdProblem.id,
-          } as any)
-          .returning()
-          .then((rows: any[]) => {
-            const row = rows[0];
-            if (!row) throw new Error('Failed to create testcase');
-            return row;
-          })
-      )
-    );
+          }))
+        )
+        .returning();
+    }
 
     let createdSolution: SolutionEntity | null = null;
     let createdApproaches: SolutionApproachEntity[] = [];
@@ -92,29 +88,22 @@ export class ProblemRepository extends BaseRepository<
       createdSolution = s;
 
       if (solution.solutionApproaches && solution.solutionApproaches.length > 0) {
-        createdApproaches = await Promise.all(
-          solution.solutionApproaches.map(ap =>
-            tx
-              .insert(solutionApproaches)
-              .values({
-                solutionId: s.id,
-                title: ap.title,
-                description: ap.description,
-                sourceCode: ap.sourceCode,
-                language: ap.language,
-                timeComplexity: ap.timeComplexity,
-                spaceComplexity: ap.spaceComplexity,
-                explanation: ap.explanation,
-                order: ap.order,
-              } as any)
-              .returning()
-              .then((rows: any[]) => {
-                const row = rows[0];
-                if (!row) throw new Error('Failed to create solution approach');
-                return row;
-              })
+        createdApproaches = await tx
+          .insert(solutionApproaches)
+          .values(
+            solution.solutionApproaches.map(ap => ({
+              solutionId: s.id,
+              title: ap.title,
+              description: ap.description,
+              sourceCode: ap.sourceCode,
+              language: ap.language,
+              timeComplexity: ap.timeComplexity,
+              spaceComplexity: ap.spaceComplexity,
+              explanation: ap.explanation,
+              order: ap.order,
+            }))
           )
-        );
+          .returning();
       }
     }
 

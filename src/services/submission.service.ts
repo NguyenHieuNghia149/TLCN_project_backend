@@ -52,50 +52,16 @@ export class SubmissionService {
     queuePosition: number;
     estimatedWaitTime: number;
   }> {
-    // Validate problem exists
-    const problem = await this.problemRepository.findById(input.problemId);
-    if (!problem) {
-      throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
-    }
+    const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
 
-    // Get testcases for the problem
-    const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
-    if (testcases.length === 0) {
-      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
-    }
-
-    // If participationId provided, validate it and ensure it's active for this user
     let examParticipationId: string | undefined = undefined;
     if ((input as any).participationId) {
-      const participationId = (input as any).participationId as string;
-      const participation = await this.examParticipationRepository.findById(participationId);
-      if (!participation || participation.userId !== input.userId) {
-        throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
-      }
-
-      const exam = await this.examRepository.findById(participation.examId);
-      if (!exam) {
-        throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
-      }
-
-      const startMs = participation.startTime.getTime();
-      const durationMs = (exam.duration || 0) * 60 * 1000;
-      const participationEndByDuration = new Date(startMs + durationMs);
-      const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
-      const effectiveEnd =
-        participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-          ? participationEndByDuration
-          : examGlobalEnd;
-
-      const now = new Date();
-      if (now.getTime() > effectiveEnd.getTime()) {
-        throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
-      }
-
-      examParticipationId = participationId;
+      examParticipationId = await this.validateExamParticipation(
+        input.userId,
+        (input as any).participationId
+      );
     }
 
-    // Create submission record (attach examParticipationId if present)
     const submission = await this.submissionRepository.create({
       sourceCode: input.sourceCode,
       language: input.language,
@@ -105,52 +71,12 @@ export class SubmissionService {
       ...(examParticipationId ? { examParticipationId } : {}),
     });
 
-    // Get queue position (try to be resilient if Redis/queue is unavailable)
-    let queueLength = 0;
-    try {
-      queueLength = await queueService.getQueueLength();
-    } catch (err) {
-      // Treat as queue unavailable
-      queueLength = 0;
-    }
-    const estimatedWaitTime = queueLength * 30; // Estimate 30 seconds per job
+    const queueLength = await this.getQueueLengthSafely();
+    const estimatedWaitTime = queueLength * 30;
 
-    // Create job for queue
-    const job: QueueJob = {
-      submissionId: submission.id,
-      userId: input.userId,
-      problemId: input.problemId,
-      code: input.sourceCode,
-      language: input.language,
-      testcases: testcases.map(tc => ({
-        id: tc.id,
-        input: tc.input,
-        output: tc.output,
-        point: tc.point,
-        isPublic: tc.isPublic ?? false,
-      })),
-      timeLimit: problem.timeLimit || 1000, // Default 1 second
-      memoryLimit: problem.memoryLimit || '128m', // Default 128MB
-      createdAt: new Date().toISOString(),
-    };
+    const job = this.prepareQueueJob(submission, problem, testcases);
 
-    // Add job to queue (fail gracefully if queue is unavailable)
-    let enqueued = true;
-    try {
-      await queueService.addJob(job);
-    } catch (err) {
-      // Do not fail submission if queue is unavailable — keep submission record and return
-      enqueued = false;
-    }
-
-    // TODO: Emit WebSocket event when WebSocketService is properly implemented
-    // emitSubmissionQueued({
-    //   submissionId: submission.id,
-    //   status: ESubmissionStatus.PENDING,
-    //   queuePosition: queueLength + 1,
-    //   problemId: input.problemId,
-    //   language: input.language,
-    // });
+    const enqueued = await this.addJobToQueueSafely(job);
 
     return {
       submissionId: submission.id,
@@ -164,24 +90,86 @@ export class SubmissionService {
     input: CreateSubmissionInput & { userId?: string },
     options?: { authHeader?: string }
   ) {
-    const problem = await this.problemRepository.findById(input.problemId);
+    const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
+
+    const submissionId = crypto.randomUUID();
+
+    const job = this.prepareQueueJob(
+      {
+        id: submissionId,
+        userId: input.userId || 'anonymous',
+        problemId: input.problemId,
+        sourceCode: input.sourceCode,
+        language: input.language,
+      },
+      problem,
+      testcases,
+      'RUN_CODE'
+    );
+
+    await queueService.addJob(job);
+
+    return {
+      submissionId,
+      status: ESubmissionStatus.PENDING,
+      message: 'Queued for execution',
+    };
+  }
+
+  private async validateProblemAndTestcases(problemId: string) {
+    const problem = await this.problemRepository.findById(problemId);
     if (!problem) {
       throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
-    const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
+    const testcases = await this.testcaseRepository.findByProblemId(problemId);
     if (testcases.length === 0) {
-      throw new BaseException('No testcases found for this problem', 404, 'TESTCASE_NOT_FOUND');
+      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
     }
 
-    const submissionId = crypto.randomUUID();
+    return { problem, testcases };
+  }
 
-    const job: QueueJob = {
-      submissionId: submissionId,
-      userId: input.userId || 'anonymous',
-      problemId: input.problemId,
-      code: input.sourceCode,
-      language: input.language,
+  private async validateExamParticipation(userId: string, participationId: string): Promise<string> {
+    const participation = await this.examParticipationRepository.findById(participationId);
+    if (!participation || participation.userId !== userId) {
+      throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
+    }
+
+    const exam = await this.examRepository.findById(participation.examId);
+    if (!exam) {
+      throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
+    }
+
+    const startMs = participation.startTime.getTime();
+    const durationMs = (exam.duration || 0) * 60 * 1000;
+    const participationEndByDuration = new Date(startMs + durationMs);
+    const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
+    const effectiveEnd =
+      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+        ? participationEndByDuration
+        : examGlobalEnd;
+
+    const now = new Date();
+    if (now.getTime() > effectiveEnd.getTime()) {
+      throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
+    }
+
+    return participationId;
+  }
+
+  private prepareQueueJob(
+    submission: any,
+    problem: any,
+    testcases: any[],
+    jobType: string = 'JUDGE'
+  ): QueueJob {
+    return {
+      submissionId: submission.id,
+      userId: submission.userId,
+      problemId: submission.problemId,
+      code: submission.sourceCode,
+      language: submission.language,
       testcases: testcases.map(tc => ({
         id: tc.id,
         input: tc.input,
@@ -192,16 +180,25 @@ export class SubmissionService {
       timeLimit: problem.timeLimit || 1000,
       memoryLimit: problem.memoryLimit || '128m',
       createdAt: new Date().toISOString(),
-      jobType: 'RUN_CODE',
+      jobType: jobType as any,
     };
+  }
 
-    await queueService.addJob(job);
+  private async getQueueLengthSafely(): Promise<number> {
+    try {
+      return await queueService.getQueueLength();
+    } catch (err) {
+      return 0;
+    }
+  }
 
-    return {
-      submissionId,
-      status: ESubmissionStatus.PENDING,
-      message: 'Queued for execution',
-    };
+  private async addJobToQueueSafely(job: QueueJob): Promise<boolean> {
+    try {
+      await queueService.addJob(job);
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
 
   async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {

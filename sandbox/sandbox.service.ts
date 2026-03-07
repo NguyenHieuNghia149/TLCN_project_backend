@@ -1,6 +1,5 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
-import * as fs from 'fs';
 import * as yaml from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
 import { SandboxConfig as GlobalSandboxConfig } from '../config/sandbox.config';
@@ -11,6 +10,7 @@ import {
 } from '../src/validations/submission.validation';
 import { securityService } from '../src/services/security.service';
 import { monitoringService } from '../src/services/monitoring.service';
+import { FsUtils } from '../src/utils/fs';
 
 export interface SandboxConfig {
   host: string;
@@ -66,8 +66,8 @@ export class SandboxService {
   private loadSandboxYamlConfig(): void {
     try {
       const configPath = path.join(process.cwd(), 'config', 'sandbox.yaml');
-      if (fs.existsSync(configPath)) {
-        const fileContents = fs.readFileSync(configPath, 'utf8');
+      if (FsUtils.exists(configPath)) {
+        const fileContents = FsUtils.readFile(configPath, 'utf8');
         this.yamlConfig = yaml.parse(fileContents);
         console.log('Successfully loaded sandbox.yaml configuration');
       } else {
@@ -79,8 +79,8 @@ export class SandboxService {
   }
 
   private ensureWorkspaceDir(): void {
-    if (!fs.existsSync(this.workspaceDir)) {
-      fs.mkdirSync(this.workspaceDir, { recursive: true });
+    if (!FsUtils.exists(this.workspaceDir)) {
+      FsUtils.ensureDir(this.workspaceDir);
       console.log(`Created workspace directory: ${this.workspaceDir}`);
     }
   }
@@ -188,7 +188,7 @@ export class SandboxService {
   private async createIsolatedWorkspace(jobDir: string, config: ExecutionConfig): Promise<void> {
     try {
       // Create job directory
-      fs.mkdirSync(jobDir, { recursive: true });
+      FsUtils.ensureDir(jobDir);
 
       // Get language configuration
       const langConfig = this.getLanguageConfig(config.language);
@@ -200,16 +200,16 @@ export class SandboxService {
       const filePath = path.join(jobDir, fileName);
 
       // Write code to file
-      fs.writeFileSync(filePath, config.code, 'utf8');
+      FsUtils.writeFile(filePath, config.code, 'utf8');
 
       // Set proper permissions
-      fs.chmodSync(filePath, 0o755);
-      fs.chmodSync(jobDir, 0o755);
+      FsUtils.chmod(filePath, 0o755);
+      FsUtils.chmod(jobDir, 0o755);
 
       // Log directory contents for debugging
       console.log(`Created workspace at ${jobDir}`);
-      console.log('Directory contents:', fs.readdirSync(jobDir));
-      console.log('File contents:', fs.readFileSync(filePath, 'utf8'));
+      console.log('Directory contents:', FsUtils.readDir(jobDir));
+      console.log('File contents:', FsUtils.readFile(filePath, 'utf8'));
     } catch (error) {
       console.error('Error creating workspace:', error);
       throw error;
@@ -408,7 +408,7 @@ export class SandboxService {
     }
 
     const inputFile = path.join(jobDir, 'input.txt');
-    fs.writeFileSync(inputFile, inputContent, 'utf8');
+    FsUtils.writeFile(inputFile, inputContent, 'utf8');
 
     return new Promise<ExecutionResult>((resolve, reject) => {
       try {
@@ -545,7 +545,7 @@ export class SandboxService {
   private cleanupWorkspace(jobDir: string): void {
     setTimeout(() => {
       try {
-        fs.rmSync(jobDir, { recursive: true, force: true });
+        FsUtils.remove(jobDir);
         console.log(`Cleaned up workspace: ${jobDir}`);
       } catch (error) {
         console.warn(`Failed to cleanup ${jobDir}:`, error);
@@ -576,8 +576,7 @@ export class SandboxService {
   async healthCheck(): Promise<boolean> {
     try {
       // Simple health check - just check if workspace exists
-      const fs = require('fs');
-      return fs.existsSync(this.workspaceDir);
+      return FsUtils.exists(this.workspaceDir);
     } catch (error) {
       console.error('Health check error:', error);
       return false;

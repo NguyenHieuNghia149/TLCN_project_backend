@@ -106,7 +106,5 @@ router.post(
 router.get('/health', authRateLimit, (req, res) => {
   res.json({ status: 'ok' });
 });
-// Error handling middleware
-router.use(AuthController.errorHandler);
 
 export default router;
