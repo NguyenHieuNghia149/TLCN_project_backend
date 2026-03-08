@@ -1,0 +1,28 @@
+{
+  "description": "Standardized API Response Format",
+  "structure": {
+    "success": "boolean",
+    "data": "object | array | null",
+    "error": {
+      "code": "string",
+      "message": "string",
+      "details": "object | null"
+    }
+  },
+  "examples": {
+    "success": {
+      "success": true,
+      "data": { "id": 123, "name": "Problem A" },
+      "error": null
+    },
+    "error": {
+      "success": false,
+      "data": null,
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "The requested resource was not found.",
+        "details": null
+      }
+    }
+  }
+}
