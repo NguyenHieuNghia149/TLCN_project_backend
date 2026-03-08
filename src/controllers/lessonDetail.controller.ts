@@ -16,7 +16,7 @@ export class LessonDetailController {
       throw new AppException('Lesson ID is required', 400, 'MISSING_ID');
     }
 
-    const lesson = await this.lessonDetailService.getLessonById(id);
+    const lesson = await this.lessonDetailService.getLessonById(id as string);
 
     res.status(200).json(lesson);
   };
@@ -28,7 +28,7 @@ export class LessonDetailController {
       throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
 
-    const lessons = await this.lessonDetailService.getLessonsByTopicId(topicId);
+    const lessons = await this.lessonDetailService.getLessonsByTopicId(topicId as string);
 
     res.status(200).json(lessons);
   };

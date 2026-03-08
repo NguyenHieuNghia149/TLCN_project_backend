@@ -10,7 +10,9 @@ export const comments = pgTable('comments', {
   content: varchar('content', { length: 1000 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  userId: uuid('user_id').references(() => users.id).notNull(),
+  userId: uuid('user_id')
+    .references(() => users.id)
+    .notNull(),
   lessonId: uuid('lesson_id').references(() => lessons.id),
   problemId: uuid('problem_id').references(() => problems.id),
   parentCommentId: uuid('parent_comment_id'),

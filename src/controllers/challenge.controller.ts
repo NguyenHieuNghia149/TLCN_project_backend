@@ -62,7 +62,7 @@ export class ChallengeController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    const { topicId } = req.params;
+    const { topicId } = req.params as { topicId: string };
     const { limit, cursor } = req.query;
 
     if (!topicId) throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
@@ -100,7 +100,7 @@ export class ChallengeController {
     }
 
     const result = await this.challengeService.listProblemsByTopicInfinite({
-      topicId,
+      topicId: topicId as string,
       limit: parsedLimit,
       cursor: parsedCursor,
       userId: req.user?.userId,
@@ -114,13 +114,15 @@ export class ChallengeController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    const { solutionId } = req.params;
+    const { solutionId } = req.params as { solutionId: string };
     const { isVisible } = req.body as UpdateSolutionVisibilityInput;
 
-    if (!solutionId)
-      throw new AppException('Solution ID is required', 400, 'MISSING_SOLUTION_ID');
+    if (!solutionId) throw new AppException('Solution ID is required', 400, 'MISSING_SOLUTION_ID');
 
-    const result = await this.challengeService.updateSolutionVisibility(solutionId, isVisible);
+    const result = await this.challengeService.updateSolutionVisibility(
+      solutionId as string,
+      isVisible
+    );
 
     res.status(200).json({
       message: 'Solution visibility updated successfully',
@@ -129,10 +131,10 @@ export class ChallengeController {
   }
 
   async getTopicTags(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    const { topicId } = req.params;
+    const { topicId } = req.params as { topicId: string };
     if (!topicId) throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
-    const tags = await this.challengeService.getTopicTags(topicId);
+    const tags = await this.challengeService.getTopicTags(topicId as string);
     res.status(200).json({ tags });
   }
 
@@ -162,7 +164,7 @@ export class ChallengeController {
           : [];
 
     const result = await this.challengeService.listProblemsByTopicAndTags({
-      topicId,
+      topicId: topicId as string,
       tags: tagsArray,
       limit: limit ? parseInt(limit as string) : 10,
       cursor: cursor ? JSON.parse(cursor as string) : null,
@@ -177,7 +179,7 @@ export class ChallengeController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    const { challengeId } = req.params;
+    const { challengeId } = req.params as { challengeId: string };
 
     if (!challengeId) {
       throw new AppException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
@@ -186,22 +188,26 @@ export class ChallengeController {
     // Check query parameter to show all testcases (for admin create/edit pages)
     const showAllTestcases = req.query.showAll === 'true';
 
-    const result = await this.challengeService.getChallengeById(challengeId, req.user?.userId, {
-      showAllTestcases,
-    });
+    const result = await this.challengeService.getChallengeById(
+      challengeId as string,
+      req.user?.userId,
+      {
+        showAllTestcases,
+      }
+    );
 
     res.status(200).json(result);
   }
 
   async updateChallenge(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    const { challengeId } = req.params;
+    const { challengeId } = req.params as { challengeId: string };
     const updateData = req.body as Partial<ProblemInput>;
 
     if (!challengeId) {
       throw new AppException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
     }
 
-    const result = await this.challengeService.updateChallenge(challengeId, updateData);
+    const result = await this.challengeService.updateChallenge(challengeId as string, updateData);
 
     res.status(200).json({
       message: 'Challenge updated successfully',
@@ -210,12 +216,12 @@ export class ChallengeController {
   }
 
   async deleteChallenge(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    const { challengeId } = req.params;
+    const { challengeId } = req.params as { challengeId: string };
 
     if (!challengeId)
       throw new AppException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
 
-    await this.challengeService.deleteChallenge(challengeId);
+    await this.challengeService.deleteChallenge(challengeId as string);
 
     res.status(200).json({
       message: 'Challenge deleted successfully',

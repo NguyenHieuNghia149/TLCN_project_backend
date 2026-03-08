@@ -14,7 +14,7 @@ export class AdminTeacherController {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '10'), 10) || 10));
     const sortBy = String(req.query.sortBy || 'createdAt');
-    const sortOrder = (String(req.query.sortOrder || 'desc') as 'asc' | 'desc');
+    const sortOrder = String(req.query.sortOrder || 'desc') as 'asc' | 'desc';
     const result = await this.service.listTeachers({ page, limit, sortBy, sortOrder });
     res.status(200).json(result);
   };
@@ -51,5 +51,3 @@ export class AdminTeacherController {
 }
 
 export default AdminTeacherController;
-
-

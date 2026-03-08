@@ -6,9 +6,7 @@ import {
   CreateExamSchema,
   GetExamLeaderboardSchema,
 } from '@/validations/exam.validation';
-import {
-  ExamIdRequiredException,
-} from '@/exceptions/exam.exceptions';
+import { ExamIdRequiredException } from '@/exceptions/exam.exceptions';
 import { AppException } from '@/exceptions/base.exception';
 import { UserNotFoundException } from '@/exceptions/auth.exceptions';
 
@@ -41,7 +39,7 @@ export class ExamController {
     }
 
     const examData = req.body;
-    const result = await this.examService.updateExam(id, examData);
+    const result = await this.examService.updateExam(id as string, examData);
 
     res.status(200).json({
       message: 'Exam updated successfully',
@@ -60,7 +58,7 @@ export class ExamController {
       throw new ExamIdRequiredException();
     }
 
-    await this.examService.deleteExam(id);
+    await this.examService.deleteExam(id as string);
 
     res.status(200).json({
       message: 'Exam deleted successfully',
@@ -74,7 +72,7 @@ export class ExamController {
       throw new ExamIdRequiredException();
     }
 
-    const result = await this.examService.getExamById(id);
+    const result = await this.examService.getExamById(id as string);
 
     res.status(200).json(result);
   }
@@ -119,7 +117,7 @@ export class ExamController {
       throw new ExamIdRequiredException();
     }
 
-    const result = await this.examService.getExamChallenge(examId, challengeId);
+    const result = await this.examService.getExamChallenge(examId as string, challengeId as string);
 
     res.status(200).json(result);
   }

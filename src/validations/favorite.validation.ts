@@ -47,17 +47,19 @@ export const LessonFavoriteResponseSchema = z.object({
   id: z.string(),
   lessonId: z.string(),
   createdAt: z.string(),
-  lesson: z.object({
-    id: z.string(),
-    title: z.string(),
-    content: z.string(),
-    videoUrl: z.string(),
-    topicId: z.string(),
-    topicName: z.string().nullable(),
-    isFavorite: z.boolean(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  }).nullable(),
+  lesson: z
+    .object({
+      id: z.string(),
+      title: z.string(),
+      content: z.string(),
+      videoUrl: z.string(),
+      topicId: z.string(),
+      topicName: z.string().nullable(),
+      isFavorite: z.boolean(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    })
+    .nullable(),
 });
 
 export type LessonFavoriteResponse = z.infer<typeof LessonFavoriteResponseSchema>;

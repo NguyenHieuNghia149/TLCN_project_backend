@@ -24,12 +24,37 @@ const adminMutateLimit = rateLimitMiddleware({
 const idSchema = z.object({ id: z.string().uuid('Invalid user ID') });
 
 router.get('/', authenticationToken, requireTeacherOrOwner, adminReadLimit, controller.list);
-router.get('/teachers', authenticationToken, requireTeacherOrOwner, adminReadLimit, controller.listTeachers);
-router.get('/:id', authenticationToken, requireTeacherOrOwner, adminReadLimit, validate(idSchema, 'params'), controller.getById);
+router.get(
+  '/teachers',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminReadLimit,
+  controller.listTeachers
+);
+router.get(
+  '/:id',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminReadLimit,
+  validate(idSchema, 'params'),
+  controller.getById
+);
 router.post('/', authenticationToken, requireTeacherOrOwner, adminMutateLimit, controller.create);
-router.put('/:id', authenticationToken, requireTeacherOrOwner, adminMutateLimit, validate(idSchema, 'params'), controller.update);
-router.delete('/:id', authenticationToken, requireTeacherOrOwner, adminMutateLimit, validate(idSchema, 'params'), controller.remove);
+router.put(
+  '/:id',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminMutateLimit,
+  validate(idSchema, 'params'),
+  controller.update
+);
+router.delete(
+  '/:id',
+  authenticationToken,
+  requireTeacherOrOwner,
+  adminMutateLimit,
+  validate(idSchema, 'params'),
+  controller.remove
+);
 
 export default router;
-
-

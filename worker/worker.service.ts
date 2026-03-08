@@ -1,8 +1,8 @@
-import { queueService, QueueJob } from '../src/services/queue.service';
-import { submissionService } from '../src/services/submission.service';
-import { ExamService } from '../src/services/exam.service';
-import { ESubmissionStatus } from '../src/enums/submissionStatus.enum';
-import { JudgeUtils } from '../src/utils/judge';
+import { queueService, QueueJob } from '@/services/queue.service';
+import { submissionService } from '@/services/submission.service';
+import { ExamService } from '@/services/exam.service';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
+import { JudgeUtils } from '@/utils/judge';
 import axios from 'axios';
 
 export class WorkerService {

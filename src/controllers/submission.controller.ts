@@ -6,10 +6,7 @@ import {
   SubmissionNotFoundException,
   ProblemIdRequiredException,
 } from '@/exceptions/submission.exceptions';
-import {
-  CreateSubmissionInput,
-  GetSubmissionsQuery,
-} from '@/validations/submission.validation';
+import { CreateSubmissionInput, GetSubmissionsQuery } from '@/validations/submission.validation';
 import { SubmissionService } from '@/services/submission.service';
 
 export class SubmissionController {
@@ -59,7 +56,7 @@ export class SubmissionController {
       throw new SubmissionIdRequiredException();
     }
 
-    const status = await this.submissionService.getSubmissionStatus(submissionId);
+    const status = await this.submissionService.getSubmissionStatus(submissionId as string);
 
     if (!status) {
       throw new SubmissionNotFoundException();
@@ -105,7 +102,7 @@ export class SubmissionController {
       throw new ProblemIdRequiredException();
     }
 
-    const result = await this.submissionService.listProblemSubmissions(problemId, {
+    const result = await this.submissionService.listProblemSubmissions(problemId as string, {
       limit: 10,
       offset: 0,
     });
@@ -127,8 +124,7 @@ export class SubmissionController {
   ): Promise<void | Response> {
     const userId = (req as any).user?.userId;
     const { problemId } = req.params;
-    const { limit, offset, status, participationId } =
-      req.query as unknown as GetSubmissionsQuery;
+    const { limit, offset, status, participationId } = req.query as unknown as GetSubmissionsQuery;
 
     if (!userId) {
       throw new UserNotAuthenticatedException();
@@ -140,7 +136,7 @@ export class SubmissionController {
 
     const result = await this.submissionService.listUserProblemSubmissions(
       userId,
-      problemId,
+      problemId as string,
       participationId,
       { limit, offset, status: status as any }
     );
@@ -167,7 +163,7 @@ export class SubmissionController {
       throw new SubmissionIdRequiredException();
     }
 
-    const status = await this.submissionService.getSubmissionStatus(submissionId);
+    const status = await this.submissionService.getSubmissionStatus(submissionId as string);
 
     if (!status) {
       throw new SubmissionNotFoundException();

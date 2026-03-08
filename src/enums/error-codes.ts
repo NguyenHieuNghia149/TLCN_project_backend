@@ -1,0 +1,68 @@
+/**
+ * Centralized error code registry.
+ *
+ * All error codes used by AppException subclasses are defined here
+ * to ensure consistency and prevent typos in error codes across the system.
+ */
+export enum ErrorCode {
+  // ─── General ───────────────────────────────────────────────
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+  NOT_FOUND = 'NOT_FOUND',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+
+  // ─── Authentication & Authorization ────────────────────────
+  AUTHENTICATION_ERROR = 'AUTHENTICATION_ERROR',
+  AUTHORIZATION_ERROR = 'AUTHORIZATION_ERROR',
+  INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
+  ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  INVALID_TOKEN = 'INVALID_TOKEN',
+  REFRESH_TOKEN_NOT_FOUND = 'REFRESH_TOKEN_NOT_FOUND',
+  REFRESH_TOKEN_EXPIRED = 'REFRESH_TOKEN_EXPIRED',
+  EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED',
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  PASSWORD_RESET_TOKEN_EXPIRED = 'PASSWORD_RESET_TOKEN_EXPIRED',
+  EMAIL_VERIFICATION_TOKEN_EXPIRED = 'EMAIL_VERIFICATION_TOKEN_EXPIRED',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+
+  // ─── User ──────────────────────────────────────────────────
+  USER_NOT_FOUND = 'USER_NOT_FOUND',
+  USER_ALREADY_EXISTS = 'USER_ALREADY_EXISTS',
+  USER_ID_REQUIRED = 'USER_ID_REQUIRED',
+
+  // ─── Submission ────────────────────────────────────────────
+  MISSING_SUBMISSION_ID = 'MISSING_SUBMISSION_ID',
+  SUBMISSION_NOT_FOUND = 'SUBMISSION_NOT_FOUND',
+  MISSING_PROBLEM_ID = 'MISSING_PROBLEM_ID',
+
+  // ─── Challenge ─────────────────────────────────────────────
+  CHALLENGE_NOT_FOUND = 'CHALLENGE_NOT_FOUND',
+  CHALLENGE_HAS_SUBMISSIONS = 'CHALLENGE_HAS_SUBMISSIONS',
+
+  // ─── Exam ──────────────────────────────────────────────────
+  EXAM_NOT_FOUND = 'EXAM_NOT_FOUND',
+  MISSING_EXAM_ID = 'MISSING_EXAM_ID',
+  INVALID_EXAM_DATE = 'INVALID_EXAM_DATE',
+  INVALID_PASSWORD = 'INVALID_PASSWORD',
+  EXAM_NOT_STARTED = 'EXAM_NOT_STARTED',
+  EXAM_ENDED = 'EXAM_ENDED',
+  EXAM_ALREADY_JOINED = 'EXAM_ALREADY_JOINED',
+  PARTICIPATION_NOT_FOUND = 'PARTICIPATION_NOT_FOUND',
+  EXAM_TIMEOUT = 'EXAM_TIMEOUT',
+
+  // ─── Learning Process ─────────────────────────────────────
+  INVALID_LEARNING_PROCESS = 'INVALID_LEARNING_PROCESS',
+  TOPIC_ID_REQUIRED = 'TOPIC_ID_REQUIRED',
+  LESSON_ID_REQUIRED = 'LESSON_ID_REQUIRED',
+
+  // ─── Lesson ────────────────────────────────────────────────
+  LESSON_DETAIL_NOT_FOUND = 'LESSON_DETAIL_NOT_FOUND',
+  LESSON_NOT_FOUND = 'LESSON_NOT_FOUND',
+
+  // ─── Notification ──────────────────────────────────────────
+  NOTIFICATION_NOT_FOUND = 'NOTIFICATION_NOT_FOUND',
+  NOTIFICATION_ACCESS_DENIED = 'NOTIFICATION_ACCESS_DENIED',
+
+  // ─── Topic ─────────────────────────────────────────────────
+  TOPIC_ALREADY_EXISTS = 'TOPIC_ALREADY_EXISTS',
+}

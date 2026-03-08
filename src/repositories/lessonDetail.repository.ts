@@ -20,15 +20,15 @@ export class LessonDetailRepository extends BaseRepository<typeof lessons, Lesso
 
   async getLessonById(lessonId: string): Promise<LessonDetailResponse | null> {
     const lessonSelect = await this.db
-      .select({ 
-        id: lessons.id, 
-        title: lessons.title, 
+      .select({
+        id: lessons.id,
+        title: lessons.title,
         content: lessons.content,
         videoUrl: lessons.videoUrl,
         topicId: lessons.topicId,
         topicName: topics.topicName,
         createdAt: lessons.createdAt,
-        updatedAt: lessons.updatedAt
+        updatedAt: lessons.updatedAt,
       })
       .from(lessons)
       .leftJoin(topics, eq(lessons.topicId, topics.id))
@@ -43,7 +43,7 @@ export class LessonDetailRepository extends BaseRepository<typeof lessons, Lesso
     if (!lesson) {
       return null;
     }
-    
+
     return {
       id: lesson.id,
       title: lesson.title,
@@ -58,15 +58,15 @@ export class LessonDetailRepository extends BaseRepository<typeof lessons, Lesso
 
   async getLessonsByTopicId(topicId: string): Promise<LessonDetailResponse[]> {
     const lessonSelect = await this.db
-      .select({ 
-        id: lessons.id, 
-        title: lessons.title, 
+      .select({
+        id: lessons.id,
+        title: lessons.title,
         content: lessons.content,
         videoUrl: lessons.videoUrl,
         topicId: lessons.topicId,
         topicName: topics.topicName,
         createdAt: lessons.createdAt,
-        updatedAt: lessons.updatedAt
+        updatedAt: lessons.updatedAt,
       })
       .from(lessons)
       .leftJoin(topics, eq(lessons.topicId, topics.id))

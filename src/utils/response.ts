@@ -14,7 +14,11 @@ export const successResponse = <T>(data: T): ApiResponse<T> => ({
   error: null,
 });
 
-export const errorResponse = (code: string, message: string, details: any = null): ApiResponse<null> => ({
+export const errorResponse = (
+  code: string,
+  message: string,
+  details: any = null
+): ApiResponse<null> => ({
   success: false,
   data: null,
   error: {

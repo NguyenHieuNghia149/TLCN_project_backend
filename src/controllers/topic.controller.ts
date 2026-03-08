@@ -1,9 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { TopicService } from '@/services/topic.service';
 import { AppException } from '@/exceptions/base.exception';
-import {
-  CreateTopicSchema,
-} from '@/validations/topic.validation';
+import { CreateTopicSchema } from '@/validations/topic.validation';
 
 export class TopicController {
   constructor(private readonly topicService: TopicService) {}
@@ -24,7 +22,7 @@ export class TopicController {
     if (!topicId) {
       throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
-    const result = await this.topicService.getTopicById(topicId);
+    const result = await this.topicService.getTopicById(topicId as string);
     res.status(200).json(result);
   }
 
@@ -39,7 +37,7 @@ export class TopicController {
       throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
     const { topicName } = req.body;
-    const result = await this.topicService.updateTopic(topicId, { topicName });
+    const result = await this.topicService.updateTopic(topicId as string, { topicName });
     res.status(200).json({ message: 'Topic updated', ...result });
   }
 
@@ -48,7 +46,7 @@ export class TopicController {
     if (!topicId) {
       throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
-    await this.topicService.deleteTopic(topicId);
+    await this.topicService.deleteTopic(topicId as string);
     res.status(200).json({ message: 'Topic deleted' });
   }
 }

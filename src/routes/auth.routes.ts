@@ -7,6 +7,8 @@ import {
   rateLimitMiddleware,
   refreshLimiter,
   strictLimiter,
+  passwordResetLimiter,
+  emailVerificationLimiter,
 } from '@/middlewares/ratelimit.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import {
@@ -31,6 +33,8 @@ const authController = new AuthController(authService, userService, emailService
 const authRateLimit = authLimiter;
 const strictRateLimit = strictLimiter;
 const refreshLimit = refreshLimiter;
+const passwordResetLimit = passwordResetLimiter;
+const emailVerificationLimit = emailVerificationLimiter;
 
 router.post(
   '/register',
@@ -78,27 +82,27 @@ router.post(
 
 router.post(
   '/reset-password',
-  refreshLimit,
+  passwordResetLimit,
   validate(PasswordResetSchema),
   authController.resetPassword.bind(authController)
 );
 
 router.post(
   '/send-verification-email',
-  authRateLimit,
+  emailVerificationLimit,
   validate(SendVerificationEmailSchema),
   authController.sendVerificationCode.bind(authController)
 );
 
 router.post(
   '/send-reset-otp',
-  authRateLimit,
+  passwordResetLimit,
   validate(SendVerificationEmailSchema),
   authController.sendResetOTP.bind(authController)
 );
 router.post(
   '/verify-otp',
-  authRateLimit,
+  passwordResetLimit,
   validate(VerifyOTPSchema),
   authController.verifyOTP.bind(authController)
 );

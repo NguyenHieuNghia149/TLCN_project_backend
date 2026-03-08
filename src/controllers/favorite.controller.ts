@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { FavoriteService } from '@/services/favorite.service';
 import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
-import { FavoriteInput, FavoriteParams, LessonFavoriteInput, LessonFavoriteParams } from '@/validations/favorite.validation';
+import {
+  FavoriteInput,
+  FavoriteParams,
+  LessonFavoriteInput,
+  LessonFavoriteParams,
+} from '@/validations/favorite.validation';
 import { UserNotFoundException } from '@/exceptions/auth.exceptions';
 
 export class FavoriteController {
@@ -77,7 +82,11 @@ export class FavoriteController {
   }
 
   // Lesson favorite methods
-  async listLessonFavorites(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async listLessonFavorites(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     const userId = req.user?.userId;
 
     if (!userId) {
@@ -89,7 +98,11 @@ export class FavoriteController {
     res.status(200).json(favorites);
   }
 
-  async addLessonFavorite(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async addLessonFavorite(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     const userId = req.user?.userId;
 
     if (!userId) {

@@ -26,7 +26,11 @@ const leaderboardController = new LeaderboardController(leaderboardService);
  * - limit: number (default: 20, max: 100)
  * - search: string (optional, for searching users by name/email)
  */
-router.get('/', leaderboardReadLimit, leaderboardController.getLeaderboard.bind(leaderboardController));
+router.get(
+  '/',
+  leaderboardReadLimit,
+  leaderboardController.getLeaderboard.bind(leaderboardController)
+);
 
 /**
  * GET /api/leaderboard/top
@@ -34,19 +38,31 @@ router.get('/', leaderboardReadLimit, leaderboardController.getLeaderboard.bind(
  * Query params:
  * - limit: number (default: 10, max: 100)
  */
-router.get('/top', leaderboardReadLimit, leaderboardController.getTopUsers.bind(leaderboardController));
+router.get(
+  '/top',
+  leaderboardReadLimit,
+  leaderboardController.getTopUsers.bind(leaderboardController)
+);
 
 /**
  * GET /api/leaderboard/stats
  * Get leaderboard statistics
  */
-router.get('/stats', leaderboardReadLimit, leaderboardController.getLeaderboardStats.bind(leaderboardController));
+router.get(
+  '/stats',
+  leaderboardReadLimit,
+  leaderboardController.getLeaderboardStats.bind(leaderboardController)
+);
 
 /**
  * GET /api/leaderboard/user/:userId
  * Get user's rank information
  */
-router.get('/user/:userId', leaderboardReadLimit, leaderboardController.getUserRank.bind(leaderboardController));
+router.get(
+  '/user/:userId',
+  leaderboardReadLimit,
+  leaderboardController.getUserRank.bind(leaderboardController)
+);
 
 /**
  * GET /api/leaderboard/user/:userId/context
@@ -54,6 +70,10 @@ router.get('/user/:userId', leaderboardReadLimit, leaderboardController.getUserR
  * Query params:
  * - contextSize: number (default: 5)
  */
-router.get('/user/:userId/context', leaderboardReadLimit, leaderboardController.getUserRankContext.bind(leaderboardController));
+router.get(
+  '/user/:userId/context',
+  leaderboardReadLimit,
+  leaderboardController.getUserRankContext.bind(leaderboardController)
+);
 
 export default router;

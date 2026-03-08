@@ -3,15 +3,11 @@ import * as path from 'path';
 import * as yaml from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
 import { SandboxConfig as GlobalSandboxConfig } from '../config/sandbox.config';
-import {
-  ExecutionResult,
-  Testcase,
-  ExecutionConfig,
-} from '../src/validations/submission.validation';
-import { securityService } from '../src/services/security.service';
-import { monitoringService } from '../src/services/monitoring.service';
-import { FsUtils } from '../src/utils/fs';
-import { StringUtils } from '../src/utils/common';
+import { ExecutionResult, Testcase, ExecutionConfig } from '@/validations/submission.validation';
+import { securityService } from '@/services/security.service';
+import { monitoringService } from '@/services/monitoring.service';
+import { FsUtils } from '@/utils/fs';
+import { StringUtils } from '@/utils/common';
 
 export interface SandboxConfig {
   host: string;

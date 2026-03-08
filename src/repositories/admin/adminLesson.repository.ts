@@ -31,7 +31,11 @@ export interface LessonWithTopic extends LessonEntity {
   topicName?: string | null;
 }
 
-export class AdminLessonRepository extends BaseRepository<typeof lessons, LessonEntity, LessonInsert> {
+export class AdminLessonRepository extends BaseRepository<
+  typeof lessons,
+  LessonEntity,
+  LessonInsert
+> {
   constructor() {
     super(lessons);
   }
@@ -49,10 +53,7 @@ export class AdminLessonRepository extends BaseRepository<typeof lessons, Lesson
     if (filters.search) {
       const searchPattern = `%${filters.search}%`;
       whereConditions.push(
-        or(
-          like(lessons.title, searchPattern),
-          like(lessons.content, searchPattern)
-        )
+        or(like(lessons.title, searchPattern), like(lessons.content, searchPattern))
       );
     }
 
@@ -77,10 +78,7 @@ export class AdminLessonRepository extends BaseRepository<typeof lessons, Lesson
     const sortFn = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
 
     // Get total count
-    const countResult = await db
-      .select()
-      .from(lessons)
-      .where(whereClause);
+    const countResult = await db.select().from(lessons).where(whereClause);
     const total = countResult.length;
 
     // Get paginated results
@@ -145,7 +143,7 @@ export class AdminLessonRepository extends BaseRepository<typeof lessons, Lesson
     const cleanPayload = Object.fromEntries(
       Object.entries(payload).filter(([_, value]) => value !== undefined)
     );
-    
+
     const [lesson] = await db
       .update(lessons)
       .set({ ...cleanPayload, updatedAt: new Date() })
@@ -161,10 +159,10 @@ export class AdminLessonRepository extends BaseRepository<typeof lessons, Lesson
   async deleteLesson(id: string): Promise<void> {
     // Delete all comments associated with this lesson first
     await db.delete(comments).where(eq(comments.lessonId, id));
-    
+
     // Delete all learned lessons associated with this lesson
     await db.delete(learnedLessons).where(eq(learnedLessons.lessonId, id));
-    
+
     // Then delete the lesson itself
     await db.delete(lessons).where(eq(lessons.id, id));
   }

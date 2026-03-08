@@ -30,37 +30,39 @@ export const ExamChallengeInputSchema = z.discriminatedUnion('type', [
 
 export type ExamChallengeInput = z.infer<typeof ExamChallengeInputSchema>;
 
-// Exam creation schema
-export const CreateExamSchema = z
-  .object({
-    title: z.string().min(1, 'Exam title is required.').max(255, 'Exam title is too long.'),
-    password: z.string().min(1, 'Exam password is required.').max(255, 'Password is too long.'),
-    duration: z
-      .number()
-      .int()
-      .min(1, 'Duration must be at least 1 minute.')
-      .max(1440, 'Duration cannot exceed 1440 minutes (24 hours).'),
-    startDate: z.string().datetime('Invalid start date format.'),
-    endDate: z.string().datetime('Invalid end date format.'),
-    isVisible: z.boolean().optional().default(false),
-    maxAttempts: z.number().int().min(1, 'Max attempts must be at least 1.').optional().default(1),
-    challenges: z
-      .array(ExamChallengeInputSchema)
-      .min(1, 'At least one challenge is required for an exam.'),
-  })
-  .refine(
-    data => {
-      const startDate = new Date(data.startDate);
-      const endDate = new Date(data.endDate);
-      return endDate > startDate;
-    },
-    {
-      message: 'End date must be after start date.',
-      path: ['endDate'],
-    }
-  );
+// Base object schema (without refinements) — needed because Zod v4
+// does not allow .partial() on schemas that have .refine().
+const CreateExamBaseSchema = z.object({
+  title: z.string().min(1, 'Exam title is required.').max(255, 'Exam title is too long.'),
+  password: z.string().min(1, 'Exam password is required.').max(255, 'Password is too long.'),
+  duration: z
+    .number()
+    .int()
+    .min(1, 'Duration must be at least 1 minute.')
+    .max(1440, 'Duration cannot exceed 1440 minutes (24 hours).'),
+  startDate: z.string().datetime('Invalid start date format.'),
+  endDate: z.string().datetime('Invalid end date format.'),
+  isVisible: z.boolean().optional().default(false),
+  maxAttempts: z.number().int().min(1, 'Max attempts must be at least 1.').optional().default(1),
+  challenges: z
+    .array(ExamChallengeInputSchema)
+    .min(1, 'At least one challenge is required for an exam.'),
+});
 
-export const UpdateExamSchema = CreateExamSchema.partial();
+// Full create schema with date validation refinement
+export const CreateExamSchema = CreateExamBaseSchema.refine(
+  data => {
+    const startDate = new Date(data.startDate);
+    const endDate = new Date(data.endDate);
+    return endDate > startDate;
+  },
+  {
+    message: 'End date must be after start date.',
+    path: ['endDate'],
+  }
+);
+
+export const UpdateExamSchema = CreateExamBaseSchema.partial();
 export type CreateExamInput = z.infer<typeof CreateExamSchema>;
 export type UpdateExamInput = z.infer<typeof UpdateExamSchema>;
 

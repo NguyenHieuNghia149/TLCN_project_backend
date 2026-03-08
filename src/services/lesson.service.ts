@@ -1,6 +1,10 @@
 import { LessonRepository } from '../repositories/lesson.repository';
 import { TopicRepository } from '../repositories/topic.repository';
-import { CreateLessonInput, UpdateLessonInput, LessonResponse } from '../validations/lesson.validation';
+import {
+  CreateLessonInput,
+  UpdateLessonInput,
+  LessonResponse,
+} from '../validations/lesson.validation';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { BaseException } from '../exceptions/auth.exceptions';
 import { FavoriteRepository } from '../repositories/favorite.repository';
@@ -58,7 +62,7 @@ export class LessonService {
     if (!lesson) {
       throw new NotFoundException(`Lesson with ID ${id} not found.`);
     }
-    
+
     // Get topic name for the response
     const topicForName = await this.topicRepository.findById(lesson.topicId);
     return {
@@ -74,7 +78,10 @@ export class LessonService {
     };
   }
 
-  async getAllLessons(userId?: string, topicId?: string): Promise<(LessonResponse & { isFavorite: boolean })[]> {
+  async getAllLessons(
+    userId?: string,
+    topicId?: string
+  ): Promise<(LessonResponse & { isFavorite: boolean })[]> {
     let lessons = await this.lessonRepository.getAllLessons();
 
     // Filter by topicId if provided
@@ -86,7 +93,7 @@ export class LessonService {
     if (userId) {
       const lessonIds = lessons.map(l => l.id);
       const favoriteSet = await this.favoriteRepository.getFavoriteLessonIds(userId, lessonIds);
-      
+
       return lessons.map(lesson => ({
         ...lesson,
         isFavorite: favoriteSet.has(lesson.id),
@@ -111,13 +118,17 @@ export class LessonService {
 
     // Build update object, only include fields that are explicitly set
     const updateData: Record<string, any> = {};
-    
+
     if (lessonData.title !== undefined) updateData.title = lessonData.title;
     if (lessonData.content !== undefined) updateData.content = lessonData.content;
     if (lessonData.topicId !== undefined) updateData.topicId = lessonData.topicId;
-    
+
     // Handle videoUrl - remove if empty, null, or undefined
-    if (lessonData.videoUrl === undefined || lessonData.videoUrl === '' || lessonData.videoUrl === null) {
+    if (
+      lessonData.videoUrl === undefined ||
+      lessonData.videoUrl === '' ||
+      lessonData.videoUrl === null
+    ) {
       updateData.videoUrl = null;
     } else {
       updateData.videoUrl = lessonData.videoUrl;

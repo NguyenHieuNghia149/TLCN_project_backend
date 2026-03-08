@@ -1,10 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { LessonService } from '../services/lesson.service';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
-import {
-  CreateLessonSchema,
-  UpdateLessonSchema,
-} from '../validations/lesson.validation';
+import { CreateLessonSchema, UpdateLessonSchema } from '../validations/lesson.validation';
 import { AppException } from '@/exceptions/base.exception';
 
 export class LessonController {
@@ -23,7 +20,7 @@ export class LessonController {
     if (!lessonId) {
       throw new AppException('Lesson ID is required', 400, 'MISSING_LESSON_ID');
     }
-    const result = await this.lessonService.getLessonById(lessonId);
+    const result = await this.lessonService.getLessonById(lessonId as string);
     res.status(200).json(result);
   }
 
@@ -39,7 +36,7 @@ export class LessonController {
       throw new AppException('Lesson ID is required', 400, 'MISSING_LESSON_ID');
     }
     const parsedData = UpdateLessonSchema.parse(req.body);
-    const result = await this.lessonService.updateLesson(lessonId, parsedData);
+    const result = await this.lessonService.updateLesson(lessonId as string, parsedData);
     res.status(200).json({ message: 'Lesson updated', ...result });
   }
 
@@ -48,7 +45,7 @@ export class LessonController {
     if (!lessonId) {
       throw new AppException('Lesson ID is required', 400, 'MISSING_LESSON_ID');
     }
-    await this.lessonService.deleteLesson(lessonId);
+    await this.lessonService.deleteLesson(lessonId as string);
     res.status(200).json({ message: 'Lesson deleted' });
   }
 }

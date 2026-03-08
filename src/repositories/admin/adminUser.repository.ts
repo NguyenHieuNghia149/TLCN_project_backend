@@ -1,7 +1,12 @@
 import { users, UserEntity, UserInsert, updateUserSchema } from '@/database/schema';
 import { BaseRepository } from '../base.repository';
 import { eq } from 'drizzle-orm';
-import { UserRepository, PaginatedResult, PaginationOptions, UserFilters } from '@/repositories/user.repository';
+import {
+  UserRepository,
+  PaginatedResult,
+  PaginationOptions,
+  UserFilters,
+} from '@/repositories/user.repository';
 
 export class AdminUserRepository extends BaseRepository<typeof users, UserEntity, UserInsert> {
   private userRepository: UserRepository;
@@ -11,7 +16,10 @@ export class AdminUserRepository extends BaseRepository<typeof users, UserEntity
     this.userRepository = new UserRepository();
   }
 
-  async list(filters: UserFilters, pagination: PaginationOptions): Promise<PaginatedResult<UserEntity>> {
+  async list(
+    filters: UserFilters,
+    pagination: PaginationOptions
+  ): Promise<PaginatedResult<UserEntity>> {
     return this.userRepository.findUsersWithFilters(filters, pagination);
   }
 
@@ -31,9 +39,10 @@ export class AdminUserRepository extends BaseRepository<typeof users, UserEntity
     await this.userRepository.deleteUser(id);
   }
 
-  async listByRole(role: string, pagination: PaginationOptions): Promise<PaginatedResult<UserEntity>> {
+  async listByRole(
+    role: string,
+    pagination: PaginationOptions
+  ): Promise<PaginatedResult<UserEntity>> {
     return this.userRepository.findUsersWithFilters({ role }, pagination);
   }
 }
-
-

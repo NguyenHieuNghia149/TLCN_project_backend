@@ -12,7 +12,11 @@ export class LearnedLessonController {
   /**
    * Check if user has completed a lesson
    */
-  async checkLessonCompletion(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async checkLessonCompletion(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
     const userId = (req as any).user?.userId;
     const { lessonId } = req.params;
 
@@ -24,7 +28,10 @@ export class LearnedLessonController {
       throw new AppException('Lesson ID is required', 400, 'INVALID_INPUT');
     }
 
-    const isCompleted = await this.learnedLessonService.hasUserCompletedLesson(userId, lessonId);
+    const isCompleted = await this.learnedLessonService.hasUserCompletedLesson(
+      userId,
+      lessonId as string
+    );
 
     res.status(200).json({ isCompleted });
   }
@@ -32,7 +39,11 @@ export class LearnedLessonController {
   /**
    * Mark lesson as completed
    */
-  async markLessonCompleted(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async markLessonCompleted(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
     const userId = (req as any).user?.userId;
     const { lessonId } = req.body;
 
@@ -58,7 +69,11 @@ export class LearnedLessonController {
   /**
    * Get all completed lessons for user
    */
-  async getCompletedLessons(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getCompletedLessons(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
     const userId = (req as any).user?.userId;
 
     if (!userId) {

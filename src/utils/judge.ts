@@ -13,7 +13,7 @@ export class JudgeUtils {
     for (const result of results) {
       if (result.error) {
         const errorMsg = result.error.toLowerCase();
-        
+
         if (errorMsg.includes('timeout') || errorMsg.includes('time limit exceeded')) {
           return ESubmissionStatus.TIME_LIMIT_EXCEEDED;
         }
@@ -23,7 +23,7 @@ export class JudgeUtils {
         if (errorMsg.includes('compilation') || errorMsg.includes('compilation failed')) {
           return ESubmissionStatus.COMPILATION_ERROR;
         }
-        
+
         return ESubmissionStatus.RUNTIME_ERROR;
       }
     }

@@ -131,7 +131,10 @@ export class SubmissionService {
     return { problem, testcases };
   }
 
-  private async validateExamParticipation(userId: string, participationId: string): Promise<string> {
+  private async validateExamParticipation(
+    userId: string,
+    participationId: string
+  ): Promise<string> {
     const participation = await this.examParticipationRepository.findById(participationId);
     if (!participation || participation.userId !== userId) {
       throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
@@ -219,7 +222,7 @@ export class SubmissionService {
       const resultSubmissions =
         await this.resultSubmissionRepository.findBySubmissionId(submissionId);
       const testcases = await this.testcaseRepository.findByProblemId(submission.problemId);
-      
+
       result = {
         passed: resultSubmissions.filter(rs => rs.isPassed).length,
         total: resultSubmissions.length,
@@ -240,10 +243,7 @@ export class SubmissionService {
       };
 
       // Calculate score from testcases
-      score = JudgeUtils.calculateScore(
-        resultSubmissions,
-        testcases
-      );
+      score = JudgeUtils.calculateScore(resultSubmissions, testcases);
     }
 
     return {

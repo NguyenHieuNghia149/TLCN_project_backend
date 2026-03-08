@@ -242,7 +242,11 @@ export class ExamService {
     return 0;
   }
 
-  private calculateEffectiveEndTime(startTime: Date, durationMinutes: number, examEndDate: Date | string): Date {
+  private calculateEffectiveEndTime(
+    startTime: Date,
+    durationMinutes: number,
+    examEndDate: Date | string
+  ): Date {
     const startMs = startTime.getTime();
     const durationMs = (durationMinutes || 0) * 60 * 1000;
     const participationEndByDuration = new Date(startMs + durationMs);
@@ -700,7 +704,11 @@ export class ExamService {
     }
 
     const startTime = new Date();
-    const expiresAt = this.calculateEffectiveEndTime(startTime, examData.duration || 0, examData.endDate);
+    const expiresAt = this.calculateEffectiveEndTime(
+      startTime,
+      examData.duration || 0,
+      examData.endDate
+    );
 
     // Create participation with expiresAt
     const [participation] =
@@ -753,7 +761,11 @@ export class ExamService {
       throw new ExamNotFoundException();
     }
 
-    const effectiveEnd = this.calculateEffectiveEndTime(participation.startTime, examData.duration || 0, examData.endDate);
+    const effectiveEnd = this.calculateEffectiveEndTime(
+      participation.startTime,
+      examData.duration || 0,
+      examData.endDate
+    );
 
     const now = new Date();
     if (now.getTime() > effectiveEnd.getTime()) {
@@ -801,7 +813,11 @@ export class ExamService {
     const examData = await this.examRepository.findById(participation.examId);
     if (!examData) return;
 
-    const effectiveEnd = this.calculateEffectiveEndTime(participation.startTime, examData.duration || 0, examData.endDate);
+    const effectiveEnd = this.calculateEffectiveEndTime(
+      participation.startTime,
+      examData.duration || 0,
+      examData.endDate
+    );
 
     const now = new Date();
     if (now.getTime() < effectiveEnd.getTime()) {
@@ -834,7 +850,11 @@ export class ExamService {
       );
 
       for (const p of participations) {
-        const effectiveEnd = this.calculateEffectiveEndTime(p.startTime, ex.duration || 0, ex.endDate);
+        const effectiveEnd = this.calculateEffectiveEndTime(
+          p.startTime,
+          ex.duration || 0,
+          ex.endDate
+        );
 
         if (now.getTime() >= effectiveEnd.getTime()) {
           // auto submit
@@ -899,7 +919,11 @@ export class ExamService {
 
             // fallback: if none found, try submissions in participation time window
             if (!sub) {
-              const effectiveEnd = this.calculateEffectiveEndTime(row.startTime as Date, examData.duration || 0, examData.endDate);
+              const effectiveEnd = this.calculateEffectiveEndTime(
+                row.startTime as Date,
+                examData.duration || 0,
+                examData.endDate
+              );
 
               const latestByTime = await this.submissionRepository.findLatestByUserProblemBetween(
                 row.userId,
@@ -998,7 +1022,11 @@ export class ExamService {
 
     if (participation) participationStart = participation.startTime;
     if (participation && examData) {
-      effectiveEnd = this.calculateEffectiveEndTime(participation.startTime, examData.duration || 0, examData.endDate);
+      effectiveEnd = this.calculateEffectiveEndTime(
+        participation.startTime,
+        examData.duration || 0,
+        examData.endDate
+      );
     }
 
     let totalScore = 0;

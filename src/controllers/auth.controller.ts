@@ -178,7 +178,7 @@ export class AuthController {
   }
 
   async getProfileById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    const { userId } = req.params;
+    const { userId } = req.params as { userId: string };
 
     if (!userId) {
       throw new UserNotFoundException('User ID is required');

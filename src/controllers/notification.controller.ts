@@ -44,7 +44,7 @@ export class NotificationController {
       throw new NotificationNotFoundException();
     }
 
-    const updated = await this.notificationService.markAsRead(id, userId);
+    const updated = await this.notificationService.markAsRead(id as string, userId);
 
     res.status(200).json({
       ...updated,

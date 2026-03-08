@@ -14,7 +14,7 @@ export class AdminLessonController {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '10'), 10) || 10));
     const sortBy = String(req.query.sortBy || 'createdAt');
-    const sortOrder = (String(req.query.sortOrder || 'desc') as 'asc' | 'desc');
+    const sortOrder = String(req.query.sortOrder || 'desc') as 'asc' | 'desc';
 
     const filters = {
       search: req.query.search ? String(req.query.search) : undefined,

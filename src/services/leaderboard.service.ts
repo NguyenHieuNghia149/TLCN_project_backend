@@ -1,4 +1,8 @@
-import { LeaderboardRepository, LeaderboardEntry, LeaderboardFilters } from '@/repositories/leaderboard.repository';
+import {
+  LeaderboardRepository,
+  LeaderboardEntry,
+  LeaderboardFilters,
+} from '@/repositories/leaderboard.repository';
 
 export interface LeaderboardResponse {
   entries: LeaderboardEntry[];

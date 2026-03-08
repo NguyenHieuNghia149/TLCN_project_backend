@@ -47,7 +47,7 @@ export class LeaderboardController {
       throw new AppException('User ID is required', 400, 'MISSING_USER_ID');
     }
 
-    const result = await this.leaderboardService.getUserRank(userId);
+    const result = await this.leaderboardService.getUserRank(userId as string);
 
     if (!result) {
       throw new AppException('User not found or inactive', 404, 'USER_NOT_FOUND');
@@ -63,7 +63,11 @@ export class LeaderboardController {
    * Query params:
    * - contextSize: number (default: 5, how many users before/after)
    */
-  async getUserRankContext(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getUserRankContext(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
     const { userId } = req.params;
     const contextSize = Math.min(50, Math.max(1, parseInt(req.query.contextSize as string) || 5));
 
@@ -71,10 +75,14 @@ export class LeaderboardController {
       throw new AppException('User ID is required', 400, 'MISSING_USER_ID');
     }
 
-    const result = await this.leaderboardService.getUserRankContext(userId, contextSize);
+    const result = await this.leaderboardService.getUserRankContext(userId as string, contextSize);
 
     if (!result || result.length === 0) {
-      throw new AppException('User not found or no rank context available', 404, 'CONTEXT_NOT_FOUND');
+      throw new AppException(
+        'User not found or no rank context available',
+        404,
+        'CONTEXT_NOT_FOUND'
+      );
     }
 
     res.status(200).json(result);

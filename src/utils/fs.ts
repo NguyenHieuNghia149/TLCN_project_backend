@@ -18,7 +18,11 @@ export class FsUtils {
   /**
    * Writes content to a file.
    */
-  static writeFile(filePath: string, content: string | Buffer, options: fs.WriteFileOptions = 'utf8'): void {
+  static writeFile(
+    filePath: string,
+    content: string | Buffer,
+    options: fs.WriteFileOptions = 'utf8'
+  ): void {
     fs.writeFileSync(filePath, content, options);
   }
 

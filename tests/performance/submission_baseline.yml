@@ -1,5 +1,5 @@
 config:
-  target: "http://localhost:3001/api"
+  target: 'http://localhost/api'
   phases:
     - duration: 30
       arrivalRate: 5
@@ -10,10 +10,10 @@ config:
       name: Ramp up load
   defaults:
     headers:
-      Content-Type: "application/json"
+      Content-Type: 'application/json'
 
 scenarios:
-  - name: "Health Check"
+  - name: 'Health Check'
     flow:
       - get:
-          url: "/submissions/health"
+          url: '/submissions/health'

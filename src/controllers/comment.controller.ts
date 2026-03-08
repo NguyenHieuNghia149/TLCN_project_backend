@@ -11,7 +11,11 @@ export class CommentController {
     this.commentService = new CommentService();
   }
 
-  createComment = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  createComment = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const userId = req.user?.userId;
     if (!userId) {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
@@ -34,7 +38,7 @@ export class CommentController {
 
   getByLesson = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { lessonId } = req.params as any;
-    if (!lessonId) { 
+    if (!lessonId) {
       throw new AppException('lessonId required', 400, 'MISSING_LESSON_ID');
     }
 
@@ -62,7 +66,11 @@ export class CommentController {
     res.status(200).json(replies);
   };
 
-  deleteComment = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  deleteComment = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const userId = req.user?.userId;
     const userRole = req.user?.role;
     const { id } = req.params as any;
@@ -78,7 +86,11 @@ export class CommentController {
     res.status(200).json({ message: 'Comment deleted' });
   };
 
-  updateComment = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  updateComment = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const userId = req.user?.userId;
     if (!userId) {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');

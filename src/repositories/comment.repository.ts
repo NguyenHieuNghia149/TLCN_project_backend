@@ -1,4 +1,11 @@
-import { comments, CommentEntity, CommentInsert, lessons, problems, users } from '@/database/schema';
+import {
+  comments,
+  CommentEntity,
+  CommentInsert,
+  lessons,
+  problems,
+  users,
+} from '@/database/schema';
 import { BaseRepository } from './base.repository';
 import { eq, desc, isNull, and } from 'drizzle-orm';
 
@@ -18,7 +25,11 @@ export type CommentWithReplies = CommentWithUser & {
   replies: CommentWithUser[];
 };
 
-export class CommentRepository extends BaseRepository<typeof comments, CommentEntity, CommentInsert> {
+export class CommentRepository extends BaseRepository<
+  typeof comments,
+  CommentEntity,
+  CommentInsert
+> {
   constructor() {
     super(comments);
   }
