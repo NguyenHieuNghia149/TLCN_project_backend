@@ -119,3 +119,7 @@ GEMINI.md
 .prettierrc
 .prettierignore
 .editorconfig
+
+.gemini/
+.specify/
+specs/
