@@ -53,10 +53,21 @@ export class LearningProcessRepository {
       // Build topic progress
       const topicProgressMap = new Map<string, TopicProgress>();
 
+      // Get all problems to avoid N+1 queries in the loop
+      const problemsResult = await this.problemRepository.findMany({ limit: 5000 });
+      const allProblems = problemsResult.data;
+      const problemsByTopic = new Map<string, any[]>();
+      for (const p of allProblems) {
+        if (p.topicId) {
+          if (!problemsByTopic.has(p.topicId)) problemsByTopic.set(p.topicId, []);
+          problemsByTopic.get(p.topicId)!.push(p);
+        }
+      }
+
       for (const topic of allTopics) {
-        // Get problems for this topic
-        const problems = await this.problemRepository.getProblemsByTopicId(topic.id);
-        const problemIds = problems.map(p => p.id);
+        // Get problems for this topic from memory map
+        const problems = problemsByTopic.get(topic.id) || [];
+        const problemIds = problems.map((p: any) => p.id);
 
         // Count solved problems in this topic
         const solvedCount = problemIds.filter(pId => solvedProblemIds.has(pId)).length;
@@ -189,16 +200,21 @@ export class LearningProcessRepository {
       const lessonsResult = await this.lessonRepository.findMany({ limit: 1000 });
       const allLessons = lessonsResult.data;
 
+      // Get all topics to avoid N+1 queries
+      const topicsResult = await this.topicRepository.findMany({ limit: 1000 });
+      const allTopics = topicsResult.data;
+      const topicsMap = new Map(allTopics.map(t => [t.id, t]));
+
       // Build lesson progress by topic
       const lessonProgressMap = new Map<string, LessonProgress>();
 
       for (const lesson of allLessons) {
-        // Get topic info
-        const topic = await this.topicRepository.findById(lesson.topicId);
+        // Get topic info from memory map
+        const topic = topicsMap.get(lesson.topicId);
         if (!topic) continue;
 
-        // Get all lessons for this topic
-        const topicLessons = await this.lessonRepository.getLessonsByTopicId(lesson.topicId);
+        // Get all lessons for this topic from memory list
+        const topicLessons = allLessons.filter(l => l.topicId === lesson.topicId);
         const topicLessonIds = topicLessons.map(l => l.id);
 
         // Count completed lessons in this topic

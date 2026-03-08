@@ -471,22 +471,36 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
   }
 
   async getGrowthStats(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+    const dateThreshold = startOfDay(subDays(new Date(), days - 1));
+
+    const queryResult = await this.db.execute(sql`
+      SELECT DATE(created_at) as date, COUNT(*)::int as count
+      FROM users
+      WHERE created_at >= ${dateThreshold}
+      GROUP BY DATE(created_at)
+      ORDER BY DATE(created_at) ASC
+    `);
+
+    // Create a map of date string to count
+    const statsMap = new Map<string, number>();
+    for (const row of queryResult.rows) {
+      if (row.date) {
+        // Handle Date object or string from DB
+        const dateObj = typeof row.date === 'string' ? new Date(row.date) : row.date;
+        const dateStr = (dateObj as Date).toISOString().substring(0, 10);
+        statsMap.set(dateStr, Number(row.count) || 0);
+      }
+    }
+
     const userGrowth: Array<{ date: string; count: number }> = [];
 
+    // Fill in all days (including zero count days)
     for (let i = days - 1; i >= 0; i--) {
       const date = subDays(new Date(), i);
-      const start = startOfDay(date);
-      const end = endOfDay(date);
-
-      const result = await this.db
-        .select({ count: count() })
-        .from(users)
-        .where(and(gte(users.createdAt, start), lte(users.createdAt, end)));
-
-      const dateStr = date.toISOString().split('T')[0] || '';
+      const dateStr = date.toISOString().substring(0, 10);
       userGrowth.push({
         date: dateStr,
-        count: result[0]?.count || 0,
+        count: statsMap.get(dateStr) || 0,
       });
     }
 

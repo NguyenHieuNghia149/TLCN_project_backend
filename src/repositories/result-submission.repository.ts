@@ -43,9 +43,7 @@ export class ResultSubmissionRepository extends BaseRepository<
       return [];
     }
 
-    const updatedResults: ResultSubmissionEntity[] = [];
-
-    for (const result of results) {
+    const updatePromises = results.map(async result => {
       if (result.testcaseId) {
         const [updated] = await this.db
           .update(resultSubmissions)
@@ -61,11 +59,14 @@ export class ResultSubmissionRepository extends BaseRepository<
           )
           .returning();
 
-        if (updated) {
-          updatedResults.push(updated);
-        }
+        return updated;
       }
-    }
+      return null;
+    });
+
+    const updatedResults = (await Promise.all(updatePromises)).filter(
+      Boolean
+    ) as ResultSubmissionEntity[];
 
     return updatedResults;
   }

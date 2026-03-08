@@ -70,20 +70,27 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       const challengeIds: string[] = [];
       const orderMap = new Map<string, number>();
 
+      const existingChallengeIds = (challenges || [])
+        .filter(ch => ch && ch.type === 'existing')
+        .map(ch => ch.challengeId);
+
+      if (existingChallengeIds.length > 0) {
+        const rows = await tx
+          .select({ id: problems.id })
+          .from(problems)
+          .where(inArray(problems.id, existingChallengeIds));
+
+        if (rows.length !== existingChallengeIds.length) {
+          throw new Error('One or more existing challenges not found');
+        }
+      }
+
       for (let i = 0; i < (challenges || []).length; i++) {
         const ch = challenges[i];
         if (!ch) continue;
         const orderIndex = ch.orderIndex ?? i;
 
         if (ch.type === 'existing') {
-          // verify existence via tx to keep atomicity
-          const rows = await tx
-            .select()
-            .from(problems)
-            .where(inArray(problems.id, [ch.challengeId]));
-          if (!rows || rows.length === 0) {
-            throw new Error(`Challenge with ID ${ch.challengeId} not found`);
-          }
           challengeIds.push(ch.challengeId);
           orderMap.set(ch.challengeId, orderIndex);
         } else if (ch.type === 'new') {
