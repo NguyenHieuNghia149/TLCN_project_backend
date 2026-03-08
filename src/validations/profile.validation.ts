@@ -38,4 +38,3 @@ export const ProfileResponseSchema = z.object({
 });
 
 export type ProfileResponse = z.infer<typeof ProfileResponseSchema>;
-

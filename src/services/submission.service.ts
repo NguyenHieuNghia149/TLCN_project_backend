@@ -19,6 +19,7 @@ import { ExamRepository } from '@/repositories/exam.repository';
 import { PaginationOptions } from '@/repositories/base.repository';
 import axios from 'axios';
 import { BaseException } from '@/exceptions/auth.exceptions';
+import { JudgeUtils } from '@/utils/judge';
 
 export interface SubmissionInput {
   sourceCode: string;
@@ -52,50 +53,16 @@ export class SubmissionService {
     queuePosition: number;
     estimatedWaitTime: number;
   }> {
-    // Validate problem exists
-    const problem = await this.problemRepository.findById(input.problemId);
-    if (!problem) {
-      throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
-    }
+    const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
 
-    // Get testcases for the problem
-    const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
-    if (testcases.length === 0) {
-      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
-    }
-
-    // If participationId provided, validate it and ensure it's active for this user
     let examParticipationId: string | undefined = undefined;
     if ((input as any).participationId) {
-      const participationId = (input as any).participationId as string;
-      const participation = await this.examParticipationRepository.findById(participationId);
-      if (!participation || participation.userId !== input.userId) {
-        throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
-      }
-
-      const exam = await this.examRepository.findById(participation.examId);
-      if (!exam) {
-        throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
-      }
-
-      const startMs = participation.startTime.getTime();
-      const durationMs = (exam.duration || 0) * 60 * 1000;
-      const participationEndByDuration = new Date(startMs + durationMs);
-      const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
-      const effectiveEnd =
-        participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-          ? participationEndByDuration
-          : examGlobalEnd;
-
-      const now = new Date();
-      if (now.getTime() > effectiveEnd.getTime()) {
-        throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
-      }
-
-      examParticipationId = participationId;
+      examParticipationId = await this.validateExamParticipation(
+        input.userId,
+        (input as any).participationId
+      );
     }
 
-    // Create submission record (attach examParticipationId if present)
     const submission = await this.submissionRepository.create({
       sourceCode: input.sourceCode,
       language: input.language,
@@ -105,52 +72,12 @@ export class SubmissionService {
       ...(examParticipationId ? { examParticipationId } : {}),
     });
 
-    // Get queue position (try to be resilient if Redis/queue is unavailable)
-    let queueLength = 0;
-    try {
-      queueLength = await queueService.getQueueLength();
-    } catch (err) {
-      // Treat as queue unavailable
-      queueLength = 0;
-    }
-    const estimatedWaitTime = queueLength * 30; // Estimate 30 seconds per job
+    const queueLength = await this.getQueueLengthSafely();
+    const estimatedWaitTime = queueLength * 30;
 
-    // Create job for queue
-    const job: QueueJob = {
-      submissionId: submission.id,
-      userId: input.userId,
-      problemId: input.problemId,
-      code: input.sourceCode,
-      language: input.language,
-      testcases: testcases.map(tc => ({
-        id: tc.id,
-        input: tc.input,
-        output: tc.output,
-        point: tc.point,
-        isPublic: tc.isPublic ?? false,
-      })),
-      timeLimit: problem.timeLimit || 1000, // Default 1 second
-      memoryLimit: problem.memoryLimit || '128m', // Default 128MB
-      createdAt: new Date().toISOString(),
-    };
+    const job = this.prepareQueueJob(submission, problem, testcases);
 
-    // Add job to queue (fail gracefully if queue is unavailable)
-    let enqueued = true;
-    try {
-      await queueService.addJob(job);
-    } catch (err) {
-      // Do not fail submission if queue is unavailable — keep submission record and return
-      enqueued = false;
-    }
-
-    // TODO: Emit WebSocket event when WebSocketService is properly implemented
-    // emitSubmissionQueued({
-    //   submissionId: submission.id,
-    //   status: ESubmissionStatus.PENDING,
-    //   queuePosition: queueLength + 1,
-    //   problemId: input.problemId,
-    //   language: input.language,
-    // });
+    const enqueued = await this.addJobToQueueSafely(job);
 
     return {
       submissionId: submission.id,
@@ -164,24 +91,89 @@ export class SubmissionService {
     input: CreateSubmissionInput & { userId?: string },
     options?: { authHeader?: string }
   ) {
-    const problem = await this.problemRepository.findById(input.problemId);
+    const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
+
+    const submissionId = crypto.randomUUID();
+
+    const job = this.prepareQueueJob(
+      {
+        id: submissionId,
+        userId: input.userId || 'anonymous',
+        problemId: input.problemId,
+        sourceCode: input.sourceCode,
+        language: input.language,
+      },
+      problem,
+      testcases,
+      'RUN_CODE'
+    );
+
+    await queueService.addJob(job);
+
+    return {
+      submissionId,
+      status: ESubmissionStatus.PENDING,
+      message: 'Queued for execution',
+    };
+  }
+
+  private async validateProblemAndTestcases(problemId: string) {
+    const problem = await this.problemRepository.findById(problemId);
     if (!problem) {
       throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
-    const testcases = await this.testcaseRepository.findByProblemId(input.problemId);
+    const testcases = await this.testcaseRepository.findByProblemId(problemId);
     if (testcases.length === 0) {
-      throw new BaseException('No testcases found for this problem', 404, 'TESTCASE_NOT_FOUND');
+      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
     }
 
-    const submissionId = crypto.randomUUID();
+    return { problem, testcases };
+  }
 
-    const job: QueueJob = {
-      submissionId: submissionId,
-      userId: input.userId || 'anonymous',
-      problemId: input.problemId,
-      code: input.sourceCode,
-      language: input.language,
+  private async validateExamParticipation(
+    userId: string,
+    participationId: string
+  ): Promise<string> {
+    const participation = await this.examParticipationRepository.findById(participationId);
+    if (!participation || participation.userId !== userId) {
+      throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
+    }
+
+    const exam = await this.examRepository.findById(participation.examId);
+    if (!exam) {
+      throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
+    }
+
+    const startMs = participation.startTime.getTime();
+    const durationMs = (exam.duration || 0) * 60 * 1000;
+    const participationEndByDuration = new Date(startMs + durationMs);
+    const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
+    const effectiveEnd =
+      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+        ? participationEndByDuration
+        : examGlobalEnd;
+
+    const now = new Date();
+    if (now.getTime() > effectiveEnd.getTime()) {
+      throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
+    }
+
+    return participationId;
+  }
+
+  private prepareQueueJob(
+    submission: any,
+    problem: any,
+    testcases: any[],
+    jobType: string = 'JUDGE'
+  ): QueueJob {
+    return {
+      submissionId: submission.id,
+      userId: submission.userId,
+      problemId: submission.problemId,
+      code: submission.sourceCode,
+      language: submission.language,
       testcases: testcases.map(tc => ({
         id: tc.id,
         input: tc.input,
@@ -192,16 +184,25 @@ export class SubmissionService {
       timeLimit: problem.timeLimit || 1000,
       memoryLimit: problem.memoryLimit || '128m',
       createdAt: new Date().toISOString(),
-      jobType: 'RUN_CODE',
+      jobType: jobType as any,
     };
+  }
 
-    await queueService.addJob(job);
+  private async getQueueLengthSafely(): Promise<number> {
+    try {
+      return await queueService.getQueueLength();
+    } catch (err) {
+      return 0;
+    }
+  }
 
-    return {
-      submissionId,
-      status: ESubmissionStatus.PENDING,
-      message: 'Queued for execution',
-    };
+  private async addJobToQueueSafely(job: QueueJob): Promise<boolean> {
+    try {
+      await queueService.addJob(job);
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
 
   async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {
@@ -221,13 +222,12 @@ export class SubmissionService {
       const resultSubmissions =
         await this.resultSubmissionRepository.findBySubmissionId(submissionId);
       const testcases = await this.testcaseRepository.findByProblemId(submission.problemId);
-      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc]));
 
       result = {
         passed: resultSubmissions.filter(rs => rs.isPassed).length,
         total: resultSubmissions.length,
         results: resultSubmissions.map(rs => {
-          const testcase = testcaseMap.get(rs.testcaseId);
+          const testcase = testcases.find(tc => tc.id === rs.testcaseId);
           return {
             testcaseId: rs.testcaseId,
             input: testcase?.input || '',
@@ -243,15 +243,7 @@ export class SubmissionService {
       };
 
       // Calculate score from testcases
-      const totalPoints = testcases.reduce((sum, tc) => sum + tc.point, 0);
-      const achievedPoints = resultSubmissions
-        .filter(rs => rs.isPassed)
-        .reduce((sum, rs) => {
-          const testcase = testcaseMap.get(rs.testcaseId);
-          return sum + (testcase?.point || 0);
-        }, 0);
-
-      score = totalPoints > 0 ? Math.round((achievedPoints / totalPoints) * 100) : 0;
+      score = JudgeUtils.calculateScore(resultSubmissions, testcases);
     }
 
     return {
@@ -380,8 +372,6 @@ export class SubmissionService {
     for (const submission of submissions) {
       const status = await this.getSubmissionStatus(submission.id);
       if (status) {
-        // Carry over problemTitle if it exists in the original submission data
-        // and isn't already in status (which it likely isn't)
         if (submission.problemTitle) {
           (status as any).problemTitle = submission.problemTitle;
         }
@@ -493,19 +483,6 @@ export class SubmissionService {
     const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
     const data = await this.enrichSubmissionsWithStatus(submissions);
 
-    // Filter by status if provided (though it's better done at DB level, repository might not support it for this method yet)
-    // The original code passed 'status' to finding by User and Status, but here we are finding by User and Problem.
-    // If status filtering is needed for this specific combination, we should rely on repository or filter here.
-    // Given the previous code didn't combine User+Problem+Status in a specific repo call (it had separate if/else blocks),
-    // we'll stick to what the original code supported effectively or add filtering if needed.
-    // The previous code had: `else if (options.userId && options.problemId)` -> `findByUserAndProblem`. It didn't seem to use `status` there.
-    // So we invoke `enrichSubmissions` directly.
-
-    // If status really matters and isn't supported by repo, we filter post-fetch (inefficient but safe refactor)
-    if (options.status) {
-      // return filtered; // For now keeping it simple as per original behavior which seemed to prioritize problemId+userId over status
-    }
-
     return { data, pagination: result.pagination };
   }
 
@@ -587,27 +564,6 @@ export class SubmissionService {
           : new Date(submission.judgedAt)
         : undefined,
     };
-  }
-
-  calculateScore(
-    results: Array<{ testcaseId: string; isPassed: boolean; point: number }>,
-    testcases: Array<{ id: string; point: number }>
-  ): number {
-    const testcaseMap = new Map(testcases.map(tc => [tc.id, tc]));
-    let totalScore = 0;
-    let maxScore = 0;
-
-    results.forEach(result => {
-      const testcase = testcaseMap.get(result.testcaseId);
-      if (testcase) {
-        maxScore += testcase.point;
-        if (result.isPassed) {
-          totalScore += testcase.point;
-        }
-      }
-    });
-
-    return maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
   }
 
   async getSubmissionStats(

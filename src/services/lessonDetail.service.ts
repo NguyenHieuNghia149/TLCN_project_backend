@@ -1,4 +1,7 @@
-import { LessonDetailRepository, LessonDetailResponse } from '@/repositories/lessonDetail.repository';
+import {
+  LessonDetailRepository,
+  LessonDetailResponse,
+} from '@/repositories/lessonDetail.repository';
 import { LessonDetailNotFoundError } from '../exceptions/lesson.exceptions';
 
 export class LessonDetailService {
@@ -10,7 +13,7 @@ export class LessonDetailService {
 
   async getLessonById(lessonId: string): Promise<LessonDetailResponse> {
     const lesson = await this.lessonDetailRepository.getLessonById(lessonId);
-    
+
     if (!lesson) {
       throw new LessonDetailNotFoundError(`Lesson with ID ${lessonId} not found`);
     }
@@ -25,9 +28,11 @@ export class LessonDetailService {
 
   async getAllLessons(): Promise<LessonDetailResponse[]> {
     // Reuse the existing lesson repository method
-    const lessonRepository = new (await import('@/repositories/lesson.repository')).LessonRepository();
+    const lessonRepository = new (
+      await import('@/repositories/lesson.repository')
+    ).LessonRepository();
     const lessons = await lessonRepository.getAllLessons();
-    
+
     // Convert to LessonDetailResponse format
     return lessons.map(lesson => ({
       id: lesson.id,

@@ -29,8 +29,8 @@ export const CreateProblemSchema = z.object({
     .default('easy'),
   constraint: z.string(),
   tags: z.array(z.string()).optional(),
-  lessonid: z.string().uuid({ message: 'Invalid Lesson ID.' }).optional(),
-  topicid: z.string().uuid({ message: 'Invalid Topic ID.' }).optional(),
+  lessonId: z.string().uuid({ message: 'Invalid Lesson ID.' }).optional(),
+  topicId: z.string().uuid({ message: 'Invalid Topic ID.' }).optional(),
   visibility: z.string().optional(),
   solution: CreateSolutionSchema.optional(),
   testcases: z

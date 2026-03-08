@@ -37,13 +37,13 @@ export const rateLimitMiddleware = (options: RateLimitOptions) => {
 
 export const authLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  max: 20, // Reduced from 200 to 20 to protect against brute force login/register
   message: 'Too many authentication attempts, please try again later.',
 });
 
 export const refreshLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000,
+  max: 50, // Reduced from 1000 to 50 for token refresh
   message: 'Too many refresh attempts, please try again later.',
 });
 

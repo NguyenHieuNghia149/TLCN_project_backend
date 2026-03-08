@@ -4,20 +4,11 @@ import { ExamService } from '@/services/exam.service';
 import {
   CreateExamInput,
   CreateExamSchema,
-  JoinExamInput,
-  JoinExamSchema,
-  SubmitExamInput,
-  SubmitExamSchema,
   GetExamLeaderboardSchema,
 } from '@/validations/exam.validation';
-import {
-  ExamIdRequiredException,
-  ExamNotFoundException,
-  ExamParticipationNotFoundException,
-} from '@/exceptions/exam.exceptions';
-import { BaseException, ErrorHandler, UserNotFoundException } from '@/exceptions/auth.exceptions';
-import { z } from 'zod';
-import { th } from 'zod/v4/locales';
+import { ExamIdRequiredException } from '@/exceptions/exam.exceptions';
+import { AppException } from '@/exceptions/base.exception';
+import { UserNotFoundException } from '@/exceptions/auth.exceptions';
 
 export class ExamController {
   constructor(private readonly examService: ExamService) {}
@@ -27,18 +18,13 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const examData = req.body as CreateExamInput;
-      const result = await this.examService.createExam(examData);
+    const examData = req.body as CreateExamInput;
+    const result = await this.examService.createExam(examData);
 
-      return res.status(201).json({
-        success: true,
-        message: 'Exam created successfully',
-        data: result,
-      });
-    } catch (error) {
-      next(error);
-    }
+    res.status(201).json({
+      message: 'Exam created successfully',
+      ...result,
+    });
   }
 
   async updateExam(
@@ -46,24 +32,19 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { id } = req.params;
+    const { id } = req.params;
 
-      if (!id) {
-        throw new ExamIdRequiredException();
-      }
-
-      const examData = req.body;
-      const result = await this.examService.updateExam(id, examData);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Exam updated successfully',
-        data: result,
-      });
-    } catch (error) {
-      next(error);
+    if (!id) {
+      throw new ExamIdRequiredException();
     }
+
+    const examData = req.body;
+    const result = await this.examService.updateExam(id as string, examData);
+
+    res.status(200).json({
+      message: 'Exam updated successfully',
+      ...result,
+    });
   }
 
   async deleteExam(
@@ -71,75 +52,58 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { id } = req.params;
+    const { id } = req.params;
 
-      if (!id) {
-        throw new ExamIdRequiredException();
-      }
-
-      await this.examService.deleteExam(id);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Exam deleted successfully',
-      });
-    } catch (error) {
-      next(error);
+    if (!id) {
+      throw new ExamIdRequiredException();
     }
+
+    await this.examService.deleteExam(id as string);
+
+    res.status(200).json({
+      message: 'Exam deleted successfully',
+    });
   }
 
   async getExamById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params;
+    const { id } = req.params;
 
-      if (!id) {
-        throw new ExamIdRequiredException();
-      }
-
-      const result = await this.examService.getExamById(id);
-
-      return res.status(200).json({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      next(error);
+    if (!id) {
+      throw new ExamIdRequiredException();
     }
+
+    const result = await this.examService.getExamById(id as string);
+
+    res.status(200).json(result);
   }
 
   async getExams(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const limit = parseInt((req.query.limit as string) || '50', 10);
-      const offset = parseInt((req.query.offset as string) || '0', 10);
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const offset = parseInt((req.query.offset as string) || '0', 10);
 
-      const search = (req.query.search as string) || undefined;
-      const filterType = (req.query.filterType as any) || 'all';
-      // try to extract userId from authenticated request if present
-      const userId = (req as any).user?.userId || undefined;
+    const search = (req.query.search as string) || undefined;
+    const filterType = (req.query.filterType as any) || 'all';
+    // try to extract userId from authenticated request if present
+    const userId = (req as any).user?.userId || undefined;
 
-      let isVisible: boolean | undefined = undefined;
-      if (req.query.isVisible !== undefined) {
-        isVisible = req.query.isVisible === 'true';
-      }
-
-      const result = await this.examService.getExams(
-        limit,
-        offset,
-        search,
-        filterType,
-        userId,
-        isVisible
-      );
-
-      return res.status(200).json({
-        success: true,
-        data: result.data,
-        total: result.total,
-      });
-    } catch (error) {
-      next(error);
+    let isVisible: boolean | undefined = undefined;
+    if (req.query.isVisible !== undefined) {
+      isVisible = req.query.isVisible === 'true';
     }
+
+    const result = await this.examService.getExams(
+      limit,
+      offset,
+      search,
+      filterType,
+      userId,
+      isVisible
+    );
+
+    res.status(200).json({
+      data: result.data,
+      total: result.total,
+    });
   }
 
   async getExamChallenge(
@@ -147,22 +111,15 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { examId, challengeId } = req.params;
+    const { examId, challengeId } = req.params;
 
-      if (!examId || !challengeId) {
-        throw new ExamIdRequiredException();
-      }
-
-      const result = await this.examService.getExamChallenge(examId, challengeId);
-
-      return res.status(200).json({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      next(error);
+    if (!examId || !challengeId) {
+      throw new ExamIdRequiredException();
     }
+
+    const result = await this.examService.getExamChallenge(examId as string, challengeId as string);
+
+    res.status(200).json(result);
   }
 
   async getParticipation(
@@ -170,24 +127,20 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { examId, participationId } = req.params as {
-        examId?: string;
-        participationId?: string;
-      };
+    const { examId, participationId } = req.params as {
+      examId?: string;
+      participationId?: string;
+    };
 
-      if (!examId || !participationId) {
-        throw new ExamIdRequiredException();
-      }
-
-      const userId = req.user?.userId;
-
-      const result = await this.examService.getParticipation(examId, participationId, userId);
-
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
+    if (!examId || !participationId) {
+      throw new ExamIdRequiredException();
     }
+
+    const userId = req.user?.userId;
+
+    const result = await this.examService.getParticipation(examId, participationId, userId);
+
+    res.status(200).json(result);
   }
 
   async getMyParticipation(
@@ -195,22 +148,18 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { examId } = req.params as { examId?: string };
-      if (!examId) {
-        throw new ExamIdRequiredException();
-      }
-      const userId = req.user?.userId;
-      if (!userId) {
-        throw new UserNotFoundException();
-      }
-
-      const result = await this.examService.getMyParticipation(examId, userId);
-
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
+    const { examId } = req.params as { examId?: string };
+    if (!examId) {
+      throw new ExamIdRequiredException();
     }
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UserNotFoundException();
+    }
+
+    const result = await this.examService.getMyParticipation(examId, userId);
+
+    res.status(200).json(result);
   }
 
   async getOrCreateSession(
@@ -218,17 +167,13 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { examId } = req.params as { examId?: string };
-      if (!examId) throw new ExamIdRequiredException();
-      const userId = req.user?.userId;
-      if (!userId) throw new UserNotFoundException();
+    const { examId } = req.params as { examId?: string };
+    if (!examId) throw new ExamIdRequiredException();
+    const userId = req.user?.userId;
+    if (!userId) throw new UserNotFoundException();
 
-      const result = await this.examService.getOrCreateSession(examId, userId);
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
+    const result = await this.examService.getOrCreateSession(examId, userId);
+    res.status(200).json(result);
   }
 
   async syncSession(
@@ -236,21 +181,17 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { sessionId, answers, clientTimestamp } = req.body as {
-        sessionId?: string;
-        answers?: any;
-        clientTimestamp?: string;
-      };
-      const userId = req.user?.userId;
-      if (!userId) throw new UserNotFoundException();
-      if (!sessionId) throw new BaseException('Session ID is required', 400, 'SESSION_ID_REQUIRED');
+    const { sessionId, answers, clientTimestamp } = req.body as {
+      sessionId?: string;
+      answers?: any;
+      clientTimestamp?: string;
+    };
+    const userId = req.user?.userId;
+    if (!userId) throw new UserNotFoundException();
+    if (!sessionId) throw new AppException('Session ID is required', 400, 'SESSION_ID_REQUIRED');
 
-      const ok = await this.examService.syncSession(sessionId, answers, clientTimestamp);
-      return res.status(200).json({ success: ok });
-    } catch (error) {
-      next(error);
-    }
+    const ok = await this.examService.syncSession(sessionId, answers, clientTimestamp);
+    res.status(200).json({ success: ok });
   }
 
   async joinExam(
@@ -258,21 +199,17 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const userId = req.user?.userId;
-      const { id } = req.params as { id: string };
-      const { password } = req.body as { password?: string };
+    const userId = req.user?.userId;
+    const { id } = req.params as { id: string };
+    const { password } = req.body as { password?: string };
 
-      if (!userId) {
-        throw new UserNotFoundException();
-      }
-
-      const result = await this.examService.joinExam(id, userId, password || '');
-
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
+    if (!userId) {
+      throw new UserNotFoundException();
     }
+
+    const result = await this.examService.joinExam(id, userId, password || '');
+
+    res.status(200).json(result);
   }
 
   async submitExam(
@@ -280,38 +217,30 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const userId = req.user?.userId;
-      const { participationId } = req.body as { participationId?: string };
+    const userId = req.user?.userId;
+    const { participationId } = req.body as { participationId?: string };
 
-      if (!userId) {
-        throw new UserNotFoundException();
-      }
-
-      if (!participationId) {
-        throw new BaseException('Participation ID is required', 400, 'PARTICIPATION_ID_REQUIRED');
-      }
-
-      const result = await this.examService.submitExam(participationId, userId);
-
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
+    if (!userId) {
+      throw new UserNotFoundException();
     }
+
+    if (!participationId) {
+      throw new AppException('Participation ID is required', 400, 'PARTICIPATION_ID_REQUIRED');
+    }
+
+    const result = await this.examService.submitExam(participationId, userId);
+
+    res.status(200).json(result);
   }
 
   async getLeaderboard(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params as { id: string };
-      const limit = parseInt((req.query.limit as string) || '50', 10);
-      const offset = parseInt((req.query.offset as string) || '0', 10);
+    const { id } = req.params as { id: string };
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const offset = parseInt((req.query.offset as string) || '0', 10);
 
-      const result = await this.examService.getExamLeaderboard(id, limit, offset);
+    const result = await this.examService.getExamLeaderboard(id, limit, offset);
 
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
+    res.status(200).json(result);
   }
 
   async getExamLeaderboard(
@@ -319,104 +248,46 @@ export class ExamController {
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { examId, limit = 50, offset = 0 } = req.query as any;
+    const { examId, limit = 50, offset = 0 } = req.query as any;
 
-      if (!examId) {
-        throw new ExamIdRequiredException();
-      }
-
-      const result = await this.examService.getExamLeaderboard(
-        examId,
-        parseInt(limit) || 50,
-        parseInt(offset) || 0
-      );
-
-      return res.status(200).json({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      next(error);
+    if (!examId) {
+      throw new ExamIdRequiredException();
     }
+
+    const result = await this.examService.getExamLeaderboard(
+      examId,
+      parseInt(limit) || 50,
+      parseInt(offset) || 0
+    );
+
+    res.status(200).json(result);
   }
   async getParticipationSubmission(
     req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
-    try {
-      const { examId, participationId } = req.params as {
-        examId: string;
-        participationId: string;
-      };
-      const userId = (req as any).user?.userId;
-      const userRole = (req as any).user?.role;
+    const { examId, participationId } = req.params as {
+      examId: string;
+      participationId: string;
+    };
+    const userId = (req as any).user?.userId;
+    const userRole = (req as any).user?.role;
 
-      if (!userId) {
-        throw new BaseException('User not authenticated', 401, 'UNAUTHORIZED');
-      }
-
-      const result = await this.examService.getParticipationSubmission(
-        examId,
-        participationId,
-        userId,
-        userRole
-      );
-
-      return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static errorHandler(
-    error: Error,
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): void | Response {
-    // Handle Postgres unique violation for exams
-    const anyError = error as any;
-    if (anyError && anyError.code === '23505') {
-      return res.status(409).json({
-        success: false,
-        message: 'Exam already exists',
-        code: 'DUPLICATE_EXAM',
-        timestamp: new Date().toISOString(),
-      });
+    if (!userId) {
+      throw new AppException('User not authenticated', 401, 'UNAUTHORIZED');
     }
 
-    // Handle validation errors
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation error',
-        code: 'VALIDATION_ERROR',
-        timestamp: new Date().toISOString(),
-      });
-    }
+    const result = await this.examService.getParticipationSubmission(
+      examId,
+      participationId,
+      userId,
+      userRole
+    );
 
-    // Handle base exceptions
-    if (error instanceof BaseException) {
-      const errorResponse = ErrorHandler.getErrorResponse(error);
-      return res.status(errorResponse.statusCode).json({
-        success: false,
-        message: errorResponse.message,
-        code: errorResponse.code,
-        timestamp: errorResponse.timestamp,
-      });
-    }
-
-    // Return generic error response
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      code: 'INTERNAL_SERVER_ERROR',
-      timestamp: new Date().toISOString(),
-    });
+    res.status(200).json(result);
   }
 }
 
 // Export schema for route validation
-export { CreateExamSchema, JoinExamSchema, SubmitExamSchema, GetExamLeaderboardSchema };
+export { CreateExamSchema, GetExamLeaderboardSchema };

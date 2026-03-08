@@ -1,7 +1,8 @@
-import { queueService, QueueJob } from '../src/services/queue.service';
-import { submissionService } from '../src/services/submission.service';
-import { ExamService } from '../src/services/exam.service';
-import { ESubmissionStatus } from '../src/enums/submissionStatus.enum';
+import { queueService, QueueJob } from '@/services/queue.service';
+import { submissionService } from '@/services/submission.service';
+import { ExamService } from '@/services/exam.service';
+import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
+import { JudgeUtils } from '@/utils/judge';
 import axios from 'axios';
 
 export class WorkerService {
@@ -133,13 +134,13 @@ export class WorkerService {
       }
 
       // Calculate final status
-      const finalStatus = this.determineFinalStatus(
+      const finalStatus = JudgeUtils.determineFinalStatus(
         executionResult.summary,
         executionResult.results
       );
 
       // Calculate score
-      const score = this.calculateScore(executionResult.results, testcases);
+      const score = JudgeUtils.calculateScore(executionResult.results, testcases);
 
       if (!isRunOnly) {
         // Update submission with results
@@ -195,50 +196,6 @@ export class WorkerService {
     }
   }
 
-  private determineFinalStatus(summary: any, results: any[]): string {
-    if (summary.passed === summary.total) {
-      return ESubmissionStatus.ACCEPTED;
-    }
-
-    // Check for specific error types
-    for (const result of results) {
-      if (result.error) {
-        if (result.error.includes('timeout') || result.error.includes('Time limit exceeded')) {
-          return ESubmissionStatus.TIME_LIMIT_EXCEEDED;
-        }
-        if (result.error.includes('memory') || result.error.includes('Memory limit exceeded')) {
-          return ESubmissionStatus.MEMORY_LIMIT_EXCEEDED;
-        }
-        if (result.error.includes('compilation') || result.error.includes('Compilation failed')) {
-          return ESubmissionStatus.COMPILATION_ERROR;
-        }
-        return ESubmissionStatus.RUNTIME_ERROR;
-      }
-    }
-
-    return ESubmissionStatus.WRONG_ANSWER;
-  }
-
-  private calculateScore(results: any[], testcases: any[]): number {
-    let totalScore = 0;
-    let maxScore = 0;
-
-    results.forEach((result, index) => {
-      const testcase = testcases[index];
-      if (testcase) {
-        maxScore += testcase.point;
-        if (result.ok) {
-          totalScore += testcase.point;
-        }
-      }
-    });
-
-    return maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-  }
-
-  /**
-   * Test sandbox service availability
-   */
   private async testSandboxService(): Promise<boolean> {
     try {
       const response = await axios.get(`${this.sandboxUrl}/health`, { timeout: 5000 });

@@ -1,120 +1,109 @@
-export class BaseException extends Error {
-  public readonly statusCode: number;
-  public readonly code: string;
-  public readonly isOperational: boolean;
+import { AppException } from './base.exception';
+import { ErrorCode } from '@/enums/error-codes';
 
-  constructor(message: string, statusCode: number = 500, code: string = 'AUTH_ERROR') {
-    super(message);
-    this.name = this.constructor.name;
-    this.statusCode = statusCode;
-    this.code = code;
-    this.isOperational = true;
+export { AppException as BaseException };
 
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-
-export class ValidationException extends BaseException {
-  constructor(message: string, field?: string) {
-    super(message, 400, 'VALIDATION_ERROR');
+export class ValidationException extends AppException {
+  constructor(message: string, details?: any) {
+    super(message, 400, ErrorCode.VALIDATION_ERROR, details);
     this.name = 'ValidationException';
   }
 }
 
-export class AuthenticationException extends BaseException {
+export class AuthenticationException extends AppException {
   constructor(message: string = 'Authentication failed') {
-    super(message, 401, 'AUTHENTICATION_ERROR');
+    super(message, 401, ErrorCode.AUTHENTICATION_ERROR);
     this.name = 'AuthenticationException';
   }
 }
 
-export class AuthorizationException extends BaseException {
+export class AuthorizationException extends AppException {
   constructor(message: string = 'Insufficient permissions') {
-    super(message, 403, 'AUTHORIZATION_ERROR');
+    super(message, 403, ErrorCode.AUTHORIZATION_ERROR);
     this.name = 'AuthorizationException';
   }
 }
 
-export class UserNotFoundException extends BaseException {
+export class UserNotFoundException extends AppException {
   constructor(message: string = 'User not found') {
-    super(message, 404, 'USER_NOT_FOUND');
+    super(message, 404, ErrorCode.USER_NOT_FOUND);
     this.name = 'UserNotFoundException';
   }
 }
 
-export class UserAlreadyExistsException extends BaseException {
+export class UserAlreadyExistsException extends AppException {
   constructor(message: string = 'User already exists') {
-    super(message, 409, 'USER_ALREADY_EXISTS');
+    super(message, 409, ErrorCode.USER_ALREADY_EXISTS);
     this.name = 'UserAlreadyExistsException';
   }
 }
 
-export class InvalidCredentialsException extends BaseException {
+export class InvalidCredentialsException extends AppException {
   constructor(message: string = 'Invalid credentials') {
-    super(message, 401, 'INVALID_CREDENTIALS');
+    super(message, 401, ErrorCode.INVALID_CREDENTIALS);
     this.name = 'InvalidCredentialsException';
   }
 }
 
-export class AccountLockedException extends BaseException {
+export class AccountLockedException extends AppException {
   constructor(message: string = 'Account is locked due to too many failed login attempts') {
-    super(message, 423, 'ACCOUNT_LOCKED');
+    super(message, 423, ErrorCode.ACCOUNT_LOCKED);
     this.name = 'AccountLockedException';
   }
 }
 
-export class TokenExpiredException extends BaseException {
+export class TokenExpiredException extends AppException {
   constructor(message: string = 'Token has expired') {
-    super(message, 401, 'TOKEN_EXPIRED');
+    super(message, 401, ErrorCode.TOKEN_EXPIRED);
     this.name = 'TokenExpiredException';
   }
 }
 
-export class InvalidTokenException extends BaseException {
+export class InvalidTokenException extends AppException {
   constructor(message: string = 'Invalid token') {
-    super(message, 401, 'INVALID_TOKEN');
+    super(message, 401, ErrorCode.INVALID_TOKEN);
     this.name = 'InvalidTokenException';
   }
 }
 
-export class RefreshTokenNotFoundException extends BaseException {
+export class RefreshTokenNotFoundException extends AppException {
   constructor(message: string = 'Refresh token not found') {
-    super(message, 404, 'REFRESH_TOKEN_NOT_FOUND');
+    super(message, 404, ErrorCode.REFRESH_TOKEN_NOT_FOUND);
     this.name = 'RefreshTokenNotFoundException';
   }
 }
 
-export class RefreshTokenExpiredException extends BaseException {
+export class RefreshTokenExpiredException extends AppException {
   constructor(message: string = 'Refresh token expired') {
-    super(message, 401, 'REFRESH_TOKEN_EXPIRED');
+    super(message, 401, ErrorCode.REFRESH_TOKEN_EXPIRED);
     this.name = 'RefreshTokenExpiredException';
   }
 }
 
-export class EmailNotVerifiedException extends BaseException {
+export class EmailNotVerifiedException extends AppException {
   constructor(message: string = 'Email address not verified') {
-    super(message, 403, 'EMAIL_NOT_VERIFIED');
+    super(message, 403, ErrorCode.EMAIL_NOT_VERIFIED);
     this.name = 'EmailNotVerifiedException';
   }
 }
 
-export class RateLimitExceededException extends BaseException {
+export class RateLimitExceededException extends AppException {
   constructor(message: string = 'Too many requests, please try again later') {
-    super(message, 429, 'RATE_LIMIT_EXCEEDED');
+    super(message, 429, ErrorCode.RATE_LIMIT_EXCEEDED);
     this.name = 'RateLimitExceededException';
   }
 }
 
-export class PasswordResetTokenExpiredException extends BaseException {
+export class PasswordResetTokenExpiredException extends AppException {
   constructor(message: string = 'Password reset token has expired') {
-    super(message, 400, 'PASSWORD_RESET_TOKEN_EXPIRED');
+    super(message, 400, ErrorCode.PASSWORD_RESET_TOKEN_EXPIRED);
     this.name = 'PasswordResetTokenExpiredException';
   }
 }
 
-export class EmailVerificationTokenExpiredException extends BaseException {
+export class EmailVerificationTokenExpiredException extends AppException {
   constructor(message: string = 'Email verification token has expired') {
-    super(message, 400, 'EMAIL_VERIFICATION_TOKEN_EXPIRED');
+    super(message, 400, ErrorCode.EMAIL_VERIFICATION_TOKEN_EXPIRED);
     this.name = 'EmailVerificationTokenExpiredException';
   }
 }
@@ -122,7 +111,7 @@ export class EmailVerificationTokenExpiredException extends BaseException {
 // Error handler utility
 export class ErrorHandler {
   static isOperationalError(error: Error): boolean {
-    if (error instanceof BaseException) {
+    if (error instanceof AppException) {
       return error.isOperational;
     }
     return false;
@@ -134,7 +123,7 @@ export class ErrorHandler {
     code: string;
     timestamp: string;
   } {
-    if (error instanceof BaseException) {
+    if (error instanceof AppException) {
       return {
         statusCode: error.statusCode,
         message: error.message,
@@ -147,7 +136,7 @@ export class ErrorHandler {
     return {
       statusCode: 500,
       message: 'Internal server error',
-      code: 'INTERNAL_ERROR',
+      code: ErrorCode.INTERNAL_ERROR,
       timestamp: new Date().toISOString(),
     };
   }

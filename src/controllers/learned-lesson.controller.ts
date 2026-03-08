@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { LearnedLessonService } from '@/services/learned-lesson.service';
+import { AppException } from '@/exceptions/base.exception';
 
 export class LearnedLessonController {
   private learnedLessonService: LearnedLessonService;
@@ -11,99 +12,76 @@ export class LearnedLessonController {
   /**
    * Check if user has completed a lesson
    */
-  async checkLessonCompletion(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const userId = (req as any).user?.userId;
-      const { lessonId } = req.params;
+  async checkLessonCompletion(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    const userId = (req as any).user?.userId;
+    const { lessonId } = req.params;
 
-      if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
-      }
-
-      if (!lessonId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Lesson ID is required',
-          code: 'INVALID_INPUT',
-        });
-      }
-
-      const isCompleted = await this.learnedLessonService.hasUserCompletedLesson(userId, lessonId);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Lesson completion status fetched successfully',
-        data: { isCompleted },
-      });
-    } catch (error) {
-      next(error);
+    if (!userId) {
+      throw new AppException('User not authenticated', 401, 'UNAUTHORIZED');
     }
+
+    if (!lessonId) {
+      throw new AppException('Lesson ID is required', 400, 'INVALID_INPUT');
+    }
+
+    const isCompleted = await this.learnedLessonService.hasUserCompletedLesson(
+      userId,
+      lessonId as string
+    );
+
+    res.status(200).json({ isCompleted });
   }
 
   /**
    * Mark lesson as completed
    */
-  async markLessonCompleted(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const userId = (req as any).user?.userId;
-      const { lessonId } = req.body;
+  async markLessonCompleted(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    const userId = (req as any).user?.userId;
+    const { lessonId } = req.body;
 
-      if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
-      }
-
-      if (!lessonId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Lesson ID is required',
-          code: 'INVALID_INPUT',
-        });
-      }
-
-      const success = await this.learnedLessonService.markLessonAsCompleted(userId, lessonId);
-
-      return res.status(201).json({
-        success,
-        message: success ? 'Lesson marked as completed' : 'Failed to mark lesson as completed',
-        code: success ? 'SUCCESS' : 'ERROR',
-      });
-    } catch (error) {
-      next(error);
+    if (!userId) {
+      throw new AppException('User not authenticated', 401, 'UNAUTHORIZED');
     }
+
+    if (!lessonId) {
+      throw new AppException('Lesson ID is required', 400, 'INVALID_INPUT');
+    }
+
+    const success = await this.learnedLessonService.markLessonAsCompleted(userId, lessonId);
+
+    if (!success) {
+      throw new AppException('Failed to mark lesson as completed', 500, 'ERROR');
+    }
+
+    res.status(201).json({
+      message: 'Lesson marked as completed',
+    });
   }
 
   /**
    * Get all completed lessons for user
    */
-  async getCompletedLessons(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const userId = (req as any).user?.userId;
+  async getCompletedLessons(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    const userId = (req as any).user?.userId;
 
-      if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated',
-          code: 'UNAUTHORIZED',
-        });
-      }
-
-      const completedLessonIds = await this.learnedLessonService.getCompletedLessonsByUser(userId);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Completed lessons fetched successfully',
-        data: { completedLessonIds },
-      });
-    } catch (error) {
-      next(error);
+    if (!userId) {
+      throw new AppException('User not authenticated', 401, 'UNAUTHORIZED');
     }
+
+    const completedLessonIds = await this.learnedLessonService.getCompletedLessonsByUser(userId);
+
+    res.status(200).json({ completedLessonIds });
   }
 }

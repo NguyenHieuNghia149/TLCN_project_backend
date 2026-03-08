@@ -25,8 +25,13 @@ const idSchema = z.object({ id: z.string().uuid('Invalid user ID') });
 
 router.get('/', authenticationToken, requireOwner, adminReadLimit, controller.list);
 router.post('/', authenticationToken, requireOwner, adminMutateLimit, controller.create);
-router.put('/:id', authenticationToken, requireOwner, adminMutateLimit, validate(idSchema, 'params'), controller.update);
+router.put(
+  '/:id',
+  authenticationToken,
+  requireOwner,
+  adminMutateLimit,
+  validate(idSchema, 'params'),
+  controller.update
+);
 
 export default router;
-
-

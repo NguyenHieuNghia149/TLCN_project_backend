@@ -11,6 +11,8 @@ import route from './routes';
 import { initializeWebSocket } from './services/websocket.service';
 import { queueService } from './services/queue.service';
 import { examAutoSubmitService } from './services/exam-auto-submit.service';
+import { responseMiddleware } from './middlewares/response.middleware';
+import { errorMiddleware } from './middlewares/error.middleware';
 
 const app = express();
 const server = createServer(app);
@@ -89,6 +91,10 @@ app.set('trust proxy', 1);
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Apply response middleware to standardize API responses
+app.use(responseMiddleware);
+
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -120,24 +126,6 @@ async function startServer() {
     // Routes
     route(app);
 
-    // Global error handler
-    app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-      if (err.message === 'Not allowed by CORS') {
-        return res.status(403).json({
-          success: false,
-          message: 'CORS error: Origin not allowed',
-          code: 'CORS_ERROR',
-        });
-      }
-
-      return res.status(500).json({
-        status: 'error',
-        message: 'Internal Server Error',
-        code: 'INTERNAL_ERROR',
-        timestamp: new Date().toISOString(),
-      });
-    });
-
     // 404 handler
     app.use((req: Request, res: Response) => {
       res.status(404).json({
@@ -146,6 +134,9 @@ async function startServer() {
         code: 'NOT_FOUND',
       });
     });
+
+    // Global error handler - must be last
+    app.use(errorMiddleware);
 
     const PORT = process.env.PORT || 3001;
 

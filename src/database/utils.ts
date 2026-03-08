@@ -4,9 +4,7 @@ import { sql } from 'drizzle-orm';
 
 export class DatabaseUtils {
   // Fixed transaction wrapper with correct type
-  static async withTransaction<T>(
-    callback: (tx: TransactionType) => Promise<T>
-  ): Promise<T> {
+  static async withTransaction<T>(callback: (tx: TransactionType) => Promise<T>): Promise<T> {
     return await db.transaction(callback);
   }
 
@@ -36,7 +34,7 @@ export class DatabaseUtils {
     // Access the internal pool through the db instance
     const dbInternal = db as any;
     const pool = dbInternal.$client;
-    
+
     if (!pool) return null;
 
     return {

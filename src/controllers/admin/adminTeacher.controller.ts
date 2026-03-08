@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AdminUserService } from '@/services/admin/adminUser.service';
 import { insertUserSchema, updateUserSchema } from '@/database/schema';
+import { AppException } from '@/exceptions/base.exception';
 
 export class AdminTeacherController {
   private service: AdminUserService;
@@ -13,9 +14,9 @@ export class AdminTeacherController {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '10'), 10) || 10));
     const sortBy = String(req.query.sortBy || 'createdAt');
-    const sortOrder = (String(req.query.sortOrder || 'desc') as 'asc' | 'desc');
+    const sortOrder = String(req.query.sortOrder || 'desc') as 'asc' | 'desc';
     const result = await this.service.listTeachers({ page, limit, sortBy, sortOrder });
-    res.status(200).json({ success: true, data: result });
+    res.status(200).json(result);
   };
 
   create = async (req: Request, res: Response): Promise<void> => {
@@ -26,11 +27,10 @@ export class AdminTeacherController {
     };
     const parse = insertUserSchema.safeParse(body);
     if (!parse.success) {
-      res.status(400).json({ success: false, message: parse.error.flatten() });
-      return;
+      throw new AppException('Validation error', 400, 'VALIDATION_ERROR', parse.error.flatten());
     }
     const user = await this.service.createUser(parse.data);
-    res.status(201).json({ success: true, data: user });
+    res.status(201).json(user);
   };
 
   update = async (req: Request, res: Response): Promise<void> => {
@@ -43,14 +43,11 @@ export class AdminTeacherController {
     };
     const parse = updateUserSchema.safeParse(body);
     if (!parse.success) {
-      res.status(400).json({ success: false, message: parse.error.flatten() });
-      return;
+      throw new AppException('Validation error', 400, 'VALIDATION_ERROR', parse.error.flatten());
     }
     const user = await this.service.updateUser(id, parse.data);
-    res.status(200).json({ success: true, data: user });
+    res.status(200).json(user);
   };
 }
 
 export default AdminTeacherController;
-
-

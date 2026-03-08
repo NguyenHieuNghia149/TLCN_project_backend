@@ -1,4 +1,8 @@
-import { CommentRepository, CommentWithUser, CommentWithReplies } from '@/repositories/comment.repository';
+import {
+  CommentRepository,
+  CommentWithUser,
+  CommentWithReplies,
+} from '@/repositories/comment.repository';
 import { CommentInsert, CommentEntity } from '@/database/schema';
 
 export class CommentService {
@@ -41,14 +45,14 @@ export class CommentService {
     // 2. User is an owner or teacher
     const comment = await this.repo.findById(id);
     if (!comment) return false;
-    
+
     const isAuthor = userId && comment.userId === userId;
     const isAdmin = userRole && (userRole === 'owner' || userRole === 'teacher');
-    
+
     if (!isAuthor && !isAdmin) {
       throw new Error('Permission denied');
     }
-    
+
     return this.repo.delete(id);
   }
 }

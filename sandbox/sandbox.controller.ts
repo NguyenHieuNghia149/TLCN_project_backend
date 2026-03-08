@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { sandboxService } from './sandbox.service';
-import { ExecutionConfig } from '../src/validations/submission.validation';
+import { ExecutionConfig } from '@/validations/submission.validation';
 
 export class SandboxController {
   /**

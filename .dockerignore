@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+node_modules/
+**/node_modules/
+
+# Local build outputs
+dist/
+dist
+build/
+build
+*.log
+logs/
+logs
+coverage/
+
+# Environment and Secrets
+
+
+# Docker files
+Dockerfile*
+docker/
+.dockerignore
+docker-compose.yml
+
+# Testing & Execution
+workspace/
+workspace
+tests/unit/
+tests/performance/
+
+# IDE/Tooling
+.git/
+.github/
+.husky/
+.vscode/
+.idea/
+.gemini/
+.specify/
+.eslintignore
+.eslintrc.js
+.prettierignore
+.prettierrc
+drizzle.config.ts
+jest.config.js
+nodemon.json
+README.md
+GEMINI.md
+
+package-lock.json

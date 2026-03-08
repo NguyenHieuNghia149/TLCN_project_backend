@@ -128,14 +128,7 @@ export class ExamService {
     if (!examData) throw new ExamNotFoundException();
 
     const now = new Date();
-    const durationMs = (examData.duration || 0) * 60 * 1000;
-    const participationEndByDuration = new Date(now.getTime() + durationMs);
-    const examGlobalEnd =
-      examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-    const expiresAt =
-      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-        ? participationEndByDuration
-        : examGlobalEnd;
+    const expiresAt = this.calculateEffectiveEndTime(now, examData.duration || 0, examData.endDate);
 
     const [participation] =
       await this.examParticipationRepository.createExamParticipationWithExpiry(
@@ -187,65 +180,12 @@ export class ExamService {
   async syncSession(sessionId: string, answers: any, clientTimestamp?: string): Promise<boolean> {
     const now = new Date();
 
-    // Merge incoming partial answers with existing currentAnswers to avoid overwriting other problems
     const existing = await this.examParticipationRepository.findById(sessionId);
     if (!existing) {
       throw new ExamParticipationNotFoundException();
     }
 
-    const existingAnswers = existing.currentAnswers || {};
-
-    // If incoming answers include per-problem `updatedAt` timestamps, merge per-key
-    // and only accept incoming values that are newer than stored ones. This prevents
-    // a stale autosave (e.g., initial/default code sent early) from overwriting a
-    // newer saved value on the server.
-    const incoming = answers || {};
-    const merged: Record<string, any> = { ...existingAnswers };
-
-    const parseTs = (v: unknown) => {
-      if (!v) return 0;
-      const s = String(v);
-      const n = Number(s);
-      if (!Number.isNaN(n) && isFinite(n)) return n;
-      const p = Date.parse(s);
-      if (!Number.isNaN(p)) return p;
-      return 0;
-    };
-
-    for (const key of Object.keys(incoming)) {
-      try {
-        const incomingItem = incoming[key] || {};
-        const existingItem = existingAnswers[key] || {};
-        const incomingUpdated = parseTs(
-          incomingItem.updatedAt ||
-            incomingItem.updated_at ||
-            incomingItem.ts ||
-            incomingItem.clientTimestamp
-        );
-        const existingUpdated = parseTs(
-          existingItem.updatedAt ||
-            existingItem.updated_at ||
-            existingItem.ts ||
-            existingItem.clientTimestamp
-        );
-
-        // If incoming has no timestamp, accept it (best-effort).
-        const accept = incomingUpdated === 0 ? true : incomingUpdated >= existingUpdated;
-
-        if (accept) {
-          merged[key] = {
-            existingItem,
-            ...incomingItem,
-          };
-        } else {
-          // keep existing
-          merged[key] = existingItem;
-        }
-      } catch (err) {
-        // On any parse/merge error, be conservative and keep existing value
-        merged[key] = existingAnswers[key] || incoming[key];
-      }
-    }
+    const merged = this.mergeAnswers(existing.currentAnswers || {}, answers || {});
 
     const updated = await this.examParticipationRepository.updateParticipation(sessionId, {
       currentAnswers: merged,
@@ -253,6 +193,68 @@ export class ExamService {
     });
 
     return !!updated;
+  }
+
+  private mergeAnswers(existingAnswers: any, incomingAnswers: any): any {
+    const merged: Record<string, any> = { ...existingAnswers };
+
+    for (const key of Object.keys(incomingAnswers)) {
+      try {
+        const incomingItem = incomingAnswers[key] || {};
+        const existingItem = existingAnswers[key] || {};
+
+        const incomingUpdated = this.parseTimestamp(
+          incomingItem.updatedAt ||
+            incomingItem.updated_at ||
+            incomingItem.ts ||
+            incomingItem.clientTimestamp
+        );
+        const existingUpdated = this.parseTimestamp(
+          existingItem.updatedAt ||
+            existingItem.updated_at ||
+            existingItem.ts ||
+            existingItem.clientTimestamp
+        );
+
+        const accept = incomingUpdated === 0 || incomingUpdated >= existingUpdated;
+
+        if (accept) {
+          merged[key] = {
+            ...existingItem,
+            ...incomingItem,
+          };
+        }
+      } catch (err) {
+        merged[key] = existingAnswers[key] || incomingAnswers[key];
+      }
+    }
+
+    return merged;
+  }
+
+  private parseTimestamp(v: unknown): number {
+    if (!v) return 0;
+    const s = String(v);
+    const n = Number(s);
+    if (!Number.isNaN(n) && isFinite(n)) return n;
+    const p = Date.parse(s);
+    if (!Number.isNaN(p)) return p;
+    return 0;
+  }
+
+  private calculateEffectiveEndTime(
+    startTime: Date,
+    durationMinutes: number,
+    examEndDate: Date | string
+  ): Date {
+    const startMs = startTime.getTime();
+    const durationMs = (durationMinutes || 0) * 60 * 1000;
+    const participationEndByDuration = new Date(startMs + durationMs);
+    const examGlobalEnd = examEndDate instanceof Date ? examEndDate : new Date(examEndDate);
+
+    return participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+      ? participationEndByDuration
+      : examGlobalEnd;
   }
 
   async createExam(examData: CreateExamInput): Promise<ExamResponse> {
@@ -701,16 +703,12 @@ export class ExamService {
       );
     }
 
-    // Calculate expiresAt: min(startTime + duration, exam.endDate)
     const startTime = new Date();
-    const durationMs = (examData.duration || 0) * 60 * 1000;
-    const participationEndByDuration = new Date(startTime.getTime() + durationMs);
-    const examGlobalEnd =
-      examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-    const expiresAt =
-      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-        ? participationEndByDuration
-        : examGlobalEnd;
+    const expiresAt = this.calculateEffectiveEndTime(
+      startTime,
+      examData.duration || 0,
+      examData.endDate
+    );
 
     // Create participation with expiresAt
     const [participation] =
@@ -763,17 +761,11 @@ export class ExamService {
       throw new ExamNotFoundException();
     }
 
-    // Compute effective end time for this participation:
-    // A participation cannot continue past either (start + duration) OR the exam global endDate.
-    const startMs = participation.startTime.getTime();
-    const durationMs = (examData.duration || 0) * 60 * 1000; // duration stored in minutes
-    const participationEndByDuration = new Date(startMs + durationMs);
-    const examGlobalEnd =
-      examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-    const effectiveEnd =
-      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-        ? participationEndByDuration
-        : examGlobalEnd;
+    const effectiveEnd = this.calculateEffectiveEndTime(
+      participation.startTime,
+      examData.duration || 0,
+      examData.endDate
+    );
 
     const now = new Date();
     if (now.getTime() > effectiveEnd.getTime()) {
@@ -821,15 +813,11 @@ export class ExamService {
     const examData = await this.examRepository.findById(participation.examId);
     if (!examData) return;
 
-    const startMs = participation.startTime.getTime();
-    const durationMs = (examData.duration || 0) * 60 * 1000;
-    const participationEndByDuration = new Date(startMs + durationMs);
-    const examGlobalEnd =
-      examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-    const effectiveEnd =
-      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-        ? participationEndByDuration
-        : examGlobalEnd;
+    const effectiveEnd = this.calculateEffectiveEndTime(
+      participation.startTime,
+      examData.duration || 0,
+      examData.endDate
+    );
 
     const now = new Date();
     if (now.getTime() < effectiveEnd.getTime()) {
@@ -862,15 +850,11 @@ export class ExamService {
       );
 
       for (const p of participations) {
-        // compute effective end as min(start+duration, exam.endDate)
-        const startMs = p.startTime.getTime();
-        const durationMs = (ex.duration || 0) * 60 * 1000;
-        const participationEndByDuration = new Date(startMs + durationMs);
-        const examGlobalEnd = ex.endDate instanceof Date ? ex.endDate : new Date(ex.endDate);
-        const effectiveEnd =
-          participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-            ? participationEndByDuration
-            : examGlobalEnd;
+        const effectiveEnd = this.calculateEffectiveEndTime(
+          p.startTime,
+          ex.duration || 0,
+          ex.endDate
+        );
 
         if (now.getTime() >= effectiveEnd.getTime()) {
           // auto submit
@@ -935,15 +919,11 @@ export class ExamService {
 
             // fallback: if none found, try submissions in participation time window
             if (!sub) {
-              const startMs = (row.startTime as Date).getTime();
-              const durationMs = (examData.duration || 0) * 60 * 1000;
-              const participationEndByDuration = new Date(startMs + durationMs);
-              const examGlobalEnd =
-                examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-              const effectiveEnd =
-                participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-                  ? participationEndByDuration
-                  : examGlobalEnd;
+              const effectiveEnd = this.calculateEffectiveEndTime(
+                row.startTime as Date,
+                examData.duration || 0,
+                examData.endDate
+              );
 
               const latestByTime = await this.submissionRepository.findLatestByUserProblemBetween(
                 row.userId,
@@ -1042,15 +1022,11 @@ export class ExamService {
 
     if (participation) participationStart = participation.startTime;
     if (participation && examData) {
-      const startMs = participation.startTime.getTime();
-      const durationMs = (examData.duration || 0) * 60 * 1000;
-      const participationEndByDuration = new Date(startMs + durationMs);
-      const examGlobalEnd =
-        examData.endDate instanceof Date ? examData.endDate : new Date(examData.endDate);
-      effectiveEnd =
-        participationEndByDuration.getTime() <= examGlobalEnd.getTime()
-          ? participationEndByDuration
-          : examGlobalEnd;
+      effectiveEnd = this.calculateEffectiveEndTime(
+        participation.startTime,
+        examData.duration || 0,
+        examData.endDate
+      );
     }
 
     let totalScore = 0;

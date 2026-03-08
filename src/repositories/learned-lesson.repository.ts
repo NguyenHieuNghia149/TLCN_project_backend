@@ -27,7 +27,10 @@ export class LearnedLessonRepository extends BaseRepository<
   /**
    * Mark lesson as completed
    */
-  async markLessonAsCompleted(userId: string, lessonId: string): Promise<LearnedLessonEntity | null> {
+  async markLessonAsCompleted(
+    userId: string,
+    lessonId: string
+  ): Promise<LearnedLessonEntity | null> {
     // Check if already completed
     const existing = await this.hasUserCompletedLesson(userId, lessonId);
     if (existing) {
@@ -49,10 +52,7 @@ export class LearnedLessonRepository extends BaseRepository<
    * Get all completed lessons for a user
    */
   async getCompletedLessonsByUser(userId: string): Promise<LearnedLessonEntity[]> {
-    return await this.db
-      .select()
-      .from(learnedLessons)
-      .where(eq(learnedLessons.userId, userId));
+    return await this.db.select().from(learnedLessons).where(eq(learnedLessons.userId, userId));
   }
 
   /**

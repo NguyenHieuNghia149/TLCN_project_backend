@@ -508,26 +508,32 @@ export class SubmissionRepository extends BaseRepository<
   }
 
   async getDailyTrend(days: number = 7): Promise<Array<{ date: string; count: number }>> {
-    const submissionTrend: Array<{ date: string; count: number }> = [];
+    const startDate = subDays(startOfDay(new Date()), days - 1);
+
+    const result = await this.db
+      .select({
+        date: sql<string>`DATE(${submissions.submittedAt})`,
+        count: count(),
+      })
+      .from(submissions)
+      .where(gte(submissions.submittedAt, startDate))
+      .groupBy(sql`DATE(${submissions.submittedAt})`)
+      .orderBy(asc(sql`DATE(${submissions.submittedAt})`));
+
+    // Fill in missing dates with zero counts
+    const dailyTrendMap = new Map(result.map(r => [r.date, Number(r.count)]));
+    const trend: Array<{ date: string; count: number }> = [];
 
     for (let i = days - 1; i >= 0; i--) {
       const date = subDays(new Date(), i);
-      const start = startOfDay(date);
-      const end = endOfDay(date);
-
-      const result = await this.db
-        .select({ count: count() })
-        .from(submissions)
-        .where(and(gte(submissions.submittedAt, start), lte(submissions.submittedAt, end)));
-
       const dateStr = date.toISOString().split('T')[0] || '';
-      submissionTrend.push({
+      trend.push({
         date: dateStr,
-        count: result[0]?.count || 0,
+        count: dailyTrendMap.get(dateStr) || 0,
       });
     }
 
-    return submissionTrend;
+    return trend;
   }
 
   async getStatusDistribution(): Promise<{

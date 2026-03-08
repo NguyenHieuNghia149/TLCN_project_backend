@@ -43,6 +43,4 @@ router.delete(
   lessonController.delete.bind(lessonController)
 );
 
-router.use(LessonController.errorHandler);
-
 export default router;

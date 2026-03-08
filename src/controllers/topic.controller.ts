@@ -1,11 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { TopicService } from '@/services/topic.service';
-import { BaseException, ErrorHandler } from '@/exceptions/auth.exceptions';
-import {
-  CreateTopicInput,
-  CreateTopicSchema,
-  UpdateTopicInput,
-} from '@/validations/topic.validation';
+import { AppException } from '@/exceptions/base.exception';
+import { CreateTopicSchema } from '@/validations/topic.validation';
 
 export class TopicController {
   constructor(private readonly topicService: TopicService) {}
@@ -14,73 +10,43 @@ export class TopicController {
     const { topicName } = CreateTopicSchema.parse(req.body);
     const topic = await this.topicService.getTopicByName(topicName);
     if (topic) {
-      throw new BaseException('Topic name already exists', 409, 'DUPLICATE_TOPIC');
+      throw new AppException('Topic name already exists', 409, 'DUPLICATE_TOPIC');
     }
     const result = await this.topicService.createTopic({ topicName });
-    res.status(201).json({ success: true, message: 'Topic created', data: result });
+    res.status(201).json({ message: 'Topic created', ...result });
   }
 
   async getById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const topicId = req.params.topicId;
 
     if (!topicId) {
-      return res.status(400).json({ success: false, message: 'Topic ID is required' });
+      throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
-    const result = await this.topicService.getTopicById(topicId);
-    res.status(200).json({ success: true, data: result });
+    const result = await this.topicService.getTopicById(topicId as string);
+    res.status(200).json(result);
   }
 
   async list(req: Request, res: Response, next: NextFunction) {
     const result = await this.topicService.getAllTopics();
-    res.status(200).json({ success: true, data: result });
+    res.status(200).json(result);
   }
 
   async update(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const { topicId } = req.params;
     if (!topicId) {
-      return res.status(400).json({ success: false, message: 'Topic ID is required' });
+      throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
     const { topicName } = req.body;
-    const result = await this.topicService.updateTopic(topicId, { topicName });
-    res.status(200).json({ success: true, message: 'Topic updated', data: result });
+    const result = await this.topicService.updateTopic(topicId as string, { topicName });
+    res.status(200).json({ message: 'Topic updated', ...result });
   }
 
   async delete(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const { topicId } = req.params;
     if (!topicId) {
-      return res.status(400).json({ success: false, message: 'Topic ID is required' });
+      throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
     }
-    await this.topicService.deleteTopic(topicId);
-    res.status(200).json({ success: true, message: 'Topic deleted' });
-  }
-
-  static errorHandler(
-    error: Error,
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): void | Response {
-    // Handle Postgres unique violation for topic name (index on LOWER(topic_name))
-    const anyError = error as any;
-    if (anyError && anyError.code === '23505') {
-      return res.status(409).json({
-        success: false,
-        message: 'Topic name already exists',
-        code: 'DUPLICATE_TOPIC',
-        timestamp: new Date().toISOString(),
-      });
-    }
-    if (error instanceof BaseException) {
-      const er = ErrorHandler.getErrorResponse(error);
-      return res
-        .status(er.statusCode)
-        .json({ success: false, message: er.message, code: er.code, timestamp: er.timestamp });
-    }
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      code: 'INTERNAL_ERROR',
-      timestamp: new Date().toISOString(),
-    });
+    await this.topicService.deleteTopic(topicId as string);
+    res.status(200).json({ message: 'Topic deleted' });
   }
 }

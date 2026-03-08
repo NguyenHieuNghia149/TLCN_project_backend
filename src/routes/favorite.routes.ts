@@ -67,7 +67,4 @@ router.put(
   favoriteController.toggleFavorite.bind(favoriteController)
 );
 
-// Error handling middleware
-router.use(FavoriteController.errorHandler);
-
 export default router;

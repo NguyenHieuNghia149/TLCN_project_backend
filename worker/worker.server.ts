@@ -2,32 +2,46 @@
 
 import { config } from 'dotenv';
 import { workerService } from './worker.service';
+import winston from 'winston';
 
 // Load environment variables
 config();
 
+// Standardized logger for worker
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'worker' },
+  transports: [
+    new winston.transports.Console()
+  ],
+});
+
 async function startWorker(): Promise<void> {
-  console.log('🚀 Starting Code Execution Worker...\n');
+  logger.info('🚀 Starting Code Execution Worker...');
 
   try {
     // Start worker service
     await workerService.start();
   } catch (error) {
-    console.error('❌ Failed to start worker:', error);
+    logger.error('❌ Failed to start worker', { error });
     process.exit(1);
   }
 }
 
 // Graceful shutdown
 const shutdown = async (signal: string) => {
-  console.log(`\n🛑 Received ${signal}, shutting down worker...`);
+  logger.info(`Stopping worker...`, { signal });
 
   try {
     await workerService.stop();
-    console.log('👋 Worker stopped');
+    logger.info('👋 Worker stopped');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error during shutdown:', error);
+    logger.error('❌ Error during shutdown', { error });
     process.exit(1);
   }
 };
@@ -38,16 +52,17 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Handle uncaught exceptions
 process.on('uncaughtException', error => {
-  console.error('❌ Uncaught Exception:', error);
+  logger.error('❌ Uncaught Exception', { error });
   shutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', reason => {
-  console.error('❌ Unhandled Rejection:', reason);
+  logger.error('❌ Unhandled Rejection', { reason });
 });
 
 // Start worker
 startWorker().catch(error => {
-  console.error('❌ Worker startup failed:', error);
+  logger.error('❌ Worker startup failed', { error });
   process.exit(1);
 });
+

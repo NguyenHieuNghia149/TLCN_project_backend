@@ -42,10 +42,6 @@ router.get(
   lessonDetailController.getLessonsByTopicId
 );
 
-router.get(
-  '/',
-  lessonDetailReadLimit,
-  lessonDetailController.getAllLessons
-);
+router.get('/', lessonDetailReadLimit, lessonDetailController.getAllLessons);
 
 export default router;

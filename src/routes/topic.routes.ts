@@ -43,6 +43,4 @@ router.delete(
   topicController.delete.bind(topicController)
 );
 
-router.use(TopicController.errorHandler);
-
 export default router;

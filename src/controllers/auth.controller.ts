@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '@/services/auth.service';
 import {
-  BaseException,
-  ErrorHandler,
   UserAlreadyExistsException,
   UserNotFoundException,
+  AuthenticationException,
 } from '@/exceptions/auth.exceptions';
 import {
   ChangePasswordInput,
@@ -26,23 +25,9 @@ export class AuthController {
 
   async register(req: Request, res: Response, next: NextFunction) {
     const result = await this.authService.register(req.body as RegisterInput);
-    // res.cookie('refreshToken', result.tokens.refreshToken, {
-    //   httpOnly: true,
-    //   secure: process.env.NODE_ENV === 'production',
-    //   sameSite: 'strict',
-    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    //   path: '/api/auth/refresh-token',
-    // });
-
-    //const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
-
     res.status(201).json({
-      success: true,
       message: 'User registered successfully.',
-      data: {
-        user: result.user,
-        //tokens: tokensWithoutRefresh,
-      },
+      user: result.user,
     });
   }
 
@@ -53,7 +38,6 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      // sameSite: 'none',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/api/auth/refresh-token',
     });
@@ -61,12 +45,9 @@ export class AuthController {
     const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
 
     res.status(200).json({
-      success: true,
       message: 'Login with Google successful',
-      data: {
-        user: result.user,
-        tokens: tokensWithoutRefresh,
-      },
+      user: result.user,
+      tokens: tokensWithoutRefresh,
     });
   }
 
@@ -74,10 +55,7 @@ export class AuthController {
     const result = await this.authService.login(req.body as LoginInput);
 
     if (!result) {
-      res.status(401).json({
-        success: false,
-        message: 'User with this email does not exist',
-      });
+      throw new AuthenticationException('User with this email does not exist');
     }
 
     res.cookie('refreshToken', result.tokens.refreshToken, {
@@ -91,12 +69,9 @@ export class AuthController {
     const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
 
     res.status(200).json({
-      success: true,
       message: 'Login successful',
-      data: {
-        user: result.user,
-        tokens: tokensWithoutRefresh,
-      },
+      user: result.user,
+      tokens: tokensWithoutRefresh,
     });
   }
 
@@ -104,11 +79,7 @@ export class AuthController {
     const refreshToken = req.cookies.refreshToken;
 
     if (!refreshToken) {
-      return res.status(401).json({
-        success: false,
-        message: 'Refresh token not found',
-        code: 'NO_REFRESH_TOKEN',
-      });
+      throw new AuthenticationException('Refresh token not found');
     }
 
     const result = await this.authService.refreshToken({ refreshToken });
@@ -126,12 +97,9 @@ export class AuthController {
     const { refreshToken: _rt, ...tokensWithoutRefresh } = result.tokens as any;
 
     res.status(200).json({
-      success: true,
       message: 'Token refreshed successfully',
-      data: {
-        user: result.user,
-        tokens: tokensWithoutRefresh,
-      },
+      user: result.user,
+      tokens: tokensWithoutRefresh,
     });
   }
 
@@ -149,7 +117,6 @@ export class AuthController {
     });
 
     res.status(200).json({
-      success: true,
       message: 'Logout successful',
     });
   }
@@ -158,16 +125,12 @@ export class AuthController {
     const userId = (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not authenticated',
-      });
+      throw new AuthenticationException('User not authenticated');
     }
 
     await this.authService.logoutAll(userId);
 
     res.status(200).json({
-      success: true,
       message: 'Logged out from all devices',
     });
   }
@@ -176,16 +139,12 @@ export class AuthController {
     const userId = (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not authenticated',
-      });
+      throw new AuthenticationException('User not authenticated');
     }
 
     await this.userService.changePassword(userId, req.body as ChangePasswordInput);
 
     res.status(200).json({
-      success: true,
       message: 'Password changed successfully',
     });
   }
@@ -194,72 +153,50 @@ export class AuthController {
     const userId = (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not authenticated',
-      });
+      throw new AuthenticationException('User not authenticated');
     }
 
     const profile = await this.userService.getProfile(userId);
 
-    res.status(200).json({
-      success: true,
-      data: profile,
-    });
+    res.status(200).json(profile);
   }
 
   async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const userId = (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not authenticated',
-      });
+      throw new AuthenticationException('User not authenticated');
     }
 
     const updateData = req.body;
     const profile = await this.userService.updateProfile(userId, updateData);
 
     res.status(200).json({
-      success: true,
       message: 'Profile updated successfully',
-      data: profile,
+      user: profile,
     });
   }
 
   async getProfileById(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    const { userId } = req.params;
+    const { userId } = req.params as { userId: string };
 
     if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required',
-      });
+      throw new UserNotFoundException('User ID is required');
     }
 
     const profile = await this.userService.getProfile(userId);
 
-    res.status(200).json({
-      success: true,
-      data: profile,
-    });
+    res.status(200).json(profile);
   }
 
   async uploadAvatar(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const userId = (req as any).user?.userId;
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not authenticated',
-      });
+      throw new AuthenticationException('User not authenticated');
     }
 
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded',
-      });
+      throw new UserNotFoundException('No file uploaded');
     }
 
     try {
@@ -270,10 +207,7 @@ export class AuthController {
         },
         async (error: any, result?: any) => {
           if (error || !result) {
-            return res.status(500).json({
-              success: false,
-              message: 'Failed to upload image',
-            });
+            return next(new Error('Failed to upload image'));
           }
 
           try {
@@ -282,15 +216,11 @@ export class AuthController {
             const profile = await this.userService.updateProfile(userId, updateData);
 
             return res.status(200).json({
-              success: true,
               message: 'Avatar updated successfully',
-              data: profile,
+              user: profile,
             });
           } catch (error) {
-            return res.status(500).json({
-              success: false,
-              message: 'Failed to update profile',
-            });
+            next(error);
           }
         }
       );
@@ -304,42 +234,6 @@ export class AuthController {
     } catch (error) {
       next(error);
     }
-  }
-
-  // Error handling middleware
-  static errorHandler(
-    error: Error,
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): void | Response {
-    // Handle Postgres unique violation for email (user already exists)
-    const anyError = error as any;
-    if (anyError && anyError.code === '23505') {
-      return res.status(409).json({
-        success: false,
-        message: 'User with this email already exists',
-        code: 'DUPLICATE_USER',
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    if (error instanceof BaseException) {
-      const errorResponse = ErrorHandler.getErrorResponse(error);
-      return res.status(errorResponse.statusCode).json({
-        success: false,
-        message: errorResponse.message,
-        code: errorResponse.code,
-        timestamp: errorResponse.timestamp,
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      code: 'INTERNAL_ERROR',
-      timestamp: new Date().toISOString(),
-    });
   }
 
   async sendVerificationCode(
@@ -358,7 +252,6 @@ export class AuthController {
     await this.emailService.sendVerificationCode(email);
 
     res.status(200).json({
-      success: true,
       message: 'Verification code sent to your email.',
     });
   }
@@ -375,7 +268,6 @@ export class AuthController {
     await this.emailService.sendVerificationCode(email);
 
     res.status(200).json({
-      success: true,
       message: 'Reset OTP sent to your email.',
     });
   }
@@ -386,14 +278,10 @@ export class AuthController {
     const isValid = await this.emailService.verifyOTP(email, otp);
 
     if (!isValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid OTP',
-      });
+      throw new AuthenticationException('Invalid OTP');
     }
 
     res.status(200).json({
-      success: true,
       message: 'OTP verified successfully',
     });
   }
@@ -403,7 +291,6 @@ export class AuthController {
     await this.authService.resetPassword(email, newPassword, otp);
 
     res.status(200).json({
-      success: true,
       message: 'Password has been reset successfully. You can now log in with your new password.',
     });
   }

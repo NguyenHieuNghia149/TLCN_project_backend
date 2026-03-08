@@ -123,7 +123,4 @@ router.get('/health', challengeRateLimit, (req, res) => {
   });
 });
 
-// Error handling middleware
-router.use(ChallengeController.errorHandler);
-
 export default router;
