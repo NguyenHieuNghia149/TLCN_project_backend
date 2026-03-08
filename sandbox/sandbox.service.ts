@@ -11,6 +11,7 @@ import {
 import { securityService } from '../src/services/security.service';
 import { monitoringService } from '../src/services/monitoring.service';
 import { FsUtils } from '../src/utils/fs';
+import { StringUtils } from '../src/utils/common';
 
 export interface SandboxConfig {
   host: string;
@@ -539,7 +540,7 @@ export class SandboxService {
   }
 
   private trimOutput(output: string): string {
-    return output.replace(/\r/g, '').replace(/\n+$/, '').trim();
+    return StringUtils.trimOutput(output);
   }
 
   private cleanupWorkspace(jobDir: string): void {

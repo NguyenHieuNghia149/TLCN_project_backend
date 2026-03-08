@@ -19,6 +19,7 @@ import { ExamRepository } from '@/repositories/exam.repository';
 import { PaginationOptions } from '@/repositories/base.repository';
 import axios from 'axios';
 import { BaseException } from '@/exceptions/auth.exceptions';
+import { JudgeUtils } from '@/utils/judge';
 
 export interface SubmissionInput {
   sourceCode: string;
@@ -218,13 +219,12 @@ export class SubmissionService {
       const resultSubmissions =
         await this.resultSubmissionRepository.findBySubmissionId(submissionId);
       const testcases = await this.testcaseRepository.findByProblemId(submission.problemId);
-      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc]));
-
+      
       result = {
         passed: resultSubmissions.filter(rs => rs.isPassed).length,
         total: resultSubmissions.length,
         results: resultSubmissions.map(rs => {
-          const testcase = testcaseMap.get(rs.testcaseId);
+          const testcase = testcases.find(tc => tc.id === rs.testcaseId);
           return {
             testcaseId: rs.testcaseId,
             input: testcase?.input || '',
@@ -240,15 +240,10 @@ export class SubmissionService {
       };
 
       // Calculate score from testcases
-      const totalPoints = testcases.reduce((sum, tc) => sum + tc.point, 0);
-      const achievedPoints = resultSubmissions
-        .filter(rs => rs.isPassed)
-        .reduce((sum, rs) => {
-          const testcase = testcaseMap.get(rs.testcaseId);
-          return sum + (testcase?.point || 0);
-        }, 0);
-
-      score = totalPoints > 0 ? Math.round((achievedPoints / totalPoints) * 100) : 0;
+      score = JudgeUtils.calculateScore(
+        resultSubmissions,
+        testcases
+      );
     }
 
     return {
@@ -377,8 +372,6 @@ export class SubmissionService {
     for (const submission of submissions) {
       const status = await this.getSubmissionStatus(submission.id);
       if (status) {
-        // Carry over problemTitle if it exists in the original submission data
-        // and isn't already in status (which it likely isn't)
         if (submission.problemTitle) {
           (status as any).problemTitle = submission.problemTitle;
         }
@@ -490,19 +483,6 @@ export class SubmissionService {
     const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
     const data = await this.enrichSubmissionsWithStatus(submissions);
 
-    // Filter by status if provided (though it's better done at DB level, repository might not support it for this method yet)
-    // The original code passed 'status' to finding by User and Status, but here we are finding by User and Problem.
-    // If status filtering is needed for this specific combination, we should rely on repository or filter here.
-    // Given the previous code didn't combine User+Problem+Status in a specific repo call (it had separate if/else blocks),
-    // we'll stick to what the original code supported effectively or add filtering if needed.
-    // The previous code had: `else if (options.userId && options.problemId)` -> `findByUserAndProblem`. It didn't seem to use `status` there.
-    // So we invoke `enrichSubmissions` directly.
-
-    // If status really matters and isn't supported by repo, we filter post-fetch (inefficient but safe refactor)
-    if (options.status) {
-      // return filtered; // For now keeping it simple as per original behavior which seemed to prioritize problemId+userId over status
-    }
-
     return { data, pagination: result.pagination };
   }
 
@@ -584,27 +564,6 @@ export class SubmissionService {
           : new Date(submission.judgedAt)
         : undefined,
     };
-  }
-
-  calculateScore(
-    results: Array<{ testcaseId: string; isPassed: boolean; point: number }>,
-    testcases: Array<{ id: string; point: number }>
-  ): number {
-    const testcaseMap = new Map(testcases.map(tc => [tc.id, tc]));
-    let totalScore = 0;
-    let maxScore = 0;
-
-    results.forEach(result => {
-      const testcase = testcaseMap.get(result.testcaseId);
-      if (testcase) {
-        maxScore += testcase.point;
-        if (result.isPassed) {
-          totalScore += testcase.point;
-        }
-      }
-    });
-
-    return maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
   }
 
   async getSubmissionStats(

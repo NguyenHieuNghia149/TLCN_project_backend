@@ -102,17 +102,20 @@ Sandbox Service → Worker Service → Database
 
 **Bước 4.2: Determine Status**
 
-- `ACCEPTED`: Tất cả test cases pass
-- `WRONG_ANSWER`: Một số test cases fail
-- `TIME_LIMIT_EXCEEDED`: Timeout
-- `MEMORY_LIMIT_EXCEEDED`: Memory limit
-- `RUNTIME_ERROR`: Runtime error
-- `COMPILATION_ERROR`: Compilation failed
+- Sử dụng `JudgeUtils.determineFinalStatus` (tại `src/utils/judge.ts`) để xác định trạng thái dựa trên kết quả test cases.
+- Các trạng thái chuẩn hóa:
+  - `ACCEPTED`: Tất cả test cases pass
+  - `WRONG_ANSWER`: Một số test cases fail
+  - `TIME_LIMIT_EXCEEDED`: Timeout
+  - `MEMORY_LIMIT_EXCEEDED`: Memory limit
+  - `RUNTIME_ERROR`: Runtime error
+  - `COMPILATION_ERROR`: Compilation failed
 
 **Bước 4.3: Calculate Score**
 
-- Score = (passed_testcases / total_testcases) \* 100
-- Store results trong database
+- Sử dụng `JudgeUtils.calculateScore` để tính điểm dựa trên trọng số (points) của từng test case.
+- Score = (passed_points / total_points) \* 100
+- Store kết quả và score trong database thông qua `SubmissionService`.
 
 ### 5. **Real-time Updates**
 
@@ -137,6 +140,17 @@ Worker Service → WebSocket → Client
 ### **API Server (Port 3000)**
 
 ```typescript
+// Standardized API Response Format
+{
+  "success": boolean,
+  "data": any | null,
+  "error": {
+    "code": string,
+    "message": string,
+    "details": any | null
+  } | null
+}
+
 // Endpoints
 POST /api/submissions          // Submit code
 GET  /api/submissions/:id      // Get submission status

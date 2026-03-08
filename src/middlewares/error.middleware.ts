@@ -19,6 +19,14 @@ export const errorMiddleware = (err: any, req: Request, res: Response, next: Nex
   }
 
   // Default to 500 server error
+  const isDev = process.env.NODE_ENV === 'development';
   console.error('[ErrorMiddleware]', err);
-  return res.status(500).json(errorResponse('INTERNAL_ERROR', 'Internal Server Error'));
+
+  return res.status(500).json(
+    errorResponse(
+      'INTERNAL_ERROR',
+      isDev ? err.message : 'Internal Server Error',
+      isDev ? { stack: err.stack, ...err } : null
+    )
+  );
 };

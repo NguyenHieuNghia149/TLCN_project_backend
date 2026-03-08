@@ -61,4 +61,12 @@ export class StringUtils {
     }
     return result;
   }
+
+  /**
+   * Trims output by removing carriage returns and trailing newlines.
+   */
+  static trimOutput(output: string): string {
+    if (!output) return '';
+    return output.replace(/\r/g, '').replace(/\n+$/, '').trim();
+  }
 }
