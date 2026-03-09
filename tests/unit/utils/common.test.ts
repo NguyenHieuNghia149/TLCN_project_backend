@@ -1,4 +1,4 @@
-import { StringUtils, DateUtils } from '../../../src/utils/common';
+import { StringUtils, DateUtils } from '@backend/shared/types/utils';
 
 describe('CommonUtils', () => {
   describe('StringUtils', () => {

@@ -1,0 +1,26 @@
+{
+    "name": "@backend/shared",
+    "version": "1.0.0",
+    "private": true,
+    "main": "index.ts",
+    "types": "index.ts",
+    "exports": {
+        "./db": "./db/index.ts",
+        "./types": "./types/index.ts",
+        "./utils": "./utils/index.ts",
+        "./proto": "./proto/index.ts",
+        "./validations": "./validations/index.ts"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "description": "",
+    "dependencies": {
+        "drizzle-orm": "^0.44.5",
+        "drizzle-zod": "^0.8.3",
+        "zod": "^4.1.11"
+    }
+}

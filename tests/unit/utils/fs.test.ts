@@ -1,4 +1,4 @@
-import { FsUtils } from '../../../src/utils/fs';
+import { FsUtils } from '@backend/shared/types/utils';
 import * as fs from 'fs';
 
 jest.mock('fs');

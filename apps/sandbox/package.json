@@ -1,0 +1,14 @@
+{
+  "name": "@backend/sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/sandbox.server.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {}
+}

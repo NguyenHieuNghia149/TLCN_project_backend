@@ -1,0 +1,2 @@
+src/repositories/exam.repository.ts(174,49): error TS2307: Cannot find module '@judge/shared/db/schema' or its corresponding type declarations.
+src/routes/index.ts(9,27): error TS2307: Cannot find module '@backend/sandbox/sandbox.routes' or its corresponding type declarations.

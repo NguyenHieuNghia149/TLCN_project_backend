@@ -117,18 +117,29 @@ You can run the services individually or all together.
 ## Project Structure
 
 ```
-src/
-├── config/         # Configuration files
-├── controllers/    # Request handlers
-├── services/       # Business logic layer
-├── repositories/   # Database access layer
-├── database/       # Drizzle schema and migrations
-├── routes/         # API Route definitions
-├── middlewares/    # Express middlewares
-├── utils/          # Utility functions
-└── index.ts        # Application entry point
-worker/             # Background worker for code execution
-sandbox/            # Isolated environment for running user code
+backend/
+├── apps/
+│   ├── api/        # API Service (Express)
+│   │   ├── src/
+│   │   │   ├── config/     # Configuration files
+│   │   │   ├── controllers/  # Request handlers
+│   │   │   ├── services/     # Business logic layer
+│   │   │   ├── repositories/ # Database access layer
+│   │   │   ├── db/           # Drizzle schema and migrations
+│   │   │   ├── routes/       # API Route definitions
+│   │   │   ├── middlewares/  # Express middlewares
+│   │   │   ├── utils/        # Utility functions
+│   │   │   └── index.ts      # Application entry point
+│   │   └── package.json
+│   ├── worker/       # Background worker for code execution
+│   │   └── package.json
+│   └── sandbox/      # Isolated environment for running user code
+│       └── package.json
+├── packages/
+│   └── shared/       # Shared code across services
+│       ├── db/       # Drizzle schema and migrations
+│       └── types/    # Shared TypeScript types
+└── package.json
 ```
 
 ## Scripts
@@ -142,7 +153,9 @@ sandbox/            # Isolated environment for running user code
 ## Development Standards
 
 ### Standardized API Responses
+
 All API responses follow a consistent JSON structure, handled automatically by `responseMiddleware`:
+
 ```json
 {
   "success": true,
@@ -150,21 +163,27 @@ All API responses follow a consistent JSON structure, handled automatically by `
   "error": null
 }
 ```
+
 In controllers, simply return your data using `res.json(data)`.
 
 ### Error Handling
+
 Use `AppException` (or its subclasses) to throw errors. These are automatically caught by the global `errorMiddleware` and returned as standardized error responses.
+
 ```typescript
 throw new AppException('Resource not found', 404, 'NOT_FOUND');
 ```
 
 ### Path Aliases
+
 Use the `@/` alias to refer to the `src` directory from anywhere in the project.
+
 ```typescript
 import { UserService } from '@/services/user.service';
 ```
 
 ### Core Utilities
+
 - **JudgeUtils**: Status determination and score calculation logic.
 - **StringUtils**: String manipulation including `trimOutput`.
 - **DateUtils**: Date formatting and validation.
