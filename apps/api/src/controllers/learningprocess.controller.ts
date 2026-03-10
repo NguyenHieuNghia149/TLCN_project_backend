@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
-import { LearningProcessService } from '@/services/learningprocess.service';
-import { AppException } from '@/exceptions/base.exception';
+import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
+import { LearningProcessService } from '@backend/api/services/learningprocess.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LearningProcessController {
   private learningProcessService: LearningProcessService;

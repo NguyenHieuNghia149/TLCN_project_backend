@@ -1,4 +1,4 @@
-import { LearningProcessRepository } from '@/repositories/learningprocess.repository';
+import { LearningProcessRepository } from '../repositories/learningprocess.repository';
 import {
   TopicProgress,
   LessonProgress,
@@ -9,7 +9,7 @@ import {
   UserIdRequiredException,
   TopicIdRequiredException,
   LessonIdRequiredException,
-} from '@/exceptions/learningprocess.exception';
+} from '../exceptions/learningprocess.exception';
 
 export class LearningProcessService {
   private learningProcessRepository: LearningProcessRepository;

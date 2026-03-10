@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { AdminUserService } from '@/services/admin/adminUser.service';
+import { AdminUserService } from '@backend/api/services/admin/adminUser.service';
 import { insertUserSchema, updateUserSchema } from '@backend/shared/db/schema';
-import { AppException } from '@/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class AdminTeacherController {
   private service: AdminUserService;

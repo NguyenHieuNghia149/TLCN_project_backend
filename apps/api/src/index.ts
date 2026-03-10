@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cors from 'cors';
@@ -62,7 +63,7 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.log('Blocked by CORS:', origin);
+        logger.info('Blocked by CORS:', origin);
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -102,11 +103,11 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 async function startServer() {
   try {
     // Connect to database
-    console.log('Connecting to database...');
+    logger.info('Connecting to database...');
     await DatabaseService.connect();
 
     // Run migrations
-    console.log('Running migrations...');
+    logger.info('Running migrations...');
     await DatabaseService.runMigrations();
 
     // Initialize WebSocket
@@ -118,9 +119,9 @@ async function startServer() {
     // Connect to Redis (optional)
     queueService
       .connect()
-      .then(() => console.log('Connected to Redis'))
+      .then(() => logger.info('Connected to Redis'))
       .catch(error =>
-        console.error('Redis connection failed (continuing without it):', error.message)
+        logger.error('Redis connection failed (continuing without it):', error.message)
       );
 
     // Routes
@@ -141,10 +142,10 @@ async function startServer() {
     const PORT = process.env.PORT || 3001;
 
     server.listen(PORT, () => {
-      console.log(`server is running on port ${PORT}`);
+      logger.info(`server is running on port ${PORT}`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 }

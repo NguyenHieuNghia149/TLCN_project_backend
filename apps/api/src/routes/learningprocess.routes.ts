@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { LearningProcessController } from '@/controllers/learningprocess.controller';
-import { authenticationToken } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
+import { LearningProcessController } from '@backend/api/controllers/learningprocess.controller';
+import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
 const router = Router();
 const learningProcessController = new LearningProcessController();

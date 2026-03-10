@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { monitoringService } from '@/services/monitoring.service';
-import { securityService } from '@/services/security.service';
-import { AppException } from '@/exceptions/base.exception';
+import { monitoringService } from '@backend/api/services/monitoring.service';
+import { securityService } from '@backend/api/services/security.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class SecurityController {
   /**

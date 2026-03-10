@@ -3,7 +3,6 @@
   "compilerOptions": {
     "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"],
       "@backend/shared": ["packages/shared/index.ts"],
       "@backend/shared/db": ["packages/shared/db/index.ts"],
       "@backend/shared/types": ["packages/shared/types/index.ts"],
@@ -13,7 +12,7 @@
       "@backend/sandbox/*": ["apps/sandbox/src/*"],
       "@backend/worker/*": ["apps/worker/src/*"],
       "@backend/api/*": ["apps/api/src/*"],
-      "@backend/database/*": ["packages/database/src/*"],
+      "@backend/database/*": ["packages/database/src/*"]
     }
   },
   "include": [

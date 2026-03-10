@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { LearnedLessonService } from '@/services/learned-lesson.service';
-import { AppException } from '@/exceptions/base.exception';
+import { LearnedLessonService } from '@backend/api/services/learned-lesson.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LearnedLessonController {
   private learnedLessonService: LearnedLessonService;

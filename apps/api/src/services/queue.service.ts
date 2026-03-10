@@ -1,8 +1,10 @@
-import { createClient, RedisClientType } from 'redis';
-import { config } from 'dotenv';
-import { BaseException } from '@/exceptions/auth.exceptions';
+import { logger } from '@backend/shared/utils';
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
+import path from 'path';
+import { BaseException } from '../exceptions/auth.exceptions';
 
-config();
+require('dotenv').config({ path: path.resolve(__dirname, '../../../../.env') });
 
 export interface QueueJob {
   submissionId: string;
@@ -24,140 +26,101 @@ export interface QueueJob {
 }
 
 export class QueueService {
-  private client: RedisClientType;
-  private isConnected: boolean = false;
+  public queue: Queue;
+  private publisher: Redis;
 
   constructor() {
-    this.client = createClient({
-      url: process.env.REDIS_URL,
+    // 1. Dedicated Redis for BullMQ Queue (e.g. DB 1)
+    const queueRedisUrl =
+      process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
+    const queueConnection = new Redis(queueRedisUrl, {
+      maxRetriesPerRequest: null,
     });
 
-    this.client.on('error', err => {
-      this.isConnected = false;
-    });
+    this.queue = new Queue('judge_queue', { connection: queueConnection as any });
 
-    this.client.on('connect', () => {
-      this.isConnected = true;
-    });
+    // 2. Dedicated Redis for Cache/PubSub (e.g. DB 0)
+    const pubsubRedisUrl =
+      process.env.REDIS_CACHE_URL || process.env.REDIS_URL || 'redis://localhost:6379/0';
+    this.publisher = new Redis(pubsubRedisUrl);
 
-    this.client.on('disconnect', () => {
-      this.isConnected = false;
+    this.publisher.on('error', (err: Error) => {
+      logger.error('[QueueService Publisher] Redis error:', err.message);
     });
   }
 
   async connect(): Promise<void> {
-    try {
-      await this.client.connect();
-      this.isConnected = true;
-    } catch (error) {
-      throw error;
-    }
+    // ioredis connects automatically
   }
 
   async disconnect(): Promise<void> {
-    try {
-      await this.client.quit();
-      this.isConnected = false;
-    } catch (error) {
-      throw error;
-    }
+    await this.queue.close();
+    await this.publisher.quit();
   }
 
   async isHealthy(): Promise<boolean> {
     try {
-      await this.client.ping();
+      await this.publisher.ping();
       return true;
     } catch (error) {
-      throw error;
+      return false;
     }
   }
 
   async addJob(job: QueueJob): Promise<void> {
-    if (!this.isConnected) {
-      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
-    }
-
     try {
-      await this.client.lPush('judge_queue', JSON.stringify(job));
-    } catch (error) {
-      throw error;
+      // Delegate to BullMQ
+      await this.queue.add(job.jobType || 'SUBMISSION', job, {
+        jobId: job.submissionId, // Helps with debugging and deduplication
+        removeOnComplete: true, // Prevent RAM Bloat (Task 2.2)
+        removeOnFail: false,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+      });
+    } catch (error: any) {
+      throw new BaseException(`Failed to queue job: ${error.message}`, 500, 'QUEUE_ERROR');
     }
   }
 
+  // Deprecated for Worker (Worker Service will use BullMQ Worker natively)
   async getJob(): Promise<QueueJob | null> {
-    if (!this.isConnected) {
-      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
-    }
-
-    try {
-      const result = await this.client.brPop('judge_queue', 5); // Wait up to 5 seconds
-      if (result) {
-        return JSON.parse(result.element) as QueueJob;
-      }
-      return null;
-    } catch (error) {
-      throw error;
-    }
+    return null;
   }
 
   async getQueueLength(): Promise<number> {
-    if (!this.isConnected) {
-      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
-    }
-
     try {
-      return await this.client.lLen('judge_queue');
+      return await this.queue.count();
     } catch (error) {
-      throw error;
+      return 0;
     }
   }
 
   async clearQueue(): Promise<void> {
-    if (!this.isConnected) {
-      throw new BaseException('Redis client is not connected', 500, 'REDIS_NOT_CONNECTED');
-    }
-
     try {
-      await this.client.del('judge_queue');
+      await this.queue.obliterate({ force: true });
     } catch (error) {
       throw error;
     }
   }
 
-  async getQueueStatus(): Promise<{
-    length: number;
-    isHealthy: boolean;
-  }> {
+  async getQueueStatus(): Promise<{ length: number; isHealthy: boolean }> {
     try {
       const length = await this.getQueueLength();
       const isHealthy = await this.isHealthy();
-
-      return {
-        length,
-        isHealthy,
-      };
+      return { length, isHealthy };
     } catch (error) {
-      return {
-        length: 0,
-        isHealthy: false,
-      };
+      return { length: 0, isHealthy: false };
     }
   }
 
   async publish(channel: string, message: string): Promise<void> {
-    if (!this.isConnected) {
-      // Try to connect if not connected
-      try {
-        await this.connect();
-      } catch (e) {
-        throw e;
-        return;
-      }
-    }
     try {
-      await this.client.publish(channel, message);
+      await this.publisher.publish(channel, message);
     } catch (error) {
-      throw error;
+      logger.error(`[QueueService] Failed to publish message: ${error}`);
     }
   }
 }

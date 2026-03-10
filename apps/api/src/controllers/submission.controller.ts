@@ -1,16 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppException } from '@/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 import {
   UserNotAuthenticatedException,
   SubmissionIdRequiredException,
   SubmissionNotFoundException,
   ProblemIdRequiredException,
-} from '@/exceptions/submission.exceptions';
+} from '@backend/api/exceptions/submission.exceptions';
 import {
   CreateSubmissionInput,
   GetSubmissionsQuery,
 } from '@backend/shared/validations/submission.validation';
-import { SubmissionService } from '@/services/submission.service';
+import { SubmissionService } from '@backend/api/services/submission.service';
+import { sseService } from '@backend/api/services/sse.service';
 
 export class SubmissionController {
   constructor(private readonly submissionService: SubmissionService) {}
@@ -46,6 +47,74 @@ export class SubmissionController {
     const result = await this.submissionService.runCode({ ...runData, userId }, { authHeader });
 
     res.status(200).json(result);
+  }
+
+  async streamSubmissionStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const { submissionId } = req.params;
+
+    if (!submissionId) {
+      throw new SubmissionIdRequiredException();
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const heartbeat = setInterval(() => {
+      res.write(':\n\n');
+    }, 15000);
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      sseService.removeListener(`submission_${submissionId}`, onUpdate);
+    };
+
+    const onUpdate = (data: any) => {
+      if (data.results && Array.isArray(data.results)) {
+        data.results = data.results.map((tc: any) => {
+          if (tc.actual_output && tc.actual_output.length > 2048) {
+            tc.actual_output = tc.actual_output.substring(0, 2048) + '... [TRUNCATED]';
+          }
+          if (tc.actualOutput && tc.actualOutput.length > 2048) {
+            tc.actualOutput = tc.actualOutput.substring(0, 2048) + '... [TRUNCATED]';
+          }
+          return tc;
+        });
+      }
+
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+      const terminalStatuses = [
+        'ACCEPTED',
+        'WRONG_ANSWER',
+        'TIME_LIMIT_EXCEEDED',
+        'MEMORY_LIMIT_EXCEEDED',
+        'RUNTIME_ERROR',
+        'COMPILATION_ERROR',
+        'SYSTEM_ERROR',
+        'INTERNAL_ERROR',
+        'WA',
+        'TLE',
+        'MLE',
+        'CE',
+        'RE',
+      ];
+
+      if (
+        terminalStatuses.includes(data.status) ||
+        terminalStatuses.includes(data.overall_status)
+      ) {
+        cleanup();
+        res.end();
+      }
+    };
+    sseService.on(`submission_${submissionId}`, onUpdate);
+
+    req.on('close', () => {
+      cleanup();
+    });
   }
 
   async getSubmissionStatus(

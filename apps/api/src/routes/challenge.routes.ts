@@ -5,16 +5,16 @@ import {
   UpdateChallengeSchema,
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
-} from '@/controllers/challenge.controller';
-import { ChallengeService } from '@/services/challenge.service';
+} from '@backend/api/controllers/challenge.controller';
+import { ChallengeService } from '@backend/api/services/challenge.service';
 import {
   authenticationToken,
   requireTeacher,
   requireTeacherOrOwner,
   optionalAuth,
-} from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
-import { validate } from '@/middlewares/validate.middleware';
+} from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { validate } from '@backend/api/middlewares/validate.middleware';
 
 const router = Router();
 const challengeService = new ChallengeService();

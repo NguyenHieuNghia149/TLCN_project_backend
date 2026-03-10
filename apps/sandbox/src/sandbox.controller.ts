@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import { Request, Response, NextFunction } from 'express';
 import { sandboxService } from './sandbox.service';
 import { ExecutionConfig } from '@backend/shared/validations';
@@ -148,7 +149,7 @@ const rl = readline.createInterface({
 
 rl.on('line', (line) => {
     const [a, b] = line.split(' ').map(Number);
-    console.log(a + b);
+    logger.info(a + b);
     rl.close();
 });`,
           language: 'javascript',

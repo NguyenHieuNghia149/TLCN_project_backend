@@ -7,4 +7,5 @@ export enum ESubmissionStatus {
   MEMORY_LIMIT_EXCEEDED = 'memory_limit_exceeded',
   RUNTIME_ERROR = 'runtime_error',
   COMPILATION_ERROR = 'compilation_error',
+  SYSTEM_ERROR = 'system_error',
 }

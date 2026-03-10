@@ -1,3 +1,4 @@
+import { JudgeUtils, logger } from '@backend/shared/utils';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { queueService, QueueJob } from './queue.service';
 import crypto from 'crypto';
@@ -8,18 +9,17 @@ import {
   SubmissionResult,
   SubmissionDataResponse,
 } from '@backend/shared/validations/submission.validation';
-import { SubmissionRepository } from '@/repositories/submission.repository';
-import { ResultSubmissionRepository } from '@/repositories/result-submission.repository';
-import { TestcaseRepository } from '@/repositories/testcase.repository';
-import { ProblemRepository } from '@/repositories/problem.repository';
-import { UserRepository } from '@/repositories/user.repository';
-import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
-import { ExamRepository } from '@/repositories/exam.repository';
+import { SubmissionRepository } from '../repositories/submission.repository';
+import { ResultSubmissionRepository } from '../repositories/result-submission.repository';
+import { TestcaseRepository } from '../repositories/testcase.repository';
+import { ProblemRepository } from '../repositories/problem.repository';
+import { UserRepository } from '../repositories/user.repository';
+import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
+import { ExamRepository } from '../repositories/exam.repository';
 // Removed direct schema entity imports - using validation types instead
-import { PaginationOptions } from '@/repositories/base.repository';
+import { PaginationOptions } from '../repositories/base.repository';
 import axios from 'axios';
-import { BaseException } from '@/exceptions/auth.exceptions';
-import { JudgeUtils } from '@backend/shared/utils';
+import { BaseException } from '../exceptions/auth.exceptions';
 
 export interface SubmissionInput {
   sourceCode: string;
@@ -174,7 +174,7 @@ export class SubmissionService {
       problemId: submission.problemId,
       code: submission.sourceCode,
       language: submission.language,
-      testcases: testcases.map(tc => ({
+      testcases: testcases.map((tc: any) => ({
         id: tc.id,
         input: tc.input,
         output: tc.output,
@@ -224,10 +224,10 @@ export class SubmissionService {
       const testcases = await this.testcaseRepository.findByProblemId(submission.problemId);
 
       result = {
-        passed: resultSubmissions.filter(rs => rs.isPassed).length,
+        passed: resultSubmissions.filter((rs: any) => rs.isPassed).length,
         total: resultSubmissions.length,
-        results: resultSubmissions.map(rs => {
-          const testcase = testcases.find(tc => tc.id === rs.testcaseId);
+        results: resultSubmissions.map((rs: any) => {
+          const testcase = testcases.find((tc: any) => tc.id === rs.testcaseId);
           return {
             testcaseId: rs.testcaseId,
             input: testcase?.input || '',
@@ -257,7 +257,7 @@ export class SubmissionService {
         ? {
             passed: result.passed,
             total: result.total,
-            results: result.results.map((r, index) => ({
+            results: result.results.map((r: any, index: any) => ({
               index,
               input: r.input,
               expected: r.expectedOutput,
@@ -307,7 +307,10 @@ export class SubmissionService {
       return null;
     }
 
-    // AND the submission is not an exam (examParticipationId must be undefined/null)
+    // Determine if we should add ranking points (safe check before idempotent update)
+    let shouldAddPoints = false;
+    let rankPointsToAdd = 0;
+
     if (data.status === ESubmissionStatus.ACCEPTED && !submissionBeforeUpdate.examParticipationId) {
       // Check BEFORE updating status - see if user already has an ACCEPTED submission for this problem
       const hasSolvedBefore = await this.submissionRepository.hasUserSolvedProblem(
@@ -316,40 +319,46 @@ export class SubmissionService {
       );
 
       if (!hasSolvedBefore) {
-        // Calculate total score from all testcases of the problem
+        shouldAddPoints = true;
         const testcases = await this.testcaseRepository.findByProblemId(
           submissionBeforeUpdate.problemId
         );
-        const totalPoints = testcases.reduce((sum, tc) => sum + tc.point, 0);
-
-        if (totalPoints > 0) {
-          try {
-            await this.userRepository.incrementRankingPoint(
-              submissionBeforeUpdate.userId,
-              totalPoints
-            );
-          } catch (error: any) {
-            throw new BaseException(error.message);
-          }
-        }
+        rankPointsToAdd = testcases.reduce((sum: any, tc: any) => sum + tc.point, 0);
       }
     }
 
-    const submission = await this.submissionRepository.updateStatus(
+    // Idempotent Update (Rules Task 2.3)
+    // Only update if current status is PENDING or RUNNING. If rowCount=0, this is a retry of a finished job, skip it.
+    const submission = await this.submissionRepository.updateStatusIdempotent(
       submissionId,
       data.status,
       data.judgedAt ? new Date(data.judgedAt) : new Date()
     );
 
     if (!submission) {
+      logger.warn(
+        `[Idempotency] Submission ${submissionId} already in terminal state. Ignoring retry.`
+      );
       return null;
+    }
+
+    // Apply ranking points IF it successfully transitioned to ACCEPTED for the first time
+    if (shouldAddPoints && rankPointsToAdd > 0) {
+      try {
+        await this.userRepository.incrementRankingPoint(
+          submissionBeforeUpdate.userId,
+          rankPointsToAdd
+        );
+      } catch (error: any) {
+        throw new BaseException(error.message);
+      }
     }
 
     // Delete existing results
     await this.resultSubmissionRepository.deleteBySubmissionId(submissionId);
 
     // Create new result submissions (only store actual execution results)
-    const resultSubmissions = data.result.results.map(r => ({
+    const resultSubmissions = data.result.results.map((r: any) => ({
       submissionId,
       testcaseId: r.testcaseId,
       actualOutput: r.actualOutput,
@@ -412,7 +421,7 @@ export class SubmissionService {
       result = await this.submissionRepository.findByUserId(userId, paginationOptions);
     }
 
-    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
     const data = await this.enrichSubmissionsWithStatus(submissions);
 
     return { data, pagination: result.pagination };
@@ -438,7 +447,7 @@ export class SubmissionService {
     };
 
     const result = await this.submissionRepository.findByProblemId(problemId, paginationOptions);
-    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
     const data = await this.enrichSubmissionsWithStatus(submissions);
 
     return { data, pagination: result.pagination };
@@ -480,7 +489,7 @@ export class SubmissionService {
       );
     }
 
-    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
     const data = await this.enrichSubmissionsWithStatus(submissions);
 
     return { data, pagination: result.pagination };
@@ -512,7 +521,7 @@ export class SubmissionService {
       result = await this.submissionRepository.findMany(paginationOptions);
     }
 
-    const submissions = result.data.map(sub => this.mapToSubmissionDataResponse(sub));
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
     const data = await this.enrichSubmissionsWithStatus(submissions);
 
     return { data, pagination: result.pagination };

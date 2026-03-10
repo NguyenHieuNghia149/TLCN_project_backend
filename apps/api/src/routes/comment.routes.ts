@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { CommentController } from '@/controllers/comment.controller';
-import { authenticationToken, optionalAuth } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
+import { CommentController } from '@backend/api/controllers/comment.controller';
+import { authenticationToken, optionalAuth } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
 const router = Router();
 const controller = new CommentController();

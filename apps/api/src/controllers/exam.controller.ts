@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
-import { ExamService } from '@/services/exam.service';
+import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
+import { ExamService } from '@backend/api/services/exam.service';
 import {
   CreateExamInput,
   CreateExamSchema,
   GetExamLeaderboardSchema,
 } from '@backend/shared/validations/exam.validation';
-import { ExamIdRequiredException } from '@/exceptions/exam.exceptions';
-import { AppException } from '@/exceptions/base.exception';
-import { UserNotFoundException } from '@/exceptions/auth.exceptions';
+import { ExamIdRequiredException } from '@backend/api/exceptions/exam.exceptions';
+import { AppException } from '@backend/api/exceptions/base.exception';
+import { UserNotFoundException } from '@backend/api/exceptions/auth.exceptions';
 
 export class ExamController {
   constructor(private readonly examService: ExamService) {}

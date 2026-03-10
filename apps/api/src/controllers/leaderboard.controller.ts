@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { LeaderboardService } from '@/services/leaderboard.service';
-import { AppException } from '@/exceptions/base.exception';
+import { LeaderboardService } from '@backend/api/services/leaderboard.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LeaderboardController {
   constructor(private readonly leaderboardService: LeaderboardService) {}

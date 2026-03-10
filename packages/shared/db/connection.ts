@@ -1,12 +1,15 @@
 // src/database/connection.ts
+import { logger } from '@backend/shared/utils';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { sql } from 'drizzle-orm';
+import path from 'path';
 import * as schema from './schema';
-import { config } from 'dotenv';
 
-config();
+// Load .env using absolute path (works regardless of cwd when running from workspace)
+// In Docker, process.env is already populated by docker-compose — dotenv won't override.
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 // Create connection pool
 const pool = new Pool({
@@ -36,17 +39,17 @@ export type TransactionType = Parameters<Parameters<typeof db.transaction>[0]>[0
 // Database connection utilities
 
 pool.on('error', error => {
-  console.error('Database connection pool error:', error);
+  logger.error('Database connection pool error:', error);
 });
 
 export class DatabaseService {
   static async connect(): Promise<void> {
     try {
       const client = await pool.connect();
-      console.log('Database connected successfully');
+      logger.info('Database connected successfully');
       client.release();
     } catch (error) {
-      console.error('Database connection failed:', error);
+      logger.error('Database connection failed:', error);
       throw error;
     }
   }
@@ -56,10 +59,10 @@ export class DatabaseService {
       // Check if pool is still active
       if (pool.totalCount > 0 || pool.idleCount > 0) {
         await pool.end();
-        console.log('Database disconnected successfully');
+        logger.info('Database disconnected successfully');
       }
     } catch (error) {
-      console.error('Database disconnection failed:', error);
+      logger.error('Database disconnection failed:', error);
       throw error;
     }
   }
@@ -68,7 +71,7 @@ export class DatabaseService {
     try {
       // Check if pool is still alive
       if (pool.totalCount === 0 && pool.idleCount === 0 && pool.waitingCount > 0) {
-        console.error('Pool is in an invalid state');
+        logger.error('Pool is in an invalid state');
         return;
       }
 
@@ -78,7 +81,7 @@ export class DatabaseService {
           ? '/app/dist/src/database/migrations'
           : './src/database/migrations';
 
-      console.log(`Running migrations from: ${migrationsFolder}`);
+      logger.info(`Running migrations from: ${migrationsFolder}`);
 
       // Ensure meta folder exists
       const metaDir = `${migrationsFolder}/meta`;
@@ -93,13 +96,13 @@ export class DatabaseService {
 
       // Use the existing db instance with the pool for migrations
       await migrate(db, { migrationsFolder });
-      console.log('Database migrations completed');
+      logger.info('Database migrations completed');
     } catch (error) {
-      console.error('Database migration failed:', error);
+      logger.error('Database migration failed:', error);
       // Log more details about the error
       if (error instanceof Error) {
-        console.error('Error details:', error.message);
-        console.error('Stack:', error.stack);
+        logger.error('Error details:', error.message);
+        logger.error('Stack:', error.stack);
       }
       // Don't throw error to allow app to continue running
       // The app should still work even if migrations fail
@@ -111,7 +114,7 @@ export class DatabaseService {
       const result = await db.execute(sql`SELECT 1 as health`);
       return Array.isArray(result) && result.length > 0;
     } catch (error) {
-      console.error('Database health check failed:', error);
+      logger.error('Database health check failed:', error);
       return false;
     }
   }
@@ -123,7 +126,7 @@ let isDisconnecting = false;
 process.on('SIGINT', async () => {
   if (isDisconnecting) return;
   isDisconnecting = true;
-  console.log('\nShutting down gracefully...');
+  logger.info('\nShutting down gracefully...');
   await DatabaseService.disconnect();
   process.exit(0);
 });
@@ -131,7 +134,7 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   if (isDisconnecting) return;
   isDisconnecting = true;
-  console.log('\nShutting down gracefully...');
+  logger.info('\nShutting down gracefully...');
   await DatabaseService.disconnect();
   process.exit(0);
 });

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { DashboardService } from '@/services/admin/dashboard.service';
+import { DashboardService } from '@backend/api/services/admin/dashboard.service';
 
 export class DashboardController {
   private service: DashboardService;

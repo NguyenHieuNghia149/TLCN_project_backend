@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { NotificationController } from '@/controllers/notification.controller';
-import { authenticationToken as authenticate } from '@/middlewares/auth.middleware';
-import { strictLimiter } from '@/middlewares/ratelimit.middleware';
-import { NotificationService } from '@/services/notification.service';
+import { NotificationController } from '@backend/api/controllers/notification.controller';
+import { authenticationToken as authenticate } from '@backend/api/middlewares/auth.middleware';
+import { strictLimiter } from '@backend/api/middlewares/ratelimit.middleware';
+import { NotificationService } from '@backend/api/services/notification.service';
 
 const router = Router();
 const notificationService = new NotificationService();

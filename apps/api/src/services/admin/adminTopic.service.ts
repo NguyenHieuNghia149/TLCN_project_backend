@@ -1,5 +1,5 @@
-import { TopicRepository } from '@/repositories/topic.repository';
-import { NotFoundException } from '@/exceptions/solution.exception';
+import { TopicRepository } from '@backend/api/repositories/topic.repository';
+import { NotFoundException } from '@backend/api/exceptions/solution.exception';
 import {
   CreateTopicInput,
   UpdateTopicInput,
@@ -58,16 +58,16 @@ export class AdminTopicService {
     let filtered = allTopics;
     if (search) {
       const searchLower = search.toLowerCase();
-      filtered = filtered.filter(t => t.topicName.toLowerCase().includes(searchLower));
+      filtered = filtered.filter((t: any) => t.topicName.toLowerCase().includes(searchLower));
     }
     if (topicName) {
       const topicNameLower = topicName.toLowerCase();
-      filtered = filtered.filter(t => t.topicName.toLowerCase().includes(topicNameLower));
+      filtered = filtered.filter((t: any) => t.topicName.toLowerCase().includes(topicNameLower));
     }
 
     // Sort
     if (sortBy === 'topicName') {
-      filtered.sort((a, b) => {
+      filtered.sort((a: any, b: any) => {
         const compareResult = a.topicName.localeCompare(b.topicName);
         return sortOrder === 'asc' ? compareResult : -compareResult;
       });

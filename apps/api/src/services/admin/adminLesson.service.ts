@@ -4,10 +4,10 @@ import {
   PaginationOptions,
   PaginatedResult,
   LessonWithTopic,
-} from '@/repositories/admin/adminLesson.repository';
+} from '@backend/api/repositories/admin/adminLesson.repository';
 import { LessonInsert } from '@backend/shared/db/schema';
-import { NotFoundException } from '@/exceptions/solution.exception';
-import { BaseException } from '@/exceptions/auth.exceptions';
+import { NotFoundException } from '@backend/api/exceptions/solution.exception';
+import { BaseException } from '@backend/api/exceptions/auth.exceptions';
 
 export class AdminLessonService {
   private repository: AdminLessonRepository;

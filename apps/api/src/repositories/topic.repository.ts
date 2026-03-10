@@ -1,3 +1,4 @@
+import { SanitizationUtils } from '@backend/shared/utils';
 import {
   topics,
   TopicEntity,
@@ -8,9 +9,8 @@ import {
   learnedLessons,
 } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
-import { SanitizationUtils } from '@backend/shared/utils';
 import { eq, sql, count } from 'drizzle-orm';
-import { TopicAlreadyExistsException } from '@/exceptions/topic.exception';
+import { TopicAlreadyExistsException } from '../exceptions/topic.exception';
 import { TopicResponse } from '@backend/shared/validations/topic.validation';
 
 export interface TopicStatsData {

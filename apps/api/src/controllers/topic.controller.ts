@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { TopicService } from '@/services/topic.service';
-import { AppException } from '@/exceptions/base.exception';
+import { TopicService } from '@backend/api/services/topic.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 import { CreateTopicSchema } from '@backend/shared/validations/topic.validation';
 
 export class TopicController {

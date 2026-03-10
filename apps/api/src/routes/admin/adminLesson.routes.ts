@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { validate } from '@/middlewares/validate.middleware';
-import { authenticationToken, requireTeacherOrOwner } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
-import AdminLessonController from '@/controllers/admin/adminLesson.controller';
-import LessonUploadController from '@/controllers/lesson-upload.controller';
+import { validate } from '@backend/api/middlewares/validate.middleware';
+import { authenticationToken, requireTeacherOrOwner } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import AdminLessonController from '@backend/api/controllers/admin/adminLesson.controller';
+import LessonUploadController from '@backend/api/controllers/lesson-upload.controller';
 import {
   CreateLessonSchema,
   UpdateLessonSchema,

@@ -4,7 +4,7 @@ import { eq, and, desc, lt } from 'drizzle-orm';
 import {
   RefreshTokenNotFoundException,
   RefreshTokenExpiredException,
-} from '@/exceptions/auth.exceptions';
+} from '@backend/api/exceptions/auth.exceptions';
 
 export class TokenRepository extends BaseRepository<
   typeof refreshTokens,

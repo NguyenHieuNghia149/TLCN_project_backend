@@ -1,5 +1,6 @@
-import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
-import { ExamRepository } from '@/repositories/exam.repository';
+import { logger } from '@backend/shared/utils';
+import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
+import { ExamRepository } from '../repositories/exam.repository';
 import { ExamService } from './exam.service';
 
 /**
@@ -37,7 +38,7 @@ export class ExamAutoSubmitService {
       try {
         await this.checkAndAutoSubmitExpiredExams();
       } catch (error) {
-        console.error('Error in auto-submit service:', error);
+        logger.error('Error in auto-submit service:', error);
       }
     }, checkIntervalMs);
   }
@@ -63,7 +64,7 @@ export class ExamAutoSubmitService {
       // hasn't passed yet (previous implementation only checked exam.endDate).
       const finalized = await this.examService.finalizeExpiredParticipations();
     } catch (error) {
-      console.error('Error finalizing expired participations:', error);
+      logger.error('Error finalizing expired participations:', error);
     }
   }
 

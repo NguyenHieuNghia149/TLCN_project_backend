@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { CommentService } from '@/services/comment.service';
-import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
+import { CommentService } from '@backend/api/services/comment.service';
+import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
 import { createCommentSchema } from '@backend/shared/validations/comment.validation';
-import { AppException } from '@/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class CommentController {
   private commentService: CommentService;

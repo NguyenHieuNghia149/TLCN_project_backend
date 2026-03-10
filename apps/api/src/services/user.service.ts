@@ -1,8 +1,8 @@
-import { UserInsert } from '@backend/shared/db/schema';
-import { InvalidCredentialsException, ValidationException } from '@/exceptions/auth.exceptions';
-import { TokenRepository } from '@/repositories/token.repository';
-import { UserRepository } from '@/repositories/user.repository';
 import { PasswordUtils } from '@backend/shared/utils';
+import { UserInsert } from '@backend/shared/db/schema';
+import { InvalidCredentialsException, ValidationException } from '../exceptions/auth.exceptions';
+import { TokenRepository } from '../repositories/token.repository';
+import { UserRepository } from '../repositories/user.repository';
 import { ChangePasswordInput } from '@backend/shared/validations/auth.validation';
 
 export class UserService {

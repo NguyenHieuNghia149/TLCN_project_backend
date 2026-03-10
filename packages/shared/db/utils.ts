@@ -1,4 +1,5 @@
 // src/database/utils.ts
+import { logger } from '@backend/shared/utils';
 import { db, TransactionType } from './connection';
 import { sql } from 'drizzle-orm';
 
@@ -60,7 +61,7 @@ export class DatabaseUtils {
       const result = await db.execute(sql.raw(query));
       return result.rows as T[];
     } catch (error) {
-      console.error('Raw SQL execution failed:', error);
+      logger.error('Raw SQL execution failed:', error);
       throw error;
     }
   }
@@ -95,7 +96,7 @@ export class DatabaseUtils {
         connectionStats: connectionStatsResult.rows[0],
       };
     } catch (error: any) {
-      console.error('Failed to get database stats:', error);
+      logger.error('Failed to get database stats:', error);
       return {
         error: error.message,
       };

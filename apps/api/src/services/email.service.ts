@@ -1,11 +1,12 @@
+import { logger } from '@backend/shared/utils';
 import { Request } from 'express';
 import nodemailer from 'nodemailer';
-import { config } from '@/config/email';
+import { config } from '../config/email';
 import {
   InvalidCredentialsException,
   RateLimitExceededException,
   ValidationException,
-} from '@/exceptions/auth.exceptions';
+} from '../exceptions/auth.exceptions';
 
 export interface OTPData {
   otp: string;
@@ -91,19 +92,19 @@ export class EMailService {
         text: `Your verification code is ${otp}. It will expire in ${config.otp.expiryMinutes} minutes.`,
       };
 
-      console.log(`[Email Service] Attempting to send OTP to ${email}`);
-      console.log(
+      logger.info(`[Email Service] Attempting to send OTP to ${email}`);
+      logger.info(
         `[Email Service] SMTP Config: ${config.email.host}:${config.email.port}, User: ${config.email.user}`
       );
 
       await this.transporter.sendMail(emailTemplate);
 
-      console.log(`[Email Service] ✅ OTP sent successfully to ${email}`);
+      logger.info(`[Email Service] ✅ OTP sent successfully to ${email}`);
     } catch (error) {
-      console.error(`[Email Service] ❌ Failed to send OTP to ${email}:`, error);
+      logger.error(`[Email Service] ❌ Failed to send OTP to ${email}:`, error);
 
       // Log SMTP configuration status (without exposing password)
-      console.error('[Email Service] SMTP Config Check:', {
+      logger.error('[Email Service] SMTP Config Check:', {
         host: config.email.host,
         port: config.email.port,
         user: config.email.user,

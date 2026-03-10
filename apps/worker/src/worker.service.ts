@@ -1,252 +1,309 @@
+import { JudgeUtils, logger } from '@backend/shared/utils';
+import { Worker, Job } from 'bullmq';
+import Redis from 'ioredis';
 import { queueService, QueueJob } from '@backend/api/src/services/queue.service';
-import { submissionService } from '@backend/api/src//services/submission.service';
-import { ExamService } from '@backend/api/src//services/exam.service';
+import { submissionService } from '@backend/api/src/services/submission.service';
+import { ExamService } from '@backend/api/src/services/exam.service';
 import { ESubmissionStatus } from '@backend/shared/types';
-import { JudgeUtils } from '@backend/shared/utils';
-import axios from 'axios';
+import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
+import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
 
 export class WorkerService {
-  private isRunning: boolean = false;
   private workerId: string;
   private totalProcessed: number = 0;
   private totalErrors: number = 0;
-  private sandboxUrl: string;
+  private worker: Worker | null = null;
+  private breaker: SandboxBreaker | null = null;
+  private examFinalizerInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.workerId = `worker-${Date.now()}`;
-    this.sandboxUrl = process.env.SANDBOX_URL || 'http://localhost:4000';
   }
 
   async start(): Promise<void> {
-    console.log(`Starting Code Execution Worker: ${this.workerId}`);
+    logger.info(`Starting Code Execution Worker: ${this.workerId}`);
 
     try {
-      // Connect to Redis
-      await queueService.connect();
-      console.log(`Connected to Redis queue`);
+      // Connect publisher queueService if needed (it auto connects but ensuring health check logic could be here)
 
-      // Test sandbox service availability
+      // Test sandbox service availability (non-fatal - sandbox may start after worker)
       const sandboxAvailable = await this.testSandboxService();
       if (!sandboxAvailable) {
-        console.error('❌ Sandbox service is not available!');
-        console.log(`Please ensure sandbox service is running at ${this.sandboxUrl}`);
-        process.exit(1);
+        logger.warn(
+          'Sandbox service is not yet available. Worker will retry when processing jobs.'
+        );
+        logger.warn(`Sandbox gRPC URL: ${process.env.SANDBOX_GRPC_URL || 'localhost:50051'}`);
       }
 
-      this.isRunning = true;
-      console.log(`Worker ${this.workerId} started successfully`);
+      // 1. Initialize BullMQ Worker (Task 2.1 & 2.2)
+      const queueRedisUrl =
+        process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
+      const connection = new Redis(queueRedisUrl, { maxRetriesPerRequest: null });
 
-      // Exam finalizer frequency control
-      let lastFinalize = 0;
-
-      // Main processing loop
-      while (this.isRunning) {
-        try {
-          const job = await queueService.getJob();
-          if (job) {
-            await this.processJob(job);
-          } else {
-            // No jobs available, wait a bit
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } catch (error) {
-          console.error('Error in worker loop:', error);
-          this.totalErrors++;
-          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retrying
+      this.worker = new Worker(
+        'judge_queue',
+        async (job: Job) => {
+          await this.processJob(job.data as QueueJob);
+        },
+        {
+          connection: connection as any,
+          concurrency: 5,
+          lockDuration: 30000,
+          stalledInterval: 15000,
         }
+      );
 
-        // Periodically finalize expired exam participations (every 10 seconds)
-        try {
-          const now = Date.now();
-          if (now - lastFinalize > 10000) {
-            lastFinalize = now;
-            const examService = new ExamService();
-            const finalized = await examService.finalizeExpiredParticipations();
-            if (finalized > 0) {
-              console.log(`Auto-finalized ${finalized} expired exam participations`);
+      // Task 3.4: Initialize Circuit Breaker AFTER worker is created
+      // so it can bind pause/resume to the BullMQ Worker instance.
+      this.breaker = createSandboxBreaker(this.worker);
+
+      this.worker.on('completed', (job: Job) => {
+        logger.info(`Job ${job.id} completed successfully`);
+      });
+
+      // 2. Dead Letter & Failing handling (Task 2.5)
+      this.worker.on('failed', async (job: Job | undefined, err: Error) => {
+        if (job) {
+          logger.error(
+            `Job ${job.id} failed (Attempt ${job.attemptsMade}/${job.opts.attempts}):`,
+            err.message
+          );
+          this.totalErrors++;
+
+          if (job.attemptsMade >= (job.opts.attempts || 3)) {
+            logger.error(`Job ${job.id} exhausted all attempts. Setting to SYSTEM_ERROR.`);
+            const queueJob = job.data as QueueJob;
+
+            // Failsafe status update
+            try {
+              if (queueJob.jobType !== 'RUN_CODE') {
+                await submissionService.updateSubmissionResult(queueJob.submissionId, {
+                  status: ESubmissionStatus.SYSTEM_ERROR,
+                  score: 0,
+                  result: {
+                    passed: 0,
+                    total: queueJob.testcases.length,
+                    results: [],
+                  },
+                });
+              }
+
+              await queueService.publish(
+                'submission_updates',
+                JSON.stringify({
+                  submissionId: queueJob.submissionId,
+                  data: {
+                    submissionId: queueJob.submissionId,
+                    status: ESubmissionStatus.SYSTEM_ERROR,
+                    message: 'System error during execution (Max retries exceeded)',
+                  },
+                })
+              );
+            } catch (failErr) {
+              logger.error('Fail to handle dead letter update mapping:', failErr);
             }
           }
-        } catch (err) {
-          console.error('Error running exam finalizer:', err);
+        } else {
+          logger.error('Worker global error:', err.message);
         }
-      }
+      });
+
+      logger.info(`Worker ${this.workerId} started seamlessly`);
+
+      // 3. Periodically finalize expired exam participations
+      this.examFinalizerInterval = setInterval(async () => {
+        try {
+          const examService = new ExamService();
+          const finalized = await examService.finalizeExpiredParticipations();
+          if (finalized > 0) {
+            logger.info(`Auto-finalized ${finalized} expired exam participations`);
+          }
+        } catch (err) {
+          logger.error('Error running exam finalizer:', err);
+        }
+      }, 10000);
     } catch (error) {
-      console.error('Failed to start worker:', error);
+      logger.error('Failed to start worker:', error);
       process.exit(1);
     }
   }
 
+  // Graceful shutdown (Task 2.4)
   async stop(): Promise<void> {
-    console.log(`Stopping worker ${this.workerId}...`);
-    this.isRunning = false;
+    logger.info(`Stopping worker ${this.workerId}...`);
+    if (this.examFinalizerInterval) {
+      clearInterval(this.examFinalizerInterval);
+    }
+    if (this.worker) {
+      await this.worker.close();
+      logger.info('Worker closed gracefully.');
+    }
   }
 
   private async processJob(job: QueueJob): Promise<void> {
-    console.log(
+    logger.info(
       `Processing job for submission ${job.submissionId} (Type: ${job.jobType || 'SUBMISSION'})`
     );
 
-    try {
-      const { submissionId, code, language, testcases, timeLimit, memoryLimit, jobType } = job;
-      const isRunOnly = jobType === 'RUN_CODE';
+    const { submissionId, code, language, testcases, timeLimit, memoryLimit, jobType } = job;
+    const isRunOnly = jobType === 'RUN_CODE';
 
-      // Update submission status to RUNNING (only if not ephemeral)
-      if (!isRunOnly) {
-        await submissionService.updateSubmissionStatus(submissionId, ESubmissionStatus.RUNNING);
-      } else {
-        // Run code notify running
-        await queueService.publish(
-          'submission_updates',
-          JSON.stringify({
-            submissionId,
-            data: {
-              submissionId,
-              status: ESubmissionStatus.RUNNING,
-              message: 'Compiling and Running...',
-            },
-          })
-        );
-      }
-
-      // Execute code using sandbox service
-      const executionResult = await this.executeInSandbox({
-        code,
-        language,
-        testcases: testcases.map(tc => ({
-          id: tc.id,
-          input: tc.input,
-          output: tc.output,
-          point: tc.point,
-        })),
-        timeLimit,
-        memoryLimit,
-      });
-
-      // Create a map of testcaseId -> isPublic for quick lookup
-      const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
-
-      // Add isPublic to each result in the execution result
-      if (executionResult.results && Array.isArray(executionResult.results)) {
-        executionResult.results = executionResult.results.map((result: any) => ({
-          ...result,
-          isPublic: testcaseMap.get(result.testcaseId) ?? false,
-        }));
-      }
-
-      // Calculate final status
-      const finalStatus = JudgeUtils.determineFinalStatus(
-        executionResult.summary,
-        executionResult.results
-      );
-
-      // Calculate score
-      const score = JudgeUtils.calculateScore(executionResult.results, testcases);
-
-      if (!isRunOnly) {
-        // Update submission with results
-        await submissionService.updateSubmissionResult(submissionId, {
-          status: finalStatus as any,
-          score,
-          result: executionResult,
-        });
-      }
-
-      // Publish update to Redis for WebSocket service
-      await queueService.publish(
-        'submission_updates',
-        JSON.stringify({
+    // Rule: Stop writing the RUNNING status to PostgreSQL. (Task 2.3)
+    // Only publish RUNNING via PubSub for SSE (Virtual View)
+    await queueService.publish(
+      'submission_updates',
+      JSON.stringify({
+        submissionId,
+        data: {
           submissionId,
-          data: {
-            submissionId,
-            status: finalStatus,
-            result: executionResult,
-            score,
-            isRunOnly,
-          },
-        })
-      );
+          status: ESubmissionStatus.RUNNING,
+          message: 'Compiling and Running...',
+        },
+      })
+    );
 
-      this.totalProcessed++;
-      console.log(`✅ Job for submission ${job.submissionId} completed successfully`);
-    } catch (error: any) {
-      console.error(`❌ Job for submission ${job.submissionId} failed:`, error.message);
+    // Execute code using sandbox service
+    const executionResult = await this.executeInSandbox({
+      code,
+      language,
+      testcases: testcases.map(tc => ({
+        id: tc.id,
+        input: tc.input,
+        output: tc.output,
+        point: tc.point,
+      })),
+      timeLimit,
+      memoryLimit,
+    });
 
-      if (job.jobType !== 'RUN_CODE') {
-        // Update submission with error status
-        await submissionService.updateSubmissionStatus(
-          job.submissionId,
-          ESubmissionStatus.RUNTIME_ERROR
-        );
-      } else {
-        // Notify error for ephemeral run
-        await queueService.publish(
-          'submission_updates',
-          JSON.stringify({
-            submissionId: job.submissionId,
-            data: {
-              submissionId: job.submissionId,
-              status: ESubmissionStatus.RUNTIME_ERROR,
-              message: error.message,
-            },
-          })
-        );
-      }
+    const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
 
-      this.totalErrors++;
+    if (executionResult.results && Array.isArray(executionResult.results)) {
+      executionResult.results = executionResult.results.map((result: any) => ({
+        ...result,
+        isPublic: testcaseMap.get(result.testcaseId) ?? false,
+      }));
     }
+
+    const finalStatus = JudgeUtils.determineFinalStatus(
+      executionResult.summary,
+      executionResult.results
+    );
+    const score = JudgeUtils.calculateScore(executionResult.results, testcases);
+
+    if (!isRunOnly) {
+      // Idempotent update through submissionService
+      await submissionService.updateSubmissionResult(submissionId, {
+        status: finalStatus as any,
+        score,
+        result: executionResult,
+      });
+    }
+
+    // Publish terminal update to Redis for SSE
+    await queueService.publish(
+      'submission_updates',
+      JSON.stringify({
+        submissionId,
+        data: {
+          submissionId,
+          status: finalStatus,
+          result: executionResult,
+          score,
+          isRunOnly,
+        },
+      })
+    );
+
+    this.totalProcessed++;
   }
 
   private async testSandboxService(): Promise<boolean> {
     try {
-      const response = await axios.get(`${this.sandboxUrl}/health`, { timeout: 5000 });
-      return response.status === 200 && response.data.status === 'healthy';
+      // Probe via gRPC: send a minimal dummy request and check for non-UNAVAILABLE status
+      const probe: GrpcExecutionRequest = {
+        submission_id: 'health-probe',
+        source_code: 'print(1)',
+        language: 'python',
+        time_limit_ms: 5000,
+        memory_limit_kb: 65536,
+        test_cases: [{ id: 'probe', input: '', expected_output: '1' }],
+      };
+      await sandboxGrpcClient.executeCode(probe);
+      return true;
     } catch (error) {
-      console.error('Sandbox service health check failed:', error);
       return false;
     }
   }
 
   /**
-   * Execute code in sandbox service
+   * Execute code in sandbox via gRPC + Circuit Breaker (Task 3.3 & 3.4)
    */
   private async executeInSandbox(config: any): Promise<any> {
-    try {
-      const response = await axios.post(`${this.sandboxUrl}/api/sandbox/execute`, config, {
-        timeout: 60000, // 60 seconds timeout
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+    const request: GrpcExecutionRequest = {
+      submission_id: config.submissionId || 'unknown',
+      source_code: config.code,
+      language: config.language,
+      time_limit_ms: config.timeLimit || 5000,
+      memory_limit_kb: config.memoryLimit ? parseInt(config.memoryLimit) * 1024 : 262144, // default 256 MB
+      test_cases: (config.testcases || []).map((tc: any) => ({
+        id: tc.id,
+        input: tc.input || '',
+        expected_output: tc.output || '',
+      })),
+    };
 
-      if (response.data.success) {
-        return response.data.data;
-      } else {
-        throw new Error(response.data.message || 'Sandbox execution failed');
-      }
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(`Sandbox service error: ${error.response.data.message || error.message}`);
-      } else if (error.request) {
-        throw new Error('Sandbox service is not responding');
-      } else {
-        throw new Error(`Sandbox execution error: ${error.message}`);
-      }
+    if (!this.breaker) {
+      // Breaker not yet initialized (should not happen) — call directly
+      const grpcResponse = await sandboxGrpcClient.executeCode(request);
+      return this.mapGrpcResponseToLegacy(grpcResponse);
     }
+
+    const grpcResponse = await (this.breaker.fire(request) as Promise<any>);
+    return this.mapGrpcResponseToLegacy(grpcResponse);
   }
 
-  getStats(): {
-    workerId: string;
-    isRunning: boolean;
-    totalProcessed: number;
-    totalErrors: number;
-    sandboxUrl: string;
-  } {
+  /**
+   * Map gRPC ExecutionResponse → legacy sandbox result format expected by JudgeUtils
+   */
+  private mapGrpcResponseToLegacy(grpcResponse: any): any {
+    if (!grpcResponse || grpcResponse.overall_status === 'SYSTEM_ERROR') {
+      throw new Error('Sandbox system error — circuit breaker fallback activated');
+    }
+
+    const results = (grpcResponse.results || []).map((r: any) => ({
+      testcaseId: r.test_case_id,
+      input: '',
+      expectedOutput: '',
+      actualOutput: r.actual_output,
+      isPassed: r.status === 'ACCEPTED',
+      executionTime: r.time_taken_ms,
+      memoryUse: r.memory_used_kb,
+      error: r.error_message || null,
+      stderr: r.error_message || null,
+    }));
+
+    const passed = results.filter((r: any) => r.isPassed).length;
+
+    return {
+      summary: {
+        passed,
+        total: results.length,
+        successRate: results.length > 0 ? ((passed / results.length) * 100).toFixed(2) : '0.00',
+        status: grpcResponse.overall_status,
+      },
+      results,
+      compileError: grpcResponse.compile_error || null,
+    };
+  }
+
+  getStats() {
     return {
       workerId: this.workerId,
-      isRunning: this.isRunning,
       totalProcessed: this.totalProcessed,
       totalErrors: this.totalErrors,
-      sandboxUrl: this.sandboxUrl,
+      sandboxGrpcUrl: process.env.SANDBOX_GRPC_URL || 'localhost:50051',
+      circuitBreakerOpen: this.breaker ? this.breaker.opened : false,
     };
   }
 }

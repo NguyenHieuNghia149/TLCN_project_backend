@@ -1,4 +1,4 @@
-import { LearnedLessonRepository } from '@/repositories/learned-lesson.repository';
+import { LearnedLessonRepository } from '../repositories/learned-lesson.repository';
 
 export class LearnedLessonService {
   private learnedLessonRepository: LearnedLessonRepository;
@@ -48,7 +48,7 @@ export class LearnedLessonService {
       }
 
       const lessons = await this.learnedLessonRepository.getCompletedLessonsByUser(userId);
-      return lessons.map(lesson => lesson.lessonId);
+      return lessons.map((lesson: any) => lesson.lessonId);
     } catch (error) {
       throw error;
     }

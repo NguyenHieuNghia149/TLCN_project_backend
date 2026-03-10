@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { Request } from 'express';
@@ -45,21 +46,21 @@ export class WebSocketService {
   private async setupRedisSubscription(): Promise<void> {
     const redisUrl = process.env.REDIS_URL;
     if (!redisUrl) {
-      console.warn('Redis URL not provided, skipping Redis subscription');
+      logger.warn('Redis URL not provided, skipping Redis subscription');
       return;
     }
 
     const subscriber = createClient({ url: redisUrl });
 
     subscriber.on('error', err => {
-      console.error('WebSocket Redis subscriber error:', err.message);
+      logger.error('WebSocket Redis subscriber error:', err.message);
     });
 
     try {
       await subscriber.connect();
-      console.log('WebSocket Redis subscriber connected');
+      logger.info('WebSocket Redis subscriber connected');
 
-      await subscriber.subscribe('submission_updates', message => {
+      await subscriber.subscribe('submission_updates', (message: any) => {
         try {
           const payload = JSON.parse(message);
           // Payload structure: { submissionId, data: { submissionId, status, result, ... } }
@@ -67,12 +68,12 @@ export class WebSocketService {
           if (payload && payload.submissionId && payload.data) {
             this.emitSubmissionUpdate(payload.submissionId, payload.data);
           }
-        } catch (err) {
+        } catch (err: any) {
           // Silent error handling for Redis message processing
         }
       });
     } catch (err: any) {
-      console.error('Failed to connect WebSocket Redis subscriber:', err.message);
+      logger.error('Failed to connect WebSocket Redis subscriber:', err.message);
     }
   }
 

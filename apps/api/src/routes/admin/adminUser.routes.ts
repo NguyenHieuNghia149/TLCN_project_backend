@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { validate } from '@/middlewares/validate.middleware';
-import { authenticationToken, requireTeacherOrOwner } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
-import AdminUserController from '@/controllers/admin/adminUser.controller';
+import { validate } from '@backend/api/middlewares/validate.middleware';
+import { authenticationToken, requireTeacherOrOwner } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import AdminUserController from '@backend/api/controllers/admin/adminUser.controller';
 import { z } from 'zod';
 
 const router = Router();

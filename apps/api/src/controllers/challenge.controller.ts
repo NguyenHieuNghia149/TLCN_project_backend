@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
-import { ChallengeService } from '@/services/challenge.service';
-import { AppException } from '@/exceptions/base.exception';
+import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
+import { ChallengeService } from '@backend/api/services/challenge.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 import {
   ProblemInput,
   UpdateSolutionVisibilityInput,

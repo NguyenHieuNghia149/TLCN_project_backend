@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
 import { successResponse } from '@backend/shared/utils';
+import { Request, Response, NextFunction } from 'express';
 
 export const responseMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const originalJson = res.json;

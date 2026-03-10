@@ -1,3 +1,4 @@
+import { SanitizationUtils, logger } from '@backend/shared/utils';
 import { users, UserEntity, UserInsert, submissions } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
 import { eq, ilike, and, or, desc, asc, gte, lte, count, sql, gt } from 'drizzle-orm';
@@ -6,9 +7,8 @@ import {
   UserAlreadyExistsException,
   UserNotFoundException,
   ValidationException,
-} from '@/exceptions/auth.exceptions';
+} from '../exceptions/auth.exceptions';
 
-import { SanitizationUtils } from '@backend/shared/utils';
 import { EUserRole } from '@backend/shared/types';
 
 export interface UserFilters {
@@ -141,7 +141,7 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
       throw new UserNotFoundException(`User with id ${id} not found`);
     }
 
-    console.log('User avatar updated to:', user.avatar);
+    logger.info('User avatar updated to:', user.avatar);
     return user;
   }
 
@@ -448,13 +448,13 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
   }
 
   async findAllIds(): Promise<string[]> {
-    console.log('[UserRepository] findAllIds called');
-    console.log('[UserRepository] EUserRole.USER value:', EUserRole.USER);
+    logger.info('[UserRepository] findAllIds called');
+    logger.info('[UserRepository] EUserRole.USER value:', EUserRole.USER);
     const result = await this.db
       .select({ id: users.id })
       .from(users)
       .where(and(eq(users.status, 'active'), eq(users.role, EUserRole.USER)));
-    console.log('[UserRepository] findAllIds result count:', result.length);
+    logger.info('[UserRepository] findAllIds result count:', result.length);
     return result.map((r: any) => r.id);
   }
 

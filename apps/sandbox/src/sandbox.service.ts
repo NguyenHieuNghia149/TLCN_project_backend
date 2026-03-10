@@ -1,3 +1,4 @@
+import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as yaml from 'yaml';
@@ -10,8 +11,6 @@ import {
 } from '@backend/shared/validations/submission.validation';
 import { securityService } from '@backend/api/services/security.service';
 import { monitoringService } from '@backend/api/services/monitoring.service';
-import { FsUtils } from '@backend/shared/utils';
-import { StringUtils } from '@backend/shared/utils';
 
 export interface SandboxConfig {
   host: string;
@@ -70,19 +69,19 @@ export class SandboxService {
       if (FsUtils.exists(configPath)) {
         const fileContents = FsUtils.readFile(configPath, 'utf8');
         this.yamlConfig = yaml.parse(fileContents);
-        console.log('Successfully loaded sandbox.yaml configuration');
+        logger.info('Successfully loaded sandbox.yaml configuration');
       } else {
-        console.warn(`Sandbox YAML config not found at ${configPath}`);
+        logger.warn(`Sandbox YAML config not found at ${configPath}`);
       }
     } catch (error) {
-      console.error('Failed to parse sandbox.yaml', error);
+      logger.error('Failed to parse sandbox.yaml', error);
     }
   }
 
   private ensureWorkspaceDir(): void {
     if (!FsUtils.exists(this.workspaceDir)) {
       FsUtils.ensureDir(this.workspaceDir);
-      console.log(`Created workspace directory: ${this.workspaceDir}`);
+      logger.info(`Created workspace directory: ${this.workspaceDir}`);
     }
   }
 
@@ -129,7 +128,7 @@ export class SandboxService {
             },
           };
         } catch (dockerError: any) {
-          console.error('Docker execution failed:', dockerError.message);
+          logger.error('Docker execution failed:', dockerError.message);
           this.cleanupWorkspace(jobDir);
 
           // Return error instead of fallback
@@ -208,11 +207,11 @@ export class SandboxService {
       FsUtils.chmod(jobDir, 0o755);
 
       // Log directory contents for debugging
-      console.log(`Created workspace at ${jobDir}`);
-      console.log('Directory contents:', FsUtils.readDir(jobDir));
-      console.log('File contents:', FsUtils.readFile(filePath, 'utf8'));
+      logger.info(`Created workspace at ${jobDir}`);
+      logger.info('Directory contents:', FsUtils.readDir(jobDir));
+      logger.info('File contents:', FsUtils.readFile(filePath, 'utf8'));
     } catch (error) {
-      console.error('Error creating workspace:', error);
+      logger.error('Error creating workspace:', error);
       throw error;
     }
   }
@@ -547,9 +546,9 @@ export class SandboxService {
     setTimeout(() => {
       try {
         FsUtils.remove(jobDir);
-        console.log(`Cleaned up workspace: ${jobDir}`);
+        logger.info(`Cleaned up workspace: ${jobDir}`);
       } catch (error) {
-        console.warn(`Failed to cleanup ${jobDir}:`, error);
+        logger.warn(`Failed to cleanup ${jobDir}:`, error);
       }
     }, 30000); // Cleanup after 30 seconds
   }
@@ -579,7 +578,7 @@ export class SandboxService {
       // Simple health check - just check if workspace exists
       return FsUtils.exists(this.workspaceDir);
     } catch (error) {
-      console.error('Health check error:', error);
+      logger.error('Health check error:', error);
       return false;
     }
   }

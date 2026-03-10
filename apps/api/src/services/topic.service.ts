@@ -1,11 +1,11 @@
-import { TopicRepository } from '@/repositories/topic.repository';
-import { NotFoundException } from '@/exceptions/solution.exception';
+import { TopicRepository } from '../repositories/topic.repository';
+import { NotFoundException } from '../exceptions/solution.exception';
 import {
   CreateTopicInput,
   TopicResponse,
   UpdateTopicInput,
 } from '@backend/shared/validations/topic.validation';
-import { BaseException } from '@/exceptions/auth.exceptions';
+import { BaseException } from '../exceptions/auth.exceptions';
 
 export class TopicService {
   private topicRepository: TopicRepository;
@@ -58,7 +58,7 @@ export class TopicService {
       page: 1,
       limit: 1000,
     });
-    return topics.data.map(topic => ({
+    return topics.data.map((topic: any) => ({
       id: topic.id,
       topicName: topic.topicName,
     }));

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { DashboardController } from '@/controllers/admin/dashboard.controller';
+import { DashboardController } from '@backend/api/controllers/admin/dashboard.controller';
 
 const router = Router();
 const controller = new DashboardController();

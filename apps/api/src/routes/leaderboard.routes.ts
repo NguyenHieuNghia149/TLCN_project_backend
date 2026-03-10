@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { LeaderboardController } from '@/controllers/leaderboard.controller';
-import { LeaderboardService } from '@/services/leaderboard.service';
-import { LeaderboardRepository } from '@/repositories/leaderboard.repository';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
+import { LeaderboardController } from '@backend/api/controllers/leaderboard.controller';
+import { LeaderboardService } from '@backend/api/services/leaderboard.service';
+import { LeaderboardRepository } from '@backend/api/repositories/leaderboard.repository';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
 const router = Router();
 

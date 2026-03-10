@@ -337,6 +337,28 @@ export class SubmissionRepository extends BaseRepository<
     return result || null;
   }
 
+  async updateStatusIdempotent(
+    id: string,
+    status: ESubmissionStatus,
+    judgedAt?: Date
+  ): Promise<SubmissionEntity | null> {
+    const [result] = await this.db
+      .update(submissions)
+      .set({
+        status,
+        judgedAt: judgedAt || new Date(),
+      })
+      .where(
+        and(
+          eq(submissions.id, id),
+          inArray(submissions.status, [ESubmissionStatus.PENDING, ESubmissionStatus.RUNNING])
+        )
+      )
+      .returning();
+
+    return result || null;
+  }
+
   async getSubmissionStats(
     userId?: string,
     problemId?: string

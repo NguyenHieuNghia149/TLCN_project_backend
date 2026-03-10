@@ -6,7 +6,7 @@ import {
   PaginatedResult,
   PaginationOptions,
   UserFilters,
-} from '@/repositories/user.repository';
+} from '@backend/api/repositories/user.repository';
 
 export class AdminUserRepository extends BaseRepository<typeof users, UserEntity, UserInsert> {
   private userRepository: UserRepository;

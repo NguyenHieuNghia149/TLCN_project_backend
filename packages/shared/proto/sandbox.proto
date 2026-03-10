@@ -1,0 +1,37 @@
+syntax = "proto3";
+package judge;
+
+service SandboxService {
+  rpc ExecuteCode (ExecutionRequest) returns (ExecutionResponse);
+}
+
+message ExecutionRequest {
+  string submission_id = 1;
+  string source_code = 2;
+  string language = 3;
+  int32 time_limit_ms = 4;
+  int32 memory_limit_kb = 5;
+  repeated TestCase test_cases = 6;
+}
+
+message TestCase {
+  string id = 1;
+  string input = 2;
+  string expected_output = 3;
+}
+
+message ExecutionResponse {
+  string submission_id = 1;
+  string overall_status = 2;
+  string compile_error = 3;
+  repeated TestCaseResult results = 4;
+}
+
+message TestCaseResult {
+  string test_case_id = 1;
+  string status = 2;
+  int32 time_taken_ms = 3;
+  int32 memory_used_kb = 4;
+  string actual_output = 5;
+  string error_message = 6;
+}

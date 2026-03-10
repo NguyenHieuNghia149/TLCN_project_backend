@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AppException } from '@/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LessonUploadController {
   /**

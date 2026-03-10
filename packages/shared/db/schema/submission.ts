@@ -37,6 +37,7 @@ export const insertSubmissionSchema = createInsertSchema(submissions, {
       'MEMORY_LIMIT_EXCEEDED',
       'RUNTIME_ERROR',
       'COMPILATION_ERROR',
+      'SYSTEM_ERROR',
     ])
     .default('PENDING'),
   language: z.string().min(1),

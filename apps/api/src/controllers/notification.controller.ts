@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from 'express';
-import { NotificationService } from '@/services/notification.service';
-import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
-import { UserNotFoundException } from '@/exceptions/auth.exceptions';
-import { NotificationNotFoundException } from '@/exceptions/notification.exception';
+import { NotificationService } from '@backend/api/services/notification.service';
+import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
+import { UserNotFoundException } from '@backend/api/exceptions/auth.exceptions';
+import { NotificationNotFoundException } from '@backend/api/exceptions/notification.exception';
 
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}

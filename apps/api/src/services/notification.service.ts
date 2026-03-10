@@ -1,5 +1,5 @@
-import { NotificationRepository } from '@/repositories/notification.repository';
-import { UserRepository } from '@/repositories/user.repository';
+import { NotificationRepository } from '../repositories/notification.repository';
+import { UserRepository } from '../repositories/user.repository';
 import { websocketService } from './websocket.service';
 import { ENotificationType } from '@backend/shared/types';
 import {
@@ -7,8 +7,8 @@ import {
   CreateNotificationSchema,
   NotificationMetadataSchemas,
 } from '@backend/shared/validations/notification.validation';
-import { ValidationException } from '@/exceptions/auth.exceptions';
-import { NotificationNotFoundException } from '@/exceptions/notification.exception';
+import { ValidationException } from '../exceptions/auth.exceptions';
+import { NotificationNotFoundException } from '../exceptions/notification.exception';
 
 export class NotificationService {
   private notificationRepository: NotificationRepository;
@@ -91,7 +91,7 @@ export class NotificationService {
     }
 
     // 2. Prepare DB inserts
-    const notificationsToInsert: CreateNotificationInput[] = userIds.map(userId => ({
+    const notificationsToInsert: CreateNotificationInput[] = userIds.map((userId: any) => ({
       userId,
       type: typeEnum,
       title,

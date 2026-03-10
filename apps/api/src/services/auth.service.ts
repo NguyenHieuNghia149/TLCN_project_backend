@@ -1,3 +1,4 @@
+import { JWTUtils, PasswordUtils } from '@backend/shared/utils';
 import {
   AuthResponse,
   ChangePasswordInput,
@@ -7,16 +8,14 @@ import {
   RegisterResponseSchema,
   GoogleLoginInput,
 } from '@backend/shared/validations/auth.validation';
-import { TokenRepository } from '@/repositories/token.repository';
-import { UserRepository } from '@/repositories/user.repository';
-import { JWTUtils } from '@backend/shared/utils';
-import { PasswordUtils } from '@backend/shared/utils';
+import { TokenRepository } from '../repositories/token.repository';
+import { UserRepository } from '../repositories/user.repository';
 import {
   UserAlreadyExistsException,
   InvalidCredentialsException,
   TokenExpiredException,
   ValidationException,
-} from '@/exceptions/auth.exceptions';
+} from '../exceptions/auth.exceptions';
 import { Request } from 'express';
 import { EStatus } from '@backend/shared/types';
 import { EMailService, otpStore } from './email.service';

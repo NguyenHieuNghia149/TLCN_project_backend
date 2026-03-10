@@ -1,6 +1,6 @@
+import { errorResponse, logger } from '@backend/shared/utils';
 import { Request, Response, NextFunction } from 'express';
 import { AppException } from '../exceptions/base.exception';
-import { errorResponse } from '@backend/shared/utils';
 
 export const errorMiddleware = (err: any, req: Request, res: Response, next: NextFunction) => {
   // Handle standard AppExceptions
@@ -20,7 +20,7 @@ export const errorMiddleware = (err: any, req: Request, res: Response, next: Nex
 
   // Default to 500 server error
   const isDev = process.env.NODE_ENV === 'development';
-  console.error('[ErrorMiddleware]', err);
+  logger.error('[ErrorMiddleware]', err);
 
   return res
     .status(500)

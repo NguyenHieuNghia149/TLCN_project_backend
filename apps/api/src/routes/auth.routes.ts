@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { AuthController } from '@/controllers/auth.controller';
-import { AuthService } from '@/services/auth.service';
-import { authenticationToken, requireTeacher } from '@/middlewares/auth.middleware';
+import { AuthController } from '@backend/api/controllers/auth.controller';
+import { AuthService } from '@backend/api/services/auth.service';
+import { authenticationToken, requireTeacher } from '@backend/api/middlewares/auth.middleware';
 import {
   authLimiter,
   rateLimitMiddleware,
@@ -9,8 +9,8 @@ import {
   strictLimiter,
   passwordResetLimiter,
   emailVerificationLimiter,
-} from '@/middlewares/ratelimit.middleware';
-import { validate } from '@/middlewares/validate.middleware';
+} from '@backend/api/middlewares/ratelimit.middleware';
+import { validate } from '@backend/api/middlewares/validate.middleware';
 import {
   LoginSchema,
   RegisterSchema,
@@ -20,9 +20,9 @@ import {
   GoogleLoginSchema,
   VerifyOTPSchema,
 } from '@backend/shared/validations/auth.validation';
-import { upload } from '@/middlewares/upload.middleware';
-import { UserService } from '@/services/user.service';
-import { EMailService } from '@/services/email.service';
+import { upload } from '@backend/api/middlewares/upload.middleware';
+import { UserService } from '@backend/api/services/user.service';
+import { EMailService } from '@backend/api/services/email.service';
 
 const router = Router();
 const authService = new AuthService();

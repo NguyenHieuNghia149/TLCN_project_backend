@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { SecurityController } from '@/controllers/security.controller';
-import { authenticationToken } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
+import { SecurityController } from '@backend/api/controllers/security.controller';
+import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
 const router = Router();
 const securityController = new SecurityController();

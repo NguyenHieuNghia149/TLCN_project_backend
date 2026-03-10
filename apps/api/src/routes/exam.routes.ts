@@ -1,15 +1,15 @@
 import { Router } from 'express';
-import { ExamController, CreateExamSchema } from '@/controllers/exam.controller';
+import { ExamController, CreateExamSchema } from '@backend/api/controllers/exam.controller';
 import {
   JoinExamSchema,
   SubmitExamSchema,
   GetExamLeaderboardSchema,
   UpdateExamSchema,
 } from '@backend/shared/validations/exam.validation';
-import { ExamService } from '@/services/exam.service';
-import { authenticationToken, requireTeacher } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
-import { validate } from '@/middlewares/validate.middleware';
+import { ExamService } from '@backend/api/services/exam.service';
+import { authenticationToken, requireTeacher } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { validate } from '@backend/api/middlewares/validate.middleware';
 
 const router = Router();
 const examService = new ExamService();

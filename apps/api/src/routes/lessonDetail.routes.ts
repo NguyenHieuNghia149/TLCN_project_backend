@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { LessonDetailController } from '@/controllers/lessonDetail.controller';
-import { validate } from '@/middlewares/validate.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
+import { LessonDetailController } from '@backend/api/controllers/lessonDetail.controller';
+import { validate } from '@backend/api/middlewares/validate.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { z } from 'zod';
 
 const router = Router();

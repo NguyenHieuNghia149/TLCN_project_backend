@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { FavoriteController } from '@/controllers/favorite.controller';
-import { FavoriteService } from '@/services/favorite.service';
-import { authenticationToken } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
-import { validate } from '@/middlewares/validate.middleware';
+import { FavoriteController } from '@backend/api/controllers/favorite.controller';
+import { FavoriteService } from '@backend/api/services/favorite.service';
+import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { validate } from '@backend/api/middlewares/validate.middleware';
 import {
   FavoriteInputSchema,
   FavoriteParamsSchema,

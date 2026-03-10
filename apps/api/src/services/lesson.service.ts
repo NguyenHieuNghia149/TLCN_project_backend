@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import { LessonRepository } from '../repositories/lesson.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import {
@@ -137,9 +138,9 @@ export class LessonService {
     // Only proceed with update if there are fields to update
     let lesson;
     if (Object.keys(updateData).length > 0) {
-      console.log('Updating with data:', updateData);
+      logger.info('Updating with data:', updateData);
       lesson = await this.lessonRepository.update(id, updateData);
-      console.log('Updated lesson:', lesson);
+      logger.info('Updated lesson:', lesson);
     } else {
       lesson = await this.lessonRepository.findById(id);
     }

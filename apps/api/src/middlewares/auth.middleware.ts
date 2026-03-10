@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
 import { JWTUtils } from '@backend/shared/utils';
-import { InvalidTokenException, TokenExpiredException } from '@/exceptions/auth.exceptions';
+import { Request, Response, NextFunction } from 'express';
+import { InvalidTokenException, TokenExpiredException } from '@backend/api/exceptions/auth.exceptions';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -16,7 +16,13 @@ export const authenticationToken = (
   next: NextFunction
 ): void | Response => {
   const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+
+  // Support JWT from query token for SSE /stream endpoints
+  if (!token && req.query.token && typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+
   if (!token) {
     return res.status(401).json({
       success: false,

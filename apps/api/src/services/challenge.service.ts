@@ -1,20 +1,21 @@
-import { NotFoundException } from '@/exceptions/solution.exception';
-import { ChallengeHasSubmissionsException } from '@/exceptions/challenge.exceptions';
-import { ProblemRepository } from '@/repositories/problem.repository';
-import { SolutionRepository } from '@/repositories/solution.repository';
-import { TestcaseRepository } from '@/repositories/testcase.repository';
-import { TopicRepository } from '@/repositories/topic.repository';
+import { logger } from '@backend/shared/utils';
+import { NotFoundException } from '../exceptions/solution.exception';
+import { ChallengeHasSubmissionsException } from '../exceptions/challenge.exceptions';
+import { ProblemRepository } from '../repositories/problem.repository';
+import { SolutionRepository } from '../repositories/solution.repository';
+import { TestcaseRepository } from '../repositories/testcase.repository';
+import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
 import {
   ChallengeResponse,
   ProblemInput,
   ProblemResponse,
 } from '@backend/shared/validations/problem.validation';
-import { LessonRepository } from '@/repositories/lesson.repository';
-import { SubmissionRepository } from '@/repositories/submission.repository';
-import { SolutionApproachRepository } from '@/repositories/solutionApproach.repository';
+import { LessonRepository } from '../repositories/lesson.repository';
+import { SubmissionRepository } from '../repositories/submission.repository';
+import { SolutionApproachRepository } from '../repositories/solutionApproach.repository';
 import { SolutionResponse } from '@backend/shared/validations/solution.validation';
-import { FavoriteRepository } from '@/repositories/favorite.repository';
+import { FavoriteRepository } from '../repositories/favorite.repository';
 import { TestcaseResponse } from '@backend/shared/validations/testcase.validation';
 
 export class ChallengeService {
@@ -204,7 +205,7 @@ export class ChallengeService {
     });
 
     // Batch sum points
-    const problemIds = items.map(p => p.id);
+    const problemIds = items.map((p: any) => p.id);
     const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
 
     // Batch solved/favorite map if user provided
@@ -216,7 +217,7 @@ export class ChallengeService {
     }
 
     return {
-      items: items.map(p => ({
+      items: items.map((p: any) => ({
         id: p.id,
         title: p.title,
         description: p.description,
@@ -278,7 +279,7 @@ export class ChallengeService {
     });
 
     // Batch sum points
-    const problemIds = items.map(p => p.id);
+    const problemIds = items.map((p: any) => p.id);
     const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
 
     // Batch solved/favorite map if user provided
@@ -290,7 +291,7 @@ export class ChallengeService {
     }
 
     return {
-      items: items.map(p => ({
+      items: items.map((p: any) => ({
         id: p.id,
         title: p.title,
         description: p.description,
@@ -333,7 +334,7 @@ export class ChallengeService {
       sortField,
       sortOrder
     );
-    const items = data.map(p => ({
+    const items = data.map((p: any) => ({
       id: p.id,
       title: p.title,
       description: p.description,
@@ -441,10 +442,10 @@ export class ChallengeService {
 
     // Handle testcases update if provided
     if (updateData.testcases) {
-      console.log('Updating testcases:', updateData.testcases.length);
+      logger.info('Updating testcases:', updateData.testcases.length);
       await this.testcaseRepository.updateTestcasesTransactional(challengeId, updateData.testcases);
     } else {
-      console.log('No testcases provided in updateData');
+      logger.info('No testcases provided in updateData');
     }
 
     return this.getChallengeById(challengeId, undefined, { showAllTestcases: true });

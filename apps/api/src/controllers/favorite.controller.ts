@@ -1,13 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { FavoriteService } from '@/services/favorite.service';
-import { AuthenticatedRequest } from '@/middlewares/auth.middleware';
+import { FavoriteService } from '@backend/api/services/favorite.service';
+import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
 import {
   FavoriteInput,
   FavoriteParams,
   LessonFavoriteInput,
   LessonFavoriteParams,
 } from '@backend/shared/validations/favorite.validation';
-import { UserNotFoundException } from '@/exceptions/auth.exceptions';
+import { UserNotFoundException } from '@backend/api/exceptions/auth.exceptions';
 
 export class FavoriteController {
   constructor(private readonly favoriteService: FavoriteService) {}

@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
@@ -7,7 +8,7 @@ export const validate =
   (schema: z.ZodSchema, segment: Segments = 'body') =>
   (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req[segment]);
-    console.log(result);
+    logger.info(result);
     if (!result.success) {
       res.status(400).json({
         message: 'Validation error',

@@ -1,7 +1,7 @@
-import { AdminUserRepository } from '@/repositories/admin/adminUser.repository';
-import { PaginatedResult, PaginationOptions, UserFilters } from '@/repositories/user.repository';
-import { UserEntity, UserInsert } from '@backend/shared/db/schema';
 import { PasswordUtils } from '@backend/shared/utils';
+import { AdminUserRepository } from '@backend/api/repositories/admin/adminUser.repository';
+import { PaginatedResult, PaginationOptions, UserFilters } from '@backend/api/repositories/user.repository';
+import { UserEntity, UserInsert } from '@backend/shared/db/schema';
 
 export class AdminUserService {
   private repo: AdminUserRepository;

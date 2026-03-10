@@ -1,19 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '@/services/auth.service';
+import { AuthService } from '@backend/api/services/auth.service';
 import {
   UserAlreadyExistsException,
   UserNotFoundException,
   AuthenticationException,
-} from '@/exceptions/auth.exceptions';
+} from '@backend/api/exceptions/auth.exceptions';
 import {
   ChangePasswordInput,
   GoogleLoginInput,
   LoginInput,
   RegisterInput,
 } from '@backend/shared/validations/auth.validation';
-import { UserService } from '@/services/user.service';
-import { EMailService } from '@/services/email.service';
-import cloudinary from '@/config/cloudinary';
+import { UserService } from '@backend/api/services/user.service';
+import { EMailService } from '@backend/api/services/email.service';
+import cloudinary from '@backend/api/config/cloudinary';
 import { Readable } from 'stream';
 
 export class AuthController {

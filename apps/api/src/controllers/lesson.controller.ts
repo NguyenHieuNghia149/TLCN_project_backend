@@ -5,7 +5,7 @@ import {
   CreateLessonSchema,
   UpdateLessonSchema,
 } from '@backend/shared/validations/lesson.validation';
-import { AppException } from '@/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}

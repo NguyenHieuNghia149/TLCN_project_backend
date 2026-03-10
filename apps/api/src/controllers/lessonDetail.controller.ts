@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { LessonDetailService } from '@/services/lessonDetail.service';
-import { AppException } from '@/exceptions/base.exception';
+import { LessonDetailService } from '@backend/api/services/lessonDetail.service';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LessonDetailController {
   private lessonDetailService: LessonDetailService;

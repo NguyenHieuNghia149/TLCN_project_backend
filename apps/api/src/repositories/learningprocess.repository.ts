@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import { SubmissionRepository } from './submission.repository';
 import { LearnedLessonRepository } from './learned-lesson.repository';
 import { ProblemRepository } from './problem.repository';
@@ -125,7 +126,7 @@ export class LearningProcessRepository {
         recentTopic,
       };
     } catch (error) {
-      console.error('Error fetching user learning progress:', error);
+      logger.error('Error fetching user learning progress:', error);
       throw error;
     }
   }
@@ -181,7 +182,7 @@ export class LearningProcessRepository {
         lastSubmittedAt: latestSubmission?.submittedAt || null,
       };
     } catch (error) {
-      console.error('Error fetching topic progress:', error);
+      logger.error('Error fetching topic progress:', error);
       throw error;
     }
   }
@@ -268,7 +269,7 @@ export class LearningProcessRepository {
         recentLesson,
       };
     } catch (error) {
-      console.error('Error fetching user lesson progress:', error);
+      logger.error('Error fetching user lesson progress:', error);
       throw error;
     }
   }
@@ -322,7 +323,7 @@ export class LearningProcessRepository {
         lastCompletedAt: latestCompletion?.completedAt || null,
       };
     } catch (error) {
-      console.error('Error fetching lesson progress:', error);
+      logger.error('Error fetching lesson progress:', error);
       throw error;
     }
   }

@@ -2,7 +2,7 @@ import {
   CommentRepository,
   CommentWithUser,
   CommentWithReplies,
-} from '@/repositories/comment.repository';
+} from '../repositories/comment.repository';
 import { CommentInsert, CommentEntity } from '@backend/shared/db/schema';
 
 export class CommentService {

@@ -95,7 +95,7 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
           orderMap.set(ch.challengeId, orderIndex);
         } else if (ch.type === 'new') {
           // create problem inside the same tx using ProblemRepository's tx-aware method
-          const { ProblemRepository } = await import('@/repositories/problem.repository');
+          const { ProblemRepository } = await import('../repositories/problem.repository');
           const probRepo = new ProblemRepository();
           // Use the repository's transactional API which accepts an optional tx
           // so we reuse the active transaction rather than calling a separate tx helper.

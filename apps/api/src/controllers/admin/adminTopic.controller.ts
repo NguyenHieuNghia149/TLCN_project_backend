@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { AdminTopicService } from '@/services/admin/adminTopic.service';
+import { AdminTopicService } from '@backend/api/services/admin/adminTopic.service';
 import { CreateTopicSchema, UpdateTopicSchema } from '@backend/shared/validations/topic.validation';
-import { AppException } from '@/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class AdminTopicController {
   private service: AdminTopicService;

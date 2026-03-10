@@ -65,6 +65,7 @@ export const SubmissionStatusSchema = z.object({
     'MEMORY_LIMIT_EXCEEDED',
     'RUNTIME_ERROR',
     'COMPILATION_ERROR',
+    'SYSTEM_ERROR',
   ]),
   result: z
     .object({
@@ -107,6 +108,7 @@ export const GetSubmissionsQuerySchema = z.object({
       'MEMORY_LIMIT_EXCEEDED',
       'RUNTIME_ERROR',
       'COMPILATION_ERROR',
+      'SYSTEM_ERROR',
     ])
     .optional(),
   participationId: z.string().uuid().optional(),

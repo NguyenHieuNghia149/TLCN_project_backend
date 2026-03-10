@@ -1,10 +1,10 @@
-import { ExamRepository } from '@/repositories/exam.repository';
-import { ExamToProblemsRepository } from '@/repositories/examToProblems.repository';
-import { ExamParticipationRepository } from '@/repositories/examParticipation.repository';
-import { ProblemRepository } from '@/repositories/problem.repository';
-import { SubmissionRepository } from '@/repositories/submission.repository';
-import { TestcaseRepository } from '@/repositories/testcase.repository';
-import { ResultSubmissionRepository } from '@/repositories/result-submission.repository';
+import { ExamRepository } from '../repositories/exam.repository';
+import { ExamToProblemsRepository } from '../repositories/examToProblems.repository';
+import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
+import { ProblemRepository } from '../repositories/problem.repository';
+import { SubmissionRepository } from '../repositories/submission.repository';
+import { TestcaseRepository } from '../repositories/testcase.repository';
+import { ResultSubmissionRepository } from '../repositories/result-submission.repository';
 import { CreateExamInput, ExamResponse } from '@backend/shared/validations/exam.validation';
 import { ProblemInput } from '@backend/shared/validations/problem.validation';
 import {
@@ -17,11 +17,11 @@ import {
   examParticipations,
 } from '@backend/shared/db/schema';
 import { eq, inArray, and } from 'drizzle-orm';
-import { NotFoundException } from '@/exceptions/solution.exception';
+import { NotFoundException } from '../exceptions/solution.exception';
 import { ProblemVisibility } from '@backend/shared/types';
 import { EExamParticipationStatus } from '@backend/shared/types';
 // Service should not use raw `db` directly; repositories manage DB access and transactions.
-import { BaseException } from '@/exceptions/auth.exceptions';
+import { BaseException } from '../exceptions/auth.exceptions';
 import {
   ExamNotFoundException,
   InvalidPasswordException,
@@ -30,7 +30,7 @@ import {
   ExamParticipationNotFoundException,
   ExamNotStartedException,
   ExamEndedException,
-} from '@/exceptions/exam.exceptions';
+} from '../exceptions/exam.exceptions';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { ChallengeService } from './challenge.service';
 
@@ -357,14 +357,14 @@ export class ExamService {
             id: ch.challengeId || ch.id,
             order: ch.orderIndex ?? index,
           }))
-          .sort((a, b) => a.order - b.order);
+          .sort((a: any, b: any) => a.order - b.order);
 
         const currentList = currentLinks
-          .map(l => ({
+          .map((l: any) => ({
             id: l.problemId,
             order: l.orderIndex,
           }))
-          .sort((a, b) => a.order - b.order);
+          .sort((a: any, b: any) => a.order - b.order);
 
         let isChallengesChanged = incomingList.length !== currentList.length;
         if (!isChallengesChanged) {
@@ -437,7 +437,7 @@ export class ExamService {
 
     // Get challenges with order
     const examToProblemsData = await this.examToProblemsRepository.findByExamId(examId);
-    const problemIds = examToProblemsData.map(etp => etp.problemId);
+    const problemIds = examToProblemsData.map((etp: any) => etp.problemId);
 
     if (problemIds.length === 0) {
       return {
@@ -459,11 +459,11 @@ export class ExamService {
     const problemsData = await this.problemRepository.findByIds(problemIds);
 
     // Create order map
-    const orderMap = new Map(examToProblemsData.map(etp => [etp.problemId, etp.orderIndex]));
+    const orderMap = new Map(examToProblemsData.map((etp: any) => [etp.problemId, etp.orderIndex]));
 
     // Return basic challenge info only (no full details to avoid heavy load)
     const basicChallenges = problemsData
-      .map(p => ({
+      .map((p: any) => ({
         id: p.id,
         title: p.title,
         difficulty: p.difficult,
@@ -472,7 +472,7 @@ export class ExamService {
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
       }))
-      .sort((a, b) => a.orderIndex - b.orderIndex);
+      .sort((a: any, b: any) => a.orderIndex - b.orderIndex);
 
     return {
       id: examData.id,
@@ -496,7 +496,7 @@ export class ExamService {
   async getExamChallenge(examId: string, challengeId: string): Promise<any> {
     // Verify exam exists and challenge is part of this exam
     const examToProblems = await this.examToProblemsRepository.findByExamId(examId);
-    const challengeInExam = examToProblems.find(etp => etp.problemId === challengeId);
+    const challengeInExam = examToProblems.find((etp: any) => etp.problemId === challengeId);
 
     if (!challengeInExam) {
       throw new NotFoundException(`Challenge ${challengeId} not found in exam ${examId}`);
@@ -625,7 +625,7 @@ export class ExamService {
     // If filterType is 'participated' and userId provided, get exam ids participated by user
     if (filterType === 'participated' && userId) {
       const participations = await this.examParticipationRepository.findByUserId(userId);
-      const examIds = participations.map(p => p.examId);
+      const examIds = participations.map((p: any) => p.examId);
       if (examIds.length === 0) {
         return { data: [], total: 0 };
       }
@@ -637,7 +637,7 @@ export class ExamService {
 
     const { items, total } = await this.examRepository.getExamsPaginated(limit, offset, options);
 
-    const examsData: ExamResponse[] = (items || []).map(examData => ({
+    const examsData: ExamResponse[] = (items || []).map((examData: any) => ({
       id: examData.id,
       title: examData.title,
       password: examData.password,
@@ -689,7 +689,7 @@ export class ExamService {
     );
 
     // Check if user already joined and is IN_PROGRESS
-    const existingInProgress = previousParticipations.find(p => p.status === 'IN_PROGRESS');
+    const existingInProgress = previousParticipations.find((p: any) => p.status === 'IN_PROGRESS');
     if (existingInProgress) {
       throw new ExamAlreadyJoinedException();
     }
@@ -900,15 +900,15 @@ export class ExamService {
 
     // Filter completed participations and calculate per-problem scores
     const problems = await this.examToProblemsRepository.findByExamId(examId);
-    const problemIds = problems.map(pm => pm.problemId);
+    const problemIds = problems.map((pm: any) => pm.problemId);
 
     const leaderboard = await Promise.all(
-      participationRows.map(async row => {
+      participationRows.map(async (row: any) => {
         // For each problem compute obtained and max points
         const perProblem = await Promise.all(
-          problemIds.map(async problemId => {
+          problemIds.map(async (problemId: any) => {
             const testcases = await this.testcaseRepository.findByProblemId(problemId);
-            const maxPoints = testcases.reduce((s, tc) => s + (tc.point || 0), 0) || 1;
+            const maxPoints = testcases.reduce((s: any, tc: any) => s + (tc.point || 0), 0) || 1;
 
             // Prefer submission created for this participation
             let obtained = 0;
@@ -939,11 +939,13 @@ export class ExamService {
 
             if (sub && sub.id) {
               const results = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
-              const tcMap = new Map(results.map(r => [r.testcaseId, r]));
+              const tcMap = new Map(
+                results.map((r: any) => [(r as Record<string, any>).testcaseId, r])
+              );
               // sum points of passed testcases
               for (const tc of testcases) {
                 const r = tcMap.get(tc.id);
-                if (r && r.isPassed) {
+                if (r && (r as Record<string, any>).isPassed) {
                   obtained += tc.point || 0;
                 }
               }
@@ -953,7 +955,7 @@ export class ExamService {
           })
         );
 
-        const totalScore = perProblem.reduce((s, p) => s + p.obtained, 0);
+        const totalScore = perProblem.reduce((s: any, p: any) => s + p.obtained, 0);
 
         return {
           participationId: row.participationId,
@@ -969,7 +971,7 @@ export class ExamService {
     );
 
     // Sort by totalScore (desc) then by submission time (asc)
-    leaderboard.sort((a, b) => {
+    leaderboard.sort((a: any, b: any) => {
       if (b.totalScore !== a.totalScore) {
         return b.totalScore - a.totalScore;
       }
@@ -977,7 +979,7 @@ export class ExamService {
     });
 
     // Get user info for results
-    const results = leaderboard.slice(offset, offset + limit).map((entry, index) => {
+    const results = leaderboard.slice(offset, offset + limit).map((entry: any, index: any) => {
       const firstNameValue = entry.userFirstName || entry.email || '';
       const lastNameValue = entry.userLastName || '';
       return {
@@ -1009,7 +1011,7 @@ export class ExamService {
 
     // Get problems in exam
     const examToProblems = await this.examToProblemsRepository.findByExamId(examId);
-    const problemIds = examToProblems.map(etp => etp.problemId);
+    const problemIds = examToProblems.map((etp: any) => etp.problemId);
 
     if (problemIds.length === 0) return 0;
 
@@ -1053,10 +1055,10 @@ export class ExamService {
         const results = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
         const testcases = await this.testcaseRepository.findByProblemId(problemId);
 
-        const tcMap = new Map(results.map(r => [r.testcaseId, r]));
+        const tcMap = new Map(results.map((r: any) => [(r as Record<string, any>).testcaseId, r]));
         for (const tc of testcases) {
           const r = tcMap.get(tc.id);
-          if (r && r.isPassed) {
+          if (r && (r as Record<string, any>).isPassed) {
             totalScore += tc.point || 0;
           }
         }
@@ -1108,15 +1110,15 @@ export class ExamService {
 
     // Get exam problems
     const problems = await this.examToProblemsRepository.findByExamId(examId);
-    const problemIds = problems.map(p => p.problemId);
+    const problemIds = problems.map((p: any) => p.problemId);
 
     // Get user info
-    const userRepo = new (await import('@/repositories/user.repository')).UserRepository();
+    const userRepo = new (await import('../repositories/user.repository')).UserRepository();
     const user = await userRepo.findById(participation.userId);
 
     // Get solutions for each problem
     const solutions = await Promise.all(
-      problemIds.map(async problemId => {
+      problemIds.map(async (problemId: any) => {
         const problem = await this.problemRepository.findById(problemId);
         const testcases = await this.testcaseRepository.findByProblemId(problemId);
 
@@ -1139,10 +1141,12 @@ export class ExamService {
 
           // Calculate score from results
           const resultRecords = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
-          const tcMap = new Map(resultRecords.map(r => [r.testcaseId, r]));
+          const tcMap = new Map(
+            resultRecords.map((r: any) => [(r as Record<string, any>).testcaseId, r])
+          );
 
           let passedPoints = 0;
-          const maxPoints = testcases.reduce((s, tc) => s + (tc.point || 0), 0) || 1;
+          const maxPoints = testcases.reduce((s: any, tc: any) => s + (tc.point || 0), 0) || 1;
           for (const tc of testcases) {
             const r = tcMap.get(tc.id);
             const isPassed = r?.isPassed || false;
@@ -1169,7 +1173,7 @@ export class ExamService {
     );
 
     // Calculate total score
-    const totalScore = solutions.reduce((s, sol) => s + sol.score, 0);
+    const totalScore = solutions.reduce((s: any, sol: any) => s + sol.score, 0);
     const avgScore = solutions.length > 0 ? Math.round(totalScore / solutions.length) : 0;
 
     return {

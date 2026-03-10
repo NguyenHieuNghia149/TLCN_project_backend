@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { TopicController } from '@/controllers/topic.controller';
-import { TopicService } from '@/services/topic.service';
-import { authenticationToken, requireTeacher } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
-import { validate } from '@/middlewares/validate.middleware';
+import { TopicController } from '@backend/api/controllers/topic.controller';
+import { TopicService } from '@backend/api/services/topic.service';
+import { authenticationToken, requireTeacher } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { validate } from '@backend/api/middlewares/validate.middleware';
 import { CreateTopicSchema, UpdateTopicSchema } from '@backend/shared/validations/topic.validation';
 
 const router = Router();

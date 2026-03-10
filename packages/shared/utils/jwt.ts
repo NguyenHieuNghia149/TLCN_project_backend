@@ -1,12 +1,8 @@
 import jwt, { JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
-import { config } from 'dotenv';
-import {
-  InvalidTokenException,
-  TokenExpiredException,
-} from '@backend/api/exceptions/auth.exceptions';
-import crypto from 'crypto';
 
-config();
+import path from 'path';
+import crypto from 'crypto';
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 // Validate JWT secrets
 if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
@@ -89,9 +85,9 @@ export class JWTUtils {
       return jwt.verify(token, ACCESS_SECRET) as JWTPayload;
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
-        throw new TokenExpiredException('Access token has expired');
+        throw new Error('Access token has expired');
       } else if (error instanceof jwt.JsonWebTokenError) {
-        throw new InvalidTokenException('Invalid access token');
+        throw new Error('Invalid access token');
       }
       throw error;
     }
@@ -102,9 +98,9 @@ export class JWTUtils {
       return jwt.verify(token, REFRESH_SECRET) as JWTPayload;
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
-        throw new TokenExpiredException('Refresh token has expired');
+        throw new Error('Refresh token has expired');
       } else if (error instanceof jwt.JsonWebTokenError) {
-        throw new InvalidTokenException('Invalid refresh token');
+        throw new Error('Invalid refresh token');
       }
       throw error;
     }

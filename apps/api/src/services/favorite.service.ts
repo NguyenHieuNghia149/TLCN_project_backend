@@ -2,13 +2,13 @@ import {
   FavoriteRepository,
   FavoriteWithProblem,
   FavoriteWithLesson,
-} from '@/repositories/favorite.repository';
-import { ProblemRepository } from '@/repositories/problem.repository';
-import { TestcaseRepository } from '@/repositories/testcase.repository';
-import { SubmissionRepository } from '@/repositories/submission.repository';
-import { LessonRepository } from '@/repositories/lesson.repository';
-import { BaseException } from '@/exceptions/auth.exceptions';
-import { NotFoundException } from '@/exceptions/solution.exception';
+} from '../repositories/favorite.repository';
+import { ProblemRepository } from '../repositories/problem.repository';
+import { TestcaseRepository } from '../repositories/testcase.repository';
+import { SubmissionRepository } from '../repositories/submission.repository';
+import { LessonRepository } from '../repositories/lesson.repository';
+import { BaseException } from '../exceptions/auth.exceptions';
+import { NotFoundException } from '../exceptions/solution.exception';
 import {
   FavoriteResponse,
   ToggleFavoriteResponse,
@@ -72,8 +72,8 @@ export class FavoriteService {
     const favorites = await this.favoriteRepository.listFavoritesByUser(userId);
 
     const problemIds = favorites
-      .map(row => row.favorite.problemId)
-      .filter((id): id is string => Boolean(id));
+      .map((row: any) => row.favorite.problemId)
+      .filter((id: any) => Boolean(id));
 
     const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
 
@@ -83,7 +83,7 @@ export class FavoriteService {
       problemIds
     );
 
-    const result = favorites.map(row => {
+    const result = favorites.map((row: any) => {
       const problemId = row.favorite.problemId ?? '';
       const isSolved = solvedSet.has(problemId);
       return this.mapFavoriteRowToResponse(row, pointsMap, isSolved);
@@ -260,7 +260,7 @@ export class FavoriteService {
       constraint: problem.constraint ?? '',
       tags: (problem.tags ?? '')
         .split(',')
-        .map(tag => tag.trim())
+        .map((tag: any) => tag.trim())
         .filter(Boolean),
       lessonId: problem.lessonId ?? '',
       topicId: problem.topicId ?? '',
@@ -304,7 +304,7 @@ export class FavoriteService {
   async listUserLessonFavorites(userId: string): Promise<LessonFavoriteResponse[]> {
     const favorites = await this.favoriteRepository.listLessonFavoritesByUser(userId);
 
-    const result = favorites.map(row => {
+    const result = favorites.map((row: any) => {
       return this.mapLessonFavoriteRowToResponse(row);
     });
 

@@ -1,9 +1,9 @@
-import { UserRepository } from '@/repositories/user.repository';
-import { LessonRepository } from '@/repositories/lesson.repository';
-import { ProblemRepository } from '@/repositories/problem.repository';
-import { SubmissionRepository } from '@/repositories/submission.repository';
-import { ExamRepository } from '@/repositories/exam.repository';
-import { TopicRepository } from '@/repositories/topic.repository';
+import { UserRepository } from '@backend/api/repositories/user.repository';
+import { LessonRepository } from '@backend/api/repositories/lesson.repository';
+import { ProblemRepository } from '@backend/api/repositories/problem.repository';
+import { SubmissionRepository } from '@backend/api/repositories/submission.repository';
+import { ExamRepository } from '@backend/api/repositories/exam.repository';
+import { TopicRepository } from '@backend/api/repositories/topic.repository';
 
 export interface DashboardStats {
   totalUsers: number;

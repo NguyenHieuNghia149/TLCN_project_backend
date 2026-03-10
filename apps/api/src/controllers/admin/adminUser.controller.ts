@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AdminUserService } from '@/services/admin/adminUser.service';
+import { AdminUserService } from '@backend/api/services/admin/adminUser.service';
 import { insertUserSchema, updateUserSchema } from '@backend/shared/db/schema';
 
 export class AdminUserController {

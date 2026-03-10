@@ -1,3 +1,4 @@
+import { logger } from '@backend/shared/utils';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -6,27 +7,15 @@ import { config } from 'dotenv';
 import { createServer } from 'http';
 import { sandboxService } from './sandbox.service';
 import sandboxRoutes from './sandbox.routes';
-import winston from 'winston';
-
+import { startGrpcServer } from './grpc/server';
 // Load environment variables
 config();
 
 // Standardized logger for sandbox
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  defaultMeta: { service: 'sandbox' },
-  transports: [
-    new winston.transports.Console()
-  ],
-});
-
 const app = express();
 const server = createServer(app);
 const PORT = process.env.SANDBOX_PORT || 4000;
+const GRPC_PORT = parseInt(process.env.SANDBOX_GRPC_PORT || '50051');
 
 // Security middleware
 app.use(
@@ -164,15 +153,19 @@ process.on('unhandledRejection', reason => {
   logger.error('Unhandled Rejection', { reason });
 });
 
-// Start server
+// Start HTTP server
 server.listen(PORT, () => {
-  logger.info('🚀 Sandbox Service Started', {
+  logger.info('🚀 Sandbox HTTP Service Started', {
     port: PORT,
     security: 'enabled',
     monitoring: 'active',
-    healthCheck: `http://localhost:${PORT}/health`
+    healthCheck: `http://localhost:${PORT}/health`,
   });
 });
+
+// Start gRPC server (Task 3.2)
+startGrpcServer(GRPC_PORT);
+logger.info('🔌 Sandbox gRPC Service Started', { port: GRPC_PORT });
 
 // Test sandbox on startup
 sandboxService

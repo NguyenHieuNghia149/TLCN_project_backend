@@ -4,19 +4,21 @@ Tiến độ thực thi 5 Phase tái cấu trúc hệ thống:
 
 ## Phase 1: Nâng cấp Client-Server & Bảo mật Gateway
 
-- [ ] **1.1.** Cài đặt middleware API Rate Limiting (VD: 1 submit / 5 giây) ở `SubmissionController` hoặc qua Nginx.
-- [ ] **1.2.** Tạo endpoint SSE `GET /api/v1/submissions/stream/:id` để Frontend subscribe. Đảm bảo đọc JWT qua Query Params `?token=...`.
-- [ ] **1.3.** Đảm bảo connection SSE tự đóng lại (`end()`) khi nhận status cuối (ACCEPTED/WA/TLE...).
-- [ ] **1.4.** Refactor luồng Pub/Sub: API Server lắng nghe và phát tín hiệu qua SSE thay vì WebSocket cho luồng Code Status.
-- [ ] **1.5.** Cập nhật `docker/nginx.conf` thêm lệnh `proxy_buffering off;` cho path `/stream`.
+- [x] **1.1.** Cài đặt middleware API Rate Limiting (VD: 1 submit / 5 giây) ở `SubmissionController` hoặc qua Nginx.
+- [x] **1.2.** Tạo endpoint SSE `GET /api/submissions/stream/:id` để Frontend subscribe. Đảm bảo đọc JWT qua Query Params `?token=...`.
+- [x] **1.3.** Đảm bảo connection SSE tự đóng lại (`end()`) khi nhận status cuối (ACCEPTED/WA/TLE...).
+- [x] **1.4.** Refactor luồng Pub/Sub: API Server lắng nghe và phát tín hiệu qua SSE thay vì WebSocket cho luồng Code Status.
+- [x] **1.5.** Cập nhật `docker/nginx.conf` thêm lệnh `proxy_buffering off;` cho path `/stream`.
 
 ## Phase 2: Áp dụng Message Queue & Tính Lũy Đẳng (BullMQ)
 
-- [ ] **2.1.** Cài đặt thư viện `bullmq` thay cho Redis Queue tự làm của dự án. Khởi tạo hàng đợi `submission_queue`.
-- [ ] **2.2.** 2.2. Cấu hình Worker BullMQ với policy attempts: 3, lockDuration: 30s, stalledInterval: 15s. Cấu hình thêm removeOnComplete: true để dọn RAM sau khi hoàn thành.
-- [ ] **2.3.** Viết lại hàm `updateSubmissionResult`: áp dụng Idempotency với điều kiện SQL `WHERE status IN ('PENDING', 'RUNNING')`. Dừng ghi log `RUNNING` xuống Database, chỉ set in-memory Cache (Redis).
-- [ ] **2.4.** Lắng nghe sự kiện Graceful Shutdown (`SIGTERM`, `SIGINT`) tắt Worker mượt mà.
-- [ ] **2.5.** Bắt sự kiện worker.on('failed', ...) của BullMQ. Khi một job cạn sạch 3 lần retry, BẮT BUỘC gọi hàm Update Database chuyển status của submissionId đó thành SYSTEM_ERROR hoặc INTERNAL_ERROR để Watchdog ở Phase 5 bỏ qua nó
+- [x] **2.1.** Cài đặt `bullmq` và tạo instance queue (VD: `submission_queue`) dùng connection cấu hình `maxRetriesPerRequest: null`.
+- [x] **2.2.** Khởi tạo Worker ở `apps/worker` trỏ tới Redis Queue URL. Thêm các Option: `lockDuration: 30000`, `attempts: 3` và `removeOnComplete: true`.
+- [x] **2.3.** Refactor Worker Logic:
+  - Bỏ thao tác cập nhật trạng thái `RUNNING` xuống Postgres. Gửi `RUNNING` event qua Pub/Sub.
+  - Xử lý **Lũy Đẳng (Idempotent)** khi Insert kết quả: Chỉ cập nhật nếu DB đang ở `PENDING` hoặc `RUNNING`.
+- [x] **2.4.** Lắng nghe sự kiện hệ thống (`SIGTERM`, `SIGINT`) để gọi `await worker.close()` nhắm mục tiêu graceful shutdown.
+- [x] **2.5.** (Error Handling): Nếu Worker fail quá số attempt cho phép, gửi event `SYSTEM_ERROR` vào Pub/Sub cho người dùng và update log.
 
 ## Phase 3: Chuyển đổi gRPC & Bảo vệ Mạch (Circuit Breaker)
 

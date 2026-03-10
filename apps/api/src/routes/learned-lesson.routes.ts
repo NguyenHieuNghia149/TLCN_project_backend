@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { LearnedLessonController } from '@/controllers/learned-lesson.controller';
-import { authenticationToken } from '@/middlewares/auth.middleware';
-import { rateLimitMiddleware } from '@/middlewares/ratelimit.middleware';
+import { LearnedLessonController } from '@backend/api/controllers/learned-lesson.controller';
+import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
+import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
 const router = Router();
 const learnedLessonController = new LearnedLessonController();
