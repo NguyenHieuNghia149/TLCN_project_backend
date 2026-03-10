@@ -80,9 +80,14 @@ services:
       - WORKSPACE_DIR=/app/workspace
       - HOST_WORKSPACE_DIR=${HOST_WORKSPACE_DIR:-./workspace}
     restart: unless-stopped
-    privileged: true
+    cap_add:
+      - SYS_ADMIN
+      - CHOWN
+      - SETUID
+      - SETGID
+    security_opt:
+      - apparmor:unconfined
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./workspace:/app/workspace
       - ./security:/app/security
       - ./logs:/app/logs

@@ -45,7 +45,6 @@ export interface SandboxResponse {
 export class SandboxService {
   private config: SandboxConfig;
   private workspaceDir: string;
-  private hostWorkspaceDir: string = '';
   private activeJobs: Map<string, any> = new Map();
   private yamlConfig: GlobalSandboxConfig | null = null;
 
@@ -58,7 +57,6 @@ export class SandboxService {
     };
 
     this.workspaceDir = process.env.WORKSPACE_DIR || path.join(process.cwd(), 'workspace');
-    this.hostWorkspaceDir = process.env.HOST_WORKSPACE_DIR || this.workspaceDir;
     this.ensureWorkspaceDir();
     this.loadSandboxYamlConfig();
   }
@@ -86,7 +84,7 @@ export class SandboxService {
   }
 
   /**
-   * Execute code in isolated sandbox environment
+   * Execute code in isolated nsjail environment
    */
   async executeCode(config: ExecutionConfig): Promise<SandboxResponse> {
     const executionId = uuidv4();
@@ -106,41 +104,13 @@ export class SandboxService {
         status: 'running',
       });
 
-      // Validate code security
+      // Validate code security (Mental/Static Check)
       this.validateCodeSecurity(config.code, config.language);
 
-      // Temporary workaround for Windows Docker TLS issue
-      // Try Docker first, fallback to simple execution if Docker fails
-      if (process.platform === 'win32') {
-        try {
-          // Try Docker execution first
-          await this.createIsolatedWorkspace(jobDir, config);
-          const result = await this.executeInSandbox(jobDir, config);
-          this.cleanupWorkspace(jobDir);
-          this.activeJobs.delete(executionId);
-
-          return {
-            success: true,
-            result: {
-              summary: result.summary,
-              results: result.results,
-              processingTime: Date.now() - startTime,
-            },
-          };
-        } catch (dockerError: any) {
-          logger.error('Docker execution failed:', dockerError.message);
-          this.cleanupWorkspace(jobDir);
-
-          // Return error instead of fallback
-          this.activeJobs.delete(executionId);
-          throw new Error(`Code execution failed: ${dockerError.message}`);
-        }
-      }
-
-      // Create isolated workspace
+      // 1. Create isolated workspace
       await this.createIsolatedWorkspace(jobDir, config);
 
-      // Execute code with security constraints
+      // 2. Execute code with Task 4.4: Two-Step Engine
       const result = await this.executeInSandbox(jobDir, config);
 
       // Clean up
@@ -168,52 +138,28 @@ export class SandboxService {
   }
 
   private validateCodeSecurity(code: string, language: string): void {
-    // Use security service for validation
     securityService.validateCodeSecurity(code, language);
-
-    // Detect malicious patterns
     const maliciousEvents = monitoringService.detectMaliciousCode(code, language);
     if (maliciousEvents.length > 0) {
-      // Log security events
-      maliciousEvents.forEach(event => {
-        monitoringService.logSecurityEvent(event);
-      });
-
+      maliciousEvents.forEach(event => monitoringService.logSecurityEvent(event));
       throw new Error(
-        `Code contains malicious patterns: ${maliciousEvents[0]?.message || 'Unknown malicious pattern'}`
+        `Code contains malicious patterns: ${maliciousEvents[0]?.message || 'Unknown pattern'}`
       );
     }
   }
 
   private async createIsolatedWorkspace(jobDir: string, config: ExecutionConfig): Promise<void> {
-    try {
-      // Create job directory
-      FsUtils.ensureDir(jobDir);
+    FsUtils.ensureDir(jobDir);
+    const langConfig = this.getLanguageConfig(config.language);
+    const fileName =
+      langConfig.compile?.source_file_name || langConfig.test_case_run?.source_file_name || 'main';
+    const filePath = path.join(jobDir, fileName);
 
-      // Get language configuration
-      const langConfig = this.getLanguageConfig(config.language);
+    FsUtils.writeFile(filePath, config.code, 'utf8');
+    FsUtils.chmod(filePath, 0o755);
+    FsUtils.chmod(jobDir, 0o755);
 
-      const fileName =
-        langConfig.compile?.source_file_name ||
-        langConfig.test_case_run?.source_file_name ||
-        'main';
-      const filePath = path.join(jobDir, fileName);
-
-      // Write code to file
-      FsUtils.writeFile(filePath, config.code, 'utf8');
-
-      // Set proper permissions
-      FsUtils.chmod(filePath, 0o755);
-      FsUtils.chmod(jobDir, 0o755);
-
-      // Log directory contents for debugging
-      logger.info(`Created workspace at ${jobDir}`);
-      logger.info('Directory contents:', FsUtils.readDir(jobDir));
-      logger.info('File contents:', FsUtils.readFile(filePath, 'utf8'));
-    } catch (error) {
-      logger.error('Error creating workspace:', error);
-      throw error;
-    }
+    logger.info(`Created workspace at ${jobDir}`);
   }
 
   private async executeInSandbox(jobDir: string, config: ExecutionConfig): Promise<any> {
@@ -221,23 +167,22 @@ export class SandboxService {
     const results: any[] = [];
     let passed = 0;
 
-    // Compile if needed
+    // Step 1: Compile (If needed) - Native execution within sandbox container
     if (langConfig.compile) {
       try {
-        await this.compileCode(jobDir, langConfig, config.memoryLimit, path.basename(jobDir));
+        await this.compileCode(jobDir, langConfig);
       } catch (compileError: any) {
-        // Return compilation error for all test cases
         return {
           summary: {
             passed: 0,
             total: config.testcases.length,
             successRate: '0.00',
-            status: 'compilation_error',
+            status: 'COMPILATION_ERROR',
           },
-          results: config.testcases.map(testcase => ({
-            testcaseId: testcase.id,
-            input: testcase.input || '',
-            expectedOutput: testcase.output || '',
+          results: config.testcases.map(tc => ({
+            testcaseId: tc.id,
+            input: tc.input || '',
+            expectedOutput: tc.output || '',
             actualOutput: '',
             isPassed: false,
             executionTime: 0,
@@ -249,40 +194,22 @@ export class SandboxService {
       }
     }
 
-    // Execute each test case
+    // Step 2: Execute Test Cases - Wrapped in NSJAIL
     for (let i = 0; i < config.testcases.length; i++) {
       const testcase = config.testcases[i];
       if (!testcase) continue;
 
       const testStart = Date.now();
-
       try {
-        const result = await this.runTestCase(
-          jobDir,
-          langConfig,
-          testcase,
-          config,
-          path.basename(jobDir)
-        );
+        const result = await this.runWithNsjail(jobDir, langConfig, testcase.input || '', config);
 
-        const expected = this.trimOutput(testcase?.output || '');
+        const expected = this.trimOutput(testcase.output || '');
         const actual = this.trimOutput(result.stdout || '');
-        const ok = actual === expected;
+        const ok = actual === expected && result.exitCode === 0;
 
         if (ok) passed++;
 
-        // Detailed error when output does not match
-        let errorMessage = null;
-        let stderrMessage = null;
-
-        if (!ok) {
-          errorMessage = `Wrong Answer\nExpected: ${expected}\nActual: ${actual}`;
-          stderrMessage = `Test case ${i + 1} failed:\n- Input: ${testcase.input}\n- Expected: ${expected}\n- Your output: ${actual}`;
-        } else if (result.exitCode !== 0) {
-          // If there is a runtime error
-          errorMessage = result.stderr;
-          stderrMessage = `Runtime Error:\n${result.stderr}`;
-        }
+        const errorMessage = !ok ? result.stderr || 'Wrong Answer' : null;
 
         results.push({
           testcaseId: testcase.id,
@@ -293,7 +220,7 @@ export class SandboxService {
           executionTime: Date.now() - testStart,
           memoryUse: null,
           error: errorMessage,
-          stderr: stderrMessage,
+          stderr: result.stderr,
         });
       } catch (error: any) {
         results.push({
@@ -322,219 +249,136 @@ export class SandboxService {
     };
   }
 
-  private async compileCode(
-    jobDir: string,
-    langConfig: any,
-    memoryLimit?: string,
-    executionId?: string
-  ): Promise<void> {
+  private async compileCode(jobDir: string, langConfig: any): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        const cwd = jobDir;
-        const hostCwd = executionId ? path.join(this.hostWorkspaceDir, executionId) : cwd;
-        if (!langConfig.compile || !langConfig.compile.command_template) {
-          return resolve();
-        }
+      if (!langConfig.compile?.command_template) return resolve();
 
-        const sourceFile = langConfig.compile.source_file_name || 'main';
-        const programFile = langConfig.compile.program_file_name || 'a.out';
-        const cmdTemplate: string[] = langConfig.compile.command_template;
-        const image: string = langConfig.compile.image;
-        const memory: string = langConfig.compile.memory || '512m';
-        const cpuQuota: number = langConfig.compile.cpu_quota || 100000;
+      const sourceFile = langConfig.compile.source_file_name || 'main';
+      const programFile = langConfig.compile.program_file_name || 'a.out';
 
-        const args = cmdTemplate.map((arg: string) =>
-          arg.replace('$SOURCE', sourceFile).replace('$PROGRAM', programFile)
-        );
+      const [command, ...args] = langConfig.compile.command_template.map((arg: string) =>
+        arg.replace('$SOURCE', sourceFile).replace('$PROGRAM', programFile)
+      );
 
-        const dockerArgs = [
-          'run',
-          '--rm',
-          '-v',
-          `${hostCwd}:/workspace`,
-          '-w',
-          '/workspace',
-          `--memory=${memory}`,
-          `--cpu-quota=${cpuQuota}`,
-          '--network',
-          'none',
-          image,
-          ...args,
-        ];
+      logger.info(`Compiling natively: ${command} ${args.join(' ')}`);
 
-        const proc = spawn('docker', dockerArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
-        let stderr = '';
-        proc.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
-        proc.on('close', (code: number | null) => {
-          if (code === 0) return resolve();
-          // Detailed compile error format
-          const errorLines = stderr.trim().split('\n');
-          const formattedError = errorLines
-            .map(line => line.replace(new RegExp(jobDir, 'g'), '').replace(/\.+\\/g, ''))
-            .join('\n');
-          return reject(new Error(`Compilation Error:\n${formattedError}`));
-        });
-        proc.on('error', (err: Error) => {
-          reject(new Error(`Compiler Error: ${err.message}\nPlease check your code syntax.`));
-        });
-      } catch (err) {
-        return reject(err);
-      }
+      const proc = spawn(command!, args, {
+        cwd: jobDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 15000,
+      });
+      let stderr = '';
+      proc.stderr.on('data', d => (stderr += d.toString()));
+
+      proc.on('close', code => {
+        if (code === 0) return resolve();
+        reject(new Error(stderr.trim() || 'Compilation failed'));
+      });
+
+      proc.on('error', err => reject(new Error(`Compiler failed: ${err.message}`)));
     });
   }
 
-  private async runTestCase(
+  private async runWithNsjail(
     jobDir: string,
     langConfig: any,
-    testcase: any,
-    config: ExecutionConfig,
-    executionId: string
+    input: string,
+    config: ExecutionConfig
   ): Promise<ExecutionResult> {
-    // Local execution path (run compiled binary or interpreter in the sandbox container)
-    // Convert JSON-style judge inputs like {"nums": [...], "target": x} into plain-text
-    let inputContent = testcase.input || '';
-    try {
-      const trimmed = String(inputContent).trim();
-      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || trimmed.includes('"nums"')) {
-        const obj = JSON.parse(trimmed);
-        const nums = obj.nums || obj.numbers || obj.array;
-        const target = obj.target;
-        if (Array.isArray(nums) && typeof target !== 'undefined') {
-          inputContent = `${nums.length}\n${nums.join(' ')}\n${target}\n`;
-        }
-      }
-    } catch (e) {
-      // fallback to raw input
-    }
+    const programFile =
+      langConfig.test_case_run?.program_file_name ||
+      langConfig.compile?.program_file_name ||
+      'a.out';
+    const sourceFile =
+      langConfig.test_case_run?.source_file_name || langConfig.compile?.source_file_name || 'main';
+    const timeLimitS = Math.max(1, Math.ceil(config.timeLimit / 1000));
 
-    const inputFile = path.join(jobDir, 'input.txt');
-    FsUtils.writeFile(inputFile, inputContent, 'utf8');
+    const innerArgs = langConfig.test_case_run.command_template.map((arg: string) =>
+      arg
+        .replace('$PROGRAM', programFile)
+        .replace('$SOURCE', sourceFile)
+        .replace('$TIME_LIMIT', `${timeLimitS}s`)
+    );
 
-    return new Promise<ExecutionResult>((resolve, reject) => {
-      try {
-        const cwd = jobDir;
-        const hostCwd = path.join(this.hostWorkspaceDir, executionId);
-        let cmd: string;
-        let args: string[] = [];
+    // Hardened NSJAIL Configuration
+    const nsjailArgs = [
+      '--mode',
+      'onc',
+      '--quiet',
+      '--max_cpus',
+      '1',
+      '--time_limit',
+      `${timeLimitS + 1}`,
+      '--rlimit_as',
+      `${parseInt(config.memoryLimit || '256')}`,
+      '--rlimit_fsize',
+      '2', // Task 4.2: Output size limit 2MB
+      '--disable_clone_newnet', // Task 4.4: No Network
+      '--chroot',
+      '/',
+      '-R',
+      '/usr',
+      '-R',
+      '/lib',
+      '-R',
+      '/lib64',
+      '-R',
+      '/bin',
+      '-R',
+      '/sbin',
+      '-R',
+      '/etc/alternatives',
+      '-B',
+      `${jobDir}:/app`,
+      '--cwd',
+      '/app',
+      '--',
+      ...innerArgs,
+    ];
 
-        if (langConfig.test_case_run && langConfig.test_case_run.command_template) {
-          const sourceFile =
-            langConfig.test_case_run.source_file_name ||
-            langConfig.compile?.source_file_name ||
-            'main';
-          const programFile =
-            langConfig.test_case_run.program_file_name ||
-            langConfig.compile?.program_file_name ||
-            'a.out';
-          const timeLimitStr = `${Math.max(1, Math.ceil(config.timeLimit / 1000))}s`;
-          const image: string = langConfig.test_case_run.image;
-          const cpuQuota: number = langConfig.test_case_run.cpu_quota || 100000;
-          // Note: memory limits should be added here too based on config.memoryLimit if desired
+    return new Promise((resolve, reject) => {
+      const proc = spawn('nsjail', nsjailArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
+      let killed = false;
 
-          const cmdTemplate: string[] = langConfig.test_case_run.command_template;
-          const argsTemplate = cmdTemplate.map((arg: string) =>
-            arg
-              .replace('$SOURCE', sourceFile)
-              .replace('$PROGRAM', programFile)
-              .replace('$TIME_LIMIT', timeLimitStr)
-          );
+      const timer = setTimeout(() => {
+        killed = true;
+        proc.kill('SIGKILL');
+      }, config.timeLimit + 2000);
 
-          cmd = 'docker';
-          args = [
-            'run',
-            '-i',
-            '--rm',
-            '-v',
-            `${hostCwd}:/workspace`,
-            '-w',
-            '/workspace',
-            `--memory=${config.memoryLimit || '256m'}`,
-            `--cpu-quota=${cpuQuota}`,
-            '--network',
-            'none',
-            image,
-            ...argsTemplate,
-          ];
-        } else {
-          return reject(new Error('Missing test_case_run command_template configuration'));
-        }
+      proc.stdout.on('data', d => (stdout += d.toString()));
+      proc.stderr.on('data', d => (stderr += d.toString()));
 
-        const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-        let stdout = '';
-        let stderr = '';
-        let killed = false;
+      proc.on('close', code => {
+        clearTimeout(timer);
+        if (killed) return reject(new Error(`Time limit exceeded (${config.timeLimit}ms)`));
 
-        const timer = setTimeout(
-          () => {
-            killed = true;
-            proc.kill('SIGKILL');
-          },
-          (config.timeLimit + 2) * 1000
-        );
-
-        proc.stdout.on('data', d => (stdout += d.toString()));
-        proc.stderr.on('data', d => (stderr += d.toString()));
-
-        proc.on('close', code => {
-          clearTimeout(timer);
-          if (killed) {
-            return reject(new Error(`Execution timeout exceeded ${config.timeLimit}ms`));
-          }
-
-          // Check for runtime errors
-          if (code !== 0) {
-            let errorMsg = stderr.trim() || `Process exited with code ${code}`;
-
-            // Map common Docker exit codes back to worker-friendly strings
-            if (code === 137) {
-              errorMsg = `Memory limit exceeded (Docker OOM Kill). ${errorMsg}`;
-            } else if (code === 124) {
-              errorMsg = `Time limit exceeded (Execution timeout). ${errorMsg}`;
-            }
-
-            return reject(new Error(`Runtime Error: ${errorMsg}`));
-          }
-
-          // Check for empty output
-          if (!stdout.trim()) {
-            return reject(
-              new Error('No output generated. Make sure your program prints the result.')
-            );
-          }
-
-          // Return the output as-is for comparison with expected output
-          resolve({
-            stdout: stdout.trim(),
-            stderr: stderr.trim(),
-            exitCode: code,
-            executionTime: 0,
-          });
+        resolve({
+          stdout: stdout.substring(0, 10000), // Safety internal cap
+          stderr: stderr.trim(),
+          exitCode: code || 0,
+          executionTime: 0,
         });
+      });
 
-        proc.on('error', err => {
-          clearTimeout(timer);
-          reject(new Error(`Execution error: ${err.message}`));
-        });
+      proc.on('error', err => {
+        clearTimeout(timer);
+        reject(new Error(`Nsjail failure: ${err.message}`));
+      });
 
-        // Pipe input directly with converted content
-        proc.stdin.write(inputContent);
+      if (input) {
+        proc.stdin.write(input);
         proc.stdin.end();
-      } catch (err) {
-        reject(err);
+      } else {
+        proc.stdin.end();
       }
     });
   }
 
   private getLanguageConfig(language: string): any {
-    if (!this.yamlConfig || !this.yamlConfig.judge || !this.yamlConfig.judge.languages) {
-      throw new Error('Sandbox YAML configuration not loaded properly');
-    }
-
-    const langConfig = this.yamlConfig.judge.languages.find((l: any) => l.value === language);
-    if (!langConfig) {
-      throw new Error(`Unsupported language: ${language}`);
-    }
-
+    const langConfig = this.yamlConfig?.judge?.languages?.find((l: any) => l.value === language);
+    if (!langConfig) throw new Error(`Unsupported language: ${language}`);
     return langConfig;
   }
 
@@ -546,22 +390,13 @@ export class SandboxService {
     setTimeout(() => {
       try {
         FsUtils.remove(jobDir);
-        logger.info(`Cleaned up workspace: ${jobDir}`);
       } catch (error) {
-        logger.warn(`Failed to cleanup ${jobDir}:`, error);
+        logger.warn(`Cleanup failed for ${jobDir}:`, error);
       }
-    }, 30000); // Cleanup after 30 seconds
+    }, 60000);
   }
 
-  /**
-   * Get sandbox status
-   */
-  getStatus(): {
-    activeJobs: number;
-    maxConcurrent: number;
-    isHealthy: boolean;
-    uptime: number;
-  } {
+  getStatus() {
     return {
       activeJobs: this.activeJobs.size,
       maxConcurrent: this.config.maxConcurrent,
@@ -570,19 +405,9 @@ export class SandboxService {
     };
   }
 
-  /**
-   * Health check
-   */
   async healthCheck(): Promise<boolean> {
-    try {
-      // Simple health check - just check if workspace exists
-      return FsUtils.exists(this.workspaceDir);
-    } catch (error) {
-      logger.error('Health check error:', error);
-      return false;
-    }
+    return FsUtils.exists(this.workspaceDir);
   }
 }
 
-// Singleton instance
 export const sandboxService = new SandboxService();

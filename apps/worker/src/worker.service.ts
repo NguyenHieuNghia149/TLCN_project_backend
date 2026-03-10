@@ -271,17 +271,32 @@ export class WorkerService {
       throw new Error('Sandbox system error — circuit breaker fallback activated');
     }
 
-    const results = (grpcResponse.results || []).map((r: any) => ({
-      testcaseId: r.test_case_id,
-      input: '',
-      expectedOutput: '',
-      actualOutput: r.actual_output,
-      isPassed: r.status === 'ACCEPTED',
-      executionTime: r.time_taken_ms,
-      memoryUse: r.memory_used_kb,
-      error: r.error_message || null,
-      stderr: r.error_message || null,
-    }));
+    const results = (grpcResponse.results || []).map((r: any) => {
+      // Task 4.3: App-level truncation (Defense in Depth)
+      const MAX_LENGTH = 2048;
+      let actualOutput = r.actual_output || '';
+      let errorMessage = r.error_message || null;
+
+      if (actualOutput.length > MAX_LENGTH) {
+        actualOutput = actualOutput.substring(0, MAX_LENGTH) + '\n... [TRUNCATED]';
+      }
+
+      if (errorMessage && errorMessage.length > MAX_LENGTH) {
+        errorMessage = errorMessage.substring(0, MAX_LENGTH) + '\n... [TRUNCATED]';
+      }
+
+      return {
+        testcaseId: r.test_case_id,
+        input: '',
+        expectedOutput: '',
+        actualOutput,
+        isPassed: r.status === 'ACCEPTED',
+        executionTime: r.time_taken_ms,
+        memoryUse: r.memory_used_kb,
+        error: errorMessage,
+        stderr: errorMessage,
+      };
+    });
 
     const passed = results.filter((r: any) => r.isPassed).length;
 

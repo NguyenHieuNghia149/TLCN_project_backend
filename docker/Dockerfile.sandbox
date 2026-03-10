@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20.9.0-bullseye-slim AS builder
+FROM node:20-bullseye AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Install all dependencies
-RUN npm install --ignore-scripts
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -16,47 +16,62 @@ COPY . .
 # Build TypeScript code
 RUN npm run build
 
-# Production stage
-FROM node:20.9.0-bullseye-slim
+# Final stage: The Hardened Sandbox
+FROM ubuntu:22.04
 
-WORKDIR /app
+# Avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install necessary packages for code compilation and execution
+# 1. Install system dependencies and compilers
 RUN apt-get update && apt-get install -y \
     curl \
-    docker.io \
+    ca-certificates \
     build-essential \
     gcc \
     g++ \
-    gdb \
-    python3 \
     openjdk-17-jdk \
-    libc6-dev \
-    linux-libc-dev \
-    libstdc++6 \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -s /lib/x86_64-linux-gnu/libstdc++.so.6 /lib/x86_64-linux-gnu/libstdc++.so
+    git \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libnl-route-3-dev \
+    libtool \
+    make \
+    pkg-config \
+    flex \
+    bison \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy package files and install production dependencies
+# 2. Build and install nsjail from source
+RUN git clone https://github.com/google/nsjail.git /tmp/nsjail && \
+    cd /tmp/nsjail && \
+    make && \
+    cp nsjail /usr/bin/nsjail && \
+    rm -rf /tmp/nsjail
+
+# 3. Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 4. Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm install --omit=dev --ignore-scripts
+RUN npm install --omit=dev
 
-# Copy built files from builder stage
+# 5. Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/config ./config
 COPY --from=builder /app/security ./security
 COPY --from=builder /app/src/register-aliases.js ./src/register-aliases.js
 
 # Create workspace directory
-RUN mkdir -p workspace
+RUN mkdir -p /app/workspace && chmod 777 /app/workspace
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV SANDBOX_PORT=4000
 ENV WORKSPACE_DIR=/app/workspace
-ENV LD_LIBRARY_PATH=/lib/x86_64-linux-gnu
-ENV GLIBC_TUNABLES=glibc.pthread.rseq=0
-ENV MALLOC_ARENA_MAX=4
 
 # Default command
 CMD ["npm", "run", "start:sandbox"]

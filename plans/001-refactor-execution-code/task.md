@@ -22,10 +22,11 @@ Tiến độ thực thi 5 Phase tái cấu trúc hệ thống:
 
 ## Phase 3: Chuyển đổi gRPC & Bảo vệ Mạch (Circuit Breaker)
 
-- [ ] **3.1.** Viết file schema gRPC `sandbox.proto` ở packet thư mục chung.
-- [ ] **3.2.** Refactor project Sandbox sang gRPC Server chuẩn.
-- [ ] **3.3.** Khởi tạo gRPC Client Stub bên trong Worker node.
-- [ ] 3.4. Cài đặt thư viện opossum làm Circuit Breaker. Bắt sự kiện open để worker.pause() (ngưng bốc job). Quan trọng: Phải cấu hình thời gian reset (vd: resetTimeout: 30000) và bắt sự kiện close (khi gRPC gọi thành công trở lại) để gọi worker.resume() cho hệ thống tự động chạy tiếp
+- [x] **3.1.** Viết file schema gRPC `sandbox.proto` ở packet thư mục chung.
+- [x] **3.2.** Refactor project Sandbox sang gRPC Server chuẩn.
+- [x] **3.3.** Khởi tạo gRPC Client Stub bên trong Worker node.
+- [x] **3.4.** Cài đặt thư viện opossum làm Circuit Breaker. Bắt sự kiện open để worker.pause() (ngưng bốc job). Quan trọng: Phải cấu hình thời gian reset (vd: resetTimeout: 30000) và bắt sự kiện close (khi gRPC gọi thành công trở lại) để gọi worker.resume() cho hệ thống tự động chạy tiếp.
+- [x] **3.5.** Hợp nhất hệ thống Logging: Chuyển đổi toàn bộ `console.*` và local logging sang `winston` tập trung tại `@backend/shared/utils`.
 
 ## Phase 4: Thiết lập Môi trường Cố lập (Sandbox Hardening)
 
