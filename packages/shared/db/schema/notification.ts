@@ -1,6 +1,6 @@
 import { pgTable, text, timestamp, uuid, boolean, jsonb, pgEnum } from 'drizzle-orm/pg-core';
 import { users } from './user';
-import { ENotificationType } from '@/enums/notificationType.enum';
+import { ENotificationType } from '@backend/shared/types/notificationType.enum';
 
 export const notificationTypeEnum = pgEnum('notification_type', [
   ENotificationType.NEW_EXAM,

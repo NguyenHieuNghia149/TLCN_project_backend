@@ -1,4 +1,4 @@
-import { BaseException } from '@/exceptions/auth.exceptions';
+import { BaseException } from '../exceptions/auth.exceptions';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';

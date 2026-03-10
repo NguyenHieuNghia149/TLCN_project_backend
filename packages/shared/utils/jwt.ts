@@ -1,6 +1,9 @@
 import jwt, { JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { config } from 'dotenv';
-import { InvalidTokenException, TokenExpiredException } from '@/exceptions/auth.exceptions';
+import {
+  InvalidTokenException,
+  TokenExpiredException,
+} from '@backend/api/exceptions/auth.exceptions';
 import crypto from 'crypto';
 
 config();

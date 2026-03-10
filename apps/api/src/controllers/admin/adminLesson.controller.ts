@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AdminLessonService } from '@/services/admin/adminLesson.service';
-import { CreateLessonSchema, UpdateLessonSchema } from '@/validations/lesson.validation';
+import { CreateLessonSchema, UpdateLessonSchema } from '@backend/shared/validations/lesson.validation';
 import { AppException } from '@/exceptions/base.exception';
 
 export class AdminLessonController {

@@ -11,7 +11,7 @@ const submissionController = new SubmissionController(submissionService);
 import {
   CreateSubmissionSchema,
   GetSubmissionsQuerySchema,
-} from '@/validations/submission.validation';
+} from '@backend/shared/validations/submission.validation';
 
 // Rate limiting
 const submissionRateLimit = rateLimitMiddleware({

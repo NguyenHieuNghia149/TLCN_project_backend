@@ -4,7 +4,7 @@ import { examParticipations } from './examParticipations';
 import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import { ESubmissionStatus } from '@/enums/submissionStatus.enum';
+import { ESubmissionStatus } from '@backend/shared/types/submissionStatus.enum';
 
 export const submissions = pgTable('submissions', {
   id: uuid('id').defaultRandom().primaryKey(),

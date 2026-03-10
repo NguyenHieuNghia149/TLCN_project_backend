@@ -1,4 +1,4 @@
-import { BaseException } from '@/exceptions/auth.exceptions';
+import { BaseException } from '../exceptions/auth.exceptions';
 import * as fs from 'fs';
 import * as path from 'path';
 

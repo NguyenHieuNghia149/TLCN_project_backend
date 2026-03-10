@@ -1,7 +1,7 @@
 import { lessons, LessonEntity, LessonInsert, comments } from '@backend/shared/db/schema';
 import { BaseRepository } from '../base.repository';
 import { eq, like, desc, asc, and, or } from 'drizzle-orm';
-import { db } from '@backend/shared/db';
+import { db } from '@backend/shared/db/connection';
 import { topics, learnedLessons } from '@backend/shared/db/schema';
 
 export interface LessonFilters {

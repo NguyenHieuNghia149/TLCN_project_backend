@@ -4,7 +4,7 @@ import {
   LessonProgress,
   LearningProgressResponse,
   LessonProgressResponse,
-} from '@/validations/learningprocess.validation';
+} from '@backend/shared/validations/learningprocess.validation';
 import {
   UserIdRequiredException,
   TopicIdRequiredException,

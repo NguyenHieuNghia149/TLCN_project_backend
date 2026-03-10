@@ -3,7 +3,7 @@ import { lessons } from './lesson';
 import { topics } from './topic';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import { ProblemVisibility } from '@/enums/problemVisibility.enum';
+import { ProblemVisibility } from '@backend/shared/types/problemVisibility.enum';
 
 export const problems = pgTable('problems', {
   id: uuid('id').defaultRandom().primaryKey(),
