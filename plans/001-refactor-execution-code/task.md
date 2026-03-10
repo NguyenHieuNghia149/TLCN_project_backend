@@ -30,12 +30,13 @@ Tiến độ thực thi 5 Phase tái cấu trúc hệ thống:
 
 ## Phase 4: Thiết lập Môi trường Cố lập (Sandbox Hardening)
 
-- [ ] **4.1.** Chỉnh sửa Dockerfile của Sandbox để nhúng `nsjail`.
-- [ ] **4.2.** Áp dụng giới hạn `rlimit_fsize` chống tràn file output để cắt Payload lớn.
-- [ ] **4.3.** Implement chốt chặn thứ 2 tại bộ chấm (Worker): giới hạn Output Text length < 2048 chars trước khi ném cho SSE hay Database.
-- [ ] **4.4**. Phân tách rạch ròi 2 bước trong Sandbox:
+- [x] **4.1.** Chỉnh sửa Dockerfile của Sandbox để nhúng `nsjail`.
+- [x] **4.2.** Áp dụng giới hạn `rlimit_fsize` chống tràn file output để cắt Payload lớn.
+- [x] **4.3.** Implement chốt chặn thứ 2 tại bộ chấm (Worker): giới hạn Output Text length < 2048 chars trước khi ném cho SSE hay Database.
+- [x] **4.4**. Phân tách rạch ròi 2 bước trong Sandbox:
   - Compile Step: Không dùng nsjail ngặt nghèo, cho phép xài RAM thoải mái (vd: 512MB) và timeout dài (vd: 10s) để dịch ra file binary/class.
-  - Execute Step: Lúc này mới bọc nsjail và ép Memory Limit / Time Limit đúng với yêu cầu của Testcase, đồng thời chặn 100% Network..
+  - Execute Step: Lúc này mới bọc nsjail và ép Memory Limit / Time Limit đúng với yêu cầu của Testcase, đồng thời chặn 100% Network.
+- [x] **4.5.** Cấu hình Docker Security: Loại bỏ `privileged: true`, áp dụng `cap_add` (SYS_ADMIN, etc.) và `security_opt: [apparmor:unconfined]`.
 
 ## Phase 5: Cơ chế Self-Healing & Giám sát Hệ thống (Observability)
 
