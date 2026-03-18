@@ -2,7 +2,12 @@
   "name": "@backend/sandbox",
   "version": "1.0.0",
   "private": true,
-  "main": "src/sandbox.server.ts",
+  "main": "./dist/apps/sandbox/src/sandbox.server.js",
+  "types": "./dist/apps/sandbox/src/sandbox.server.d.ts",
+  "exports": {
+    ".": "./dist/apps/sandbox/src/sandbox.server.js",
+    "./*": "./dist/apps/sandbox/src/*.js"
+  },
   "scripts": {
     "dev:sandbox": "ts-node -r tsconfig-paths/register src/sandbox.server.ts",
     "start:sandbox": "node dist/apps/sandbox/src/sandbox.server.js",

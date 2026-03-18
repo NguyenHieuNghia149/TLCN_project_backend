@@ -5,7 +5,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@backend/shared/*": ["../../packages/shared/*"]
+      "@backend/shared/*": ["../../packages/shared/*"],
+      "@backend/api/*": ["../api/src/*"]
     }
   },
   "include": ["src/**/*"]

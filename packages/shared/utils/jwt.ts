@@ -1,8 +1,6 @@
-import jwt, { JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
-
-import path from 'path';
+import './load-env';
+import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
-require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 // Validate JWT secrets
 if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
@@ -86,7 +84,8 @@ export class JWTUtils {
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
         throw new Error('Access token has expired');
-      } else if (error instanceof jwt.JsonWebTokenError) {
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
         throw new Error('Invalid access token');
       }
       throw error;
@@ -99,7 +98,8 @@ export class JWTUtils {
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
         throw new Error('Refresh token has expired');
-      } else if (error instanceof jwt.JsonWebTokenError) {
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
         throw new Error('Invalid refresh token');
       }
       throw error;
@@ -117,7 +117,9 @@ export class JWTUtils {
   static isTokenExpired(token: string): boolean {
     try {
       const decoded = this.decodeToken(token);
-      if (!decoded || !decoded.exp) return true;
+      if (!decoded || !decoded.exp) {
+        return true;
+      }
 
       const currentTime = Math.floor(Date.now() / 1000);
       return decoded.exp < currentTime;
@@ -129,7 +131,9 @@ export class JWTUtils {
   static getTokenExpiration(token: string): Date | null {
     try {
       const decoded = this.decodeToken(token);
-      if (!decoded || !decoded.exp) return null;
+      if (!decoded || !decoded.exp) {
+        return null;
+      }
 
       return new Date(decoded.exp * 1000);
     } catch {

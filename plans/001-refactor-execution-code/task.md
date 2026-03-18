@@ -40,6 +40,6 @@ Tiến độ thực thi 5 Phase tái cấu trúc hệ thống:
 
 ## Phase 5: Cơ chế Self-Healing & Giám sát Hệ thống (Observability)
 
-- [ ] **5.1.** Đảm bảo file `redis.conf` bật cấu hình `appendonly yes` / `appendfsync everysec`.
-- [ ] **5.2.** Viết một Node JS Cronjob (Watchdog) script chạy 5 phút/lần tự scan các ID pending và `queueService.add(...)` trở lại.
-- [ ] **5.3.** Khởi tạo UI debug `@bull-board/express` ở một route nội bộ (ví dụ `/admin/queues`).
+- [x] **5.1.** Đảm bảo file `redis.conf` bật cấu hình `appendonly yes` / `appendfsync everysec`.
+- [x] **5.2.** Viết một Node JS Cronjob (Watchdog) script chạy 5 phút/lần tự scan các ID pending và `queueService.add(...)` trở lại.
+- [x] **5.3.** Khởi tạo UI debug `@bull-board/express` ở một route nội bộ (ví dụ `/admin/queues`).

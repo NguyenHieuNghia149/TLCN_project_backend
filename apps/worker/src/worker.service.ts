@@ -1,9 +1,9 @@
 import { JudgeUtils, logger } from '@backend/shared/utils';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
-import { queueService, QueueJob } from '@backend/api/src/services/queue.service';
-import { submissionService } from '@backend/api/src/services/submission.service';
-import { ExamService } from '@backend/api/src/services/exam.service';
+import { queueService, QueueJob } from '@backend/api/services/queue.service';
+import { submissionService } from '@backend/api/services/submission.service';
+import { ExamService } from '@backend/api/services/exam.service';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
 import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
@@ -24,18 +24,12 @@ export class WorkerService {
     logger.info(`Starting Code Execution Worker: ${this.workerId}`);
 
     try {
-      // Connect publisher queueService if needed (it auto connects but ensuring health check logic could be here)
-
-      // Test sandbox service availability (non-fatal - sandbox may start after worker)
       const sandboxAvailable = await this.testSandboxService();
       if (!sandboxAvailable) {
-        logger.warn(
-          'Sandbox service is not yet available. Worker will retry when processing jobs.'
-        );
+        logger.warn('Sandbox service is not yet available. Worker will retry when processing jobs.');
         logger.warn(`Sandbox gRPC URL: ${process.env.SANDBOX_GRPC_URL || 'localhost:50051'}`);
       }
 
-      // 1. Initialize BullMQ Worker (Task 2.1 & 2.2)
       const queueRedisUrl =
         process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
       const connection = new Redis(queueRedisUrl, { maxRetriesPerRequest: null });
@@ -53,15 +47,12 @@ export class WorkerService {
         }
       );
 
-      // Task 3.4: Initialize Circuit Breaker AFTER worker is created
-      // so it can bind pause/resume to the BullMQ Worker instance.
       this.breaker = createSandboxBreaker(this.worker);
 
       this.worker.on('completed', (job: Job) => {
         logger.info(`Job ${job.id} completed successfully`);
       });
 
-      // 2. Dead Letter & Failing handling (Task 2.5)
       this.worker.on('failed', async (job: Job | undefined, err: Error) => {
         if (job) {
           logger.error(
@@ -74,7 +65,6 @@ export class WorkerService {
             logger.error(`Job ${job.id} exhausted all attempts. Setting to SYSTEM_ERROR.`);
             const queueJob = job.data as QueueJob;
 
-            // Failsafe status update
             try {
               if (queueJob.jobType !== 'RUN_CODE') {
                 await submissionService.updateSubmissionResult(queueJob.submissionId, {
@@ -110,7 +100,6 @@ export class WorkerService {
 
       logger.info(`Worker ${this.workerId} started seamlessly`);
 
-      // 3. Periodically finalize expired exam participations
       this.examFinalizerInterval = setInterval(async () => {
         try {
           const examService = new ExamService();
@@ -128,7 +117,6 @@ export class WorkerService {
     }
   }
 
-  // Graceful shutdown (Task 2.4)
   async stop(): Promise<void> {
     logger.info(`Stopping worker ${this.workerId}...`);
     if (this.examFinalizerInterval) {
@@ -148,8 +136,6 @@ export class WorkerService {
     const { submissionId, code, language, testcases, timeLimit, memoryLimit, jobType } = job;
     const isRunOnly = jobType === 'RUN_CODE';
 
-    // Rule: Stop writing the RUNNING status to PostgreSQL. (Task 2.3)
-    // Only publish RUNNING via PubSub for SSE (Virtual View)
     await queueService.publish(
       'submission_updates',
       JSON.stringify({
@@ -162,7 +148,6 @@ export class WorkerService {
       })
     );
 
-    // Execute code using sandbox service
     const executionResult = await this.executeInSandbox({
       code,
       language,
@@ -192,7 +177,6 @@ export class WorkerService {
     const score = JudgeUtils.calculateScore(executionResult.results, testcases);
 
     if (!isRunOnly) {
-      // Idempotent update through submissionService
       await submissionService.updateSubmissionResult(submissionId, {
         status: finalStatus as any,
         score,
@@ -200,7 +184,6 @@ export class WorkerService {
       });
     }
 
-    // Publish terminal update to Redis for SSE
     await queueService.publish(
       'submission_updates',
       JSON.stringify({
@@ -220,7 +203,6 @@ export class WorkerService {
 
   private async testSandboxService(): Promise<boolean> {
     try {
-      // Probe via gRPC: send a minimal dummy request and check for non-UNAVAILABLE status
       const probe: GrpcExecutionRequest = {
         submission_id: 'health-probe',
         source_code: 'print(1)',
@@ -236,16 +218,13 @@ export class WorkerService {
     }
   }
 
-  /**
-   * Execute code in sandbox via gRPC + Circuit Breaker (Task 3.3 & 3.4)
-   */
   private async executeInSandbox(config: any): Promise<any> {
     const request: GrpcExecutionRequest = {
       submission_id: config.submissionId || 'unknown',
       source_code: config.code,
       language: config.language,
       time_limit_ms: config.timeLimit || 5000,
-      memory_limit_kb: config.memoryLimit ? parseInt(config.memoryLimit) * 1024 : 262144, // default 256 MB
+      memory_limit_kb: config.memoryLimit ? parseInt(config.memoryLimit) * 1024 : 262144,
       test_cases: (config.testcases || []).map((tc: any) => ({
         id: tc.id,
         input: tc.input || '',
@@ -254,7 +233,6 @@ export class WorkerService {
     };
 
     if (!this.breaker) {
-      // Breaker not yet initialized (should not happen) — call directly
       const grpcResponse = await sandboxGrpcClient.executeCode(request);
       return this.mapGrpcResponseToLegacy(grpcResponse);
     }
@@ -263,26 +241,22 @@ export class WorkerService {
     return this.mapGrpcResponseToLegacy(grpcResponse);
   }
 
-  /**
-   * Map gRPC ExecutionResponse → legacy sandbox result format expected by JudgeUtils
-   */
   private mapGrpcResponseToLegacy(grpcResponse: any): any {
     if (!grpcResponse || grpcResponse.overall_status === 'SYSTEM_ERROR') {
-      throw new Error('Sandbox system error — circuit breaker fallback activated');
+      throw new Error('Sandbox system error - circuit breaker fallback activated');
     }
 
     const results = (grpcResponse.results || []).map((r: any) => {
-      // Task 4.3: App-level truncation (Defense in Depth)
-      const MAX_LENGTH = 2048;
+      const maxLength = 2048;
       let actualOutput = r.actual_output || '';
       let errorMessage = r.error_message || null;
 
-      if (actualOutput.length > MAX_LENGTH) {
-        actualOutput = actualOutput.substring(0, MAX_LENGTH) + '\n... [TRUNCATED]';
+      if (actualOutput.length > maxLength) {
+        actualOutput = actualOutput.substring(0, maxLength) + '\n... [TRUNCATED]';
       }
 
-      if (errorMessage && errorMessage.length > MAX_LENGTH) {
-        errorMessage = errorMessage.substring(0, MAX_LENGTH) + '\n... [TRUNCATED]';
+      if (errorMessage && errorMessage.length > maxLength) {
+        errorMessage = errorMessage.substring(0, maxLength) + '\n... [TRUNCATED]';
       }
 
       return {
@@ -298,7 +272,7 @@ export class WorkerService {
       };
     });
 
-    const passed = results.filter((r: any) => r.isPassed).length;
+    const passed = results.filter((result: any) => result.isPassed).length;
 
     return {
       summary: {
@@ -323,5 +297,4 @@ export class WorkerService {
   }
 }
 
-// Singleton instance
 export const workerService = new WorkerService();

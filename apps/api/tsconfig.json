@@ -6,7 +6,8 @@
     "paths": {
       "@/*": ["src/*"],
       "@backend/shared/*": ["../../packages/shared/*"],
-      "@backend/api/*": ["src/*"]
+      "@backend/api/*": ["src/*"],
+      "@backend/sandbox/*": ["../sandbox/src/*"]
     }
   },
   "include": ["src/**/*"]

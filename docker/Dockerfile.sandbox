@@ -5,6 +5,10 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
 COPY tsconfig.json ./
 
 # Install all dependencies
@@ -57,13 +61,22 @@ WORKDIR /app
 
 # 4. Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm install --omit=dev
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
+RUN npm install --omit=dev --ignore-scripts
 
 # 5. Copy built files from builder stage
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/sandbox/dist ./apps/sandbox/dist
+COPY --from=builder /app/apps/sandbox/dist/packages/shared ./packages/shared/dist
+COPY --from=builder /app/packages/shared/proto ./packages/shared/proto
+COPY --from=builder /app/packages/shared/proto ./apps/sandbox/dist/packages/shared/proto
 COPY --from=builder /app/config ./config
+COPY --from=builder /app/config ./apps/sandbox/config
 COPY --from=builder /app/security ./security
-COPY --from=builder /app/src/register-aliases.js ./src/register-aliases.js
+COPY .env ./
 
 # Create workspace directory
 RUN mkdir -p /app/workspace && chmod 777 /app/workspace

@@ -1,4 +1,4 @@
-import { logger } from '@judge/shared/utils';
+import { logger } from '@backend/shared/utils';
 import * as fs from 'fs';
 import * as path from 'path';
 

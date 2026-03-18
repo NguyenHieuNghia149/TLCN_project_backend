@@ -6,7 +6,7 @@ import challengeRoutes from './challenge.routes';
 import topicRoutes from './topic.routes';
 import submissionRoutes from './submission.routes';
 import securityRoutes from './security.routes';
-import sandboxRoutes from '@backend/sandbox/src/sandbox.routes';
+import sandboxRoutes from '@backend/sandbox/sandbox.routes';
 import lessonRoutes from './lesson.routes';
 import lessonDetailRoutes from './lessonDetail.routes';
 import adminUserRoutes from './admin/adminUser.routes';

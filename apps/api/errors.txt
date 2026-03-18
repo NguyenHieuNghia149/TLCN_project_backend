@@ -1,5 +1,0 @@
-src/repositories/admin/adminLesson.repository.ts(4,20): error TS2307: Cannot find module '@backend/shared/db' or its corresponding type declarations.
-../sandbox/src/sandbox.routes.ts(3,37): error TS2307: Cannot find module '@backend/api/middlewares/ratelimit.middleware' or its corresponding type declarations.
-../sandbox/src/sandbox.service.ts(11,33): error TS2307: Cannot find module '@backend/api/services/security.service' or its corresponding type declarations.
-../sandbox/src/sandbox.service.ts(12,35): error TS2307: Cannot find module '@backend/api/services/monitoring.service' or its corresponding type declarations.
-../sandbox/src/sandbox.service.ts(179,31): error TS7006: Parameter 'event' implicitly has an 'any' type.

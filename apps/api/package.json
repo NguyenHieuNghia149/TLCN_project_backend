@@ -1,25 +1,32 @@
 {
-    "name": "@backend/api",
-    "version": "1.0.0",
-    "private": true,
-    "main": "src/index.ts",
-    "scripts": {
-        "dev": "ts-node -r tsconfig-paths/register src/index.ts",
-        "start": "node dist/apps/api/src/index.js",
-        "build": "tsc -p tsconfig.json",
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "description": "",
-    "dependencies": {
-        "@backend/shared": "*",
-        "@bull-board/api": "^6.20.5",
-        "@bull-board/express": "^6.20.5",
-        "bullmq": "^5.0.0",
-        "dotenv": "*",
-        "ioredis": "^5.4.1",
-        "node-cron": "^4.2.1"
-    }
+  "name": "@backend/api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/apps/api/src/index.js",
+  "types": "./dist/apps/api/src/index.d.ts",
+  "exports": {
+    ".": "./dist/apps/api/src/index.js",
+    "./*": "./dist/apps/api/src/*.js",
+    "./src/*": "./dist/apps/api/src/*.js"
+  },
+  "scripts": {
+    "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+    "start": "node dist/apps/api/src/index.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@backend/shared": "*",
+    "@bull-board/api": "^6.20.5",
+    "@bull-board/express": "^6.20.5",
+    "bullmq": "^5.0.0",
+    "dotenv": "*",
+    "ioredis": "^5.4.1",
+    "node-cron": "^4.2.1",
+    "redis": "^5.11.0"
+  }
 }

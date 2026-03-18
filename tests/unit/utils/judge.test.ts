@@ -1,5 +1,5 @@
-import { JudgeUtils } from '@judge/shared/utils';
-import { ESubmissionStatus } from '@judge/shared/types';
+import { JudgeUtils } from '@backend/shared/utils';
+import { ESubmissionStatus } from '@backend/shared/types';
 
 describe('JudgeUtils', () => {
   describe('determineFinalStatus', () => {

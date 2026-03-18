@@ -1,3 +1,5 @@
+import './load-env';
+
 export * from './common';
 export * from './fs';
 export * from './judge';
