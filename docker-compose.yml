@@ -27,7 +27,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --appendfsync everysec --maxmemory 128mb --maxmemory-policy allkeys-lru
 
   # Main API Server
   api:
