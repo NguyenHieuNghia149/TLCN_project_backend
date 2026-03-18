@@ -12,7 +12,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction
+    command: redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy noeviction
 
   # Redis for Cache / PubSub (eviction allowed)
   redis-cache:
@@ -56,6 +56,8 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - EMAIL_FROM=${EMAIL_FROM}
+      - BULL_BOARD_USERNAME=${BULL_BOARD_USERNAME}
+      - BULL_BOARD_PASSWORD=${BULL_BOARD_PASSWORD}
     depends_on:
       redis-queue:
         condition: service_healthy

@@ -14,9 +14,12 @@
     "license": "ISC",
     "description": "",
     "dependencies": {
-        "@judge/shared": "*",
+        "@backend/shared": "*",
+        "@bull-board/api": "^6.20.5",
+        "@bull-board/express": "^6.20.5",
+        "bullmq": "^5.0.0",
         "dotenv": "*",
         "ioredis": "^5.4.1",
-        "bullmq": "^5.0.0"
+        "node-cron": "^4.2.1"
     }
 }

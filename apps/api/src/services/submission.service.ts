@@ -292,6 +292,21 @@ export class SubmissionService {
     };
   }
 
+  async requeuePendingSubmission(submissionId: string): Promise<boolean> {
+    const submission = await this.submissionRepository.findById(submissionId);
+
+    if (!submission || submission.status !== ESubmissionStatus.PENDING) {
+      return false;
+    }
+
+    const { problem, testcases } = await this.validateProblemAndTestcases(submission.problemId);
+    const job = this.prepareQueueJob(submission, problem, testcases, 'SUBMISSION');
+
+    await queueService.addJob(job);
+
+    return true;
+  }
+
   async updateSubmissionResult(
     submissionId: string,
     data: {

@@ -9,11 +9,13 @@ import compression from 'compression';
 import { createServer } from 'http';
 import { DatabaseService } from '@backend/shared/db/connection';
 import route from './routes';
+import adminRouter from './routes/admin';
 import { initializeWebSocket } from './services/websocket.service';
 import { queueService } from './services/queue.service';
 import { examAutoSubmitService } from './services/exam-auto-submit.service';
 import { responseMiddleware } from './middlewares/response.middleware';
 import { errorMiddleware } from './middlewares/error.middleware';
+import { initializeWatchdogCron } from './cron/watchdog';
 
 const app = express();
 const server = createServer(app);
@@ -124,7 +126,10 @@ async function startServer() {
         logger.error('Redis connection failed (continuing without it):', error.message)
       );
 
+    initializeWatchdogCron();
+
     // Routes
+    app.use('/admin/queues', adminRouter);
     route(app);
 
     // 404 handler
