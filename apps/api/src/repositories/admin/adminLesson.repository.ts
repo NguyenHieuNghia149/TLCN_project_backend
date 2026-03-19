@@ -1,6 +1,6 @@
 import { lessons, LessonEntity, LessonInsert, comments } from '@backend/shared/db/schema';
 import { BaseRepository } from '../base.repository';
-import { eq, like, desc, asc, and, or } from 'drizzle-orm';
+import { eq, like, desc, asc, and, or, count } from 'drizzle-orm';
 import { db } from '@backend/shared/db/connection';
 import { topics, learnedLessons } from '@backend/shared/db/schema';
 
@@ -78,8 +78,8 @@ export class AdminLessonRepository extends BaseRepository<
     const sortFn = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
 
     // Get total count
-    const countResult = await db.select().from(lessons).where(whereClause);
-    const total = countResult.length;
+    const [countResult] = await db.select({ total: count() }).from(lessons).where(whereClause);
+    const total = Number(countResult?.total ?? 0);
 
     // Get paginated results
     const results = await db

@@ -57,43 +57,36 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
 
   async deleteTopicWithCascade(topicId: string): Promise<void> {
     await this.db.transaction(async tx => {
-      // Get all lessons in this topic
-      const topicLessons = await tx
-        .select({ id: lessons.id })
-        .from(lessons)
-        .where(eq(lessons.topicId, topicId));
+      await tx.delete(comments).where(sql`
+        ${comments.lessonId} IN (
+          SELECT ${lessons.id} FROM ${lessons} WHERE ${lessons.topicId} = ${topicId}
+        )
+        OR ${comments.problemId} IN (
+          SELECT ${problems.id} FROM ${problems} WHERE ${problems.topicId} = ${topicId}
+        )
+      `);
 
-      const lessonIds = topicLessons.map(l => l.id);
+      await tx.delete(learnedLessons).where(sql`
+        ${learnedLessons.lessonId} IN (
+          SELECT ${lessons.id} FROM ${lessons} WHERE ${lessons.topicId} = ${topicId}
+        )
+      `);
 
-      // Delete all comments related to lessons in this topic
-      if (lessonIds.length > 0) {
-        await tx.delete(comments).where(sql`${comments.lessonId} IN (${sql.join(lessonIds)})`);
-
-        // Delete all learned_lessons related to lessons in this topic
-        await tx
-          .delete(learnedLessons)
-          .where(sql`${learnedLessons.lessonId} IN (${sql.join(lessonIds)})`);
-      }
-
-      // Delete all problems related to lessons in this topic
       await tx.delete(problems).where(eq(problems.topicId, topicId));
-
-      // Delete all lessons in this topic
       await tx.delete(lessons).where(eq(lessons.topicId, topicId));
-
-      // Delete the topic itself
       await tx.delete(topics).where(eq(topics.id, topicId));
     });
   }
 
   async getTopicStats(topicId: string): Promise<TopicStatsData> {
-    const lessonCount = await this.db.select().from(lessons).where(eq(lessons.topicId, topicId));
-
-    const problemCount = await this.db.select().from(problems).where(eq(problems.topicId, topicId));
+    const [lessonCountResult, problemCountResult] = await Promise.all([
+      this.db.select({ total: count() }).from(lessons).where(eq(lessons.topicId, topicId)),
+      this.db.select({ total: count() }).from(problems).where(eq(problems.topicId, topicId)),
+    ]);
 
     return {
-      totalLessons: lessonCount.length,
-      totalProblems: problemCount.length,
+      totalLessons: Number(lessonCountResult[0]?.total ?? 0),
+      totalProblems: Number(problemCountResult[0]?.total ?? 0),
     };
   }
 
@@ -107,29 +100,39 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
   async getTopicDistribution(
     limit: number = 6
   ): Promise<Array<{ name: string; lessons: number; problems: number }>> {
-    const allTopics = await this.db
+    const lessonCounts = this.db
       .select({
-        id: topics.id,
+        topicId: lessons.topicId,
+        totalLessons: count(),
+      })
+      .from(lessons)
+      .groupBy(lessons.topicId)
+      .as('lesson_counts');
+
+    const problemCounts = this.db
+      .select({
+        topicId: problems.topicId,
+        totalProblems: count(),
+      })
+      .from(problems)
+      .groupBy(problems.topicId)
+      .as('problem_counts');
+
+    const rows = await this.db
+      .select({
         name: topics.topicName,
+        lessons: sql<number>`COALESCE(${lessonCounts.totalLessons}, 0)`,
+        problems: sql<number>`COALESCE(${problemCounts.totalProblems}, 0)`,
       })
       .from(topics)
+      .leftJoin(lessonCounts, eq(topics.id, lessonCounts.topicId))
+      .leftJoin(problemCounts, eq(topics.id, problemCounts.topicId))
       .limit(limit);
 
-    const topicData: Array<{ name: string; lessons: number; problems: number }> = [];
-
-    for (const topic of allTopics) {
-      const [lessonsCount, problemsCount] = await Promise.all([
-        this.db.select({ count: count() }).from(lessons).where(eq(lessons.topicId, topic.id)),
-        this.db.select({ count: count() }).from(problems).where(eq(problems.topicId, topic.id)),
-      ]);
-
-      topicData.push({
-        name: topic.name || 'Unknown',
-        lessons: lessonsCount[0]?.count || 0,
-        problems: problemsCount[0]?.count || 0,
-      });
-    }
-
-    return topicData;
+    return rows.map(row => ({
+      name: row.name || 'Unknown',
+      lessons: Number(row.lessons ?? 0),
+      problems: Number(row.problems ?? 0),
+    }));
   }
 }

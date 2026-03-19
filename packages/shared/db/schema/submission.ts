@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, varchar, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { index, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { users } from './user';
 import { examParticipations } from './examParticipations';
 import { problems } from './problem';
@@ -6,21 +7,33 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 import { ESubmissionStatus } from '@backend/shared/types/submissionStatus.enum';
 
-export const submissions = pgTable('submissions', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  sourceCode: text('source_code').notNull(),
-  status: varchar('status', { length: 50 }).notNull().default(ESubmissionStatus.PENDING.toString()),
-  language: varchar('language', { length: 50 }).notNull(),
-  submittedAt: timestamp('submitted_at').defaultNow().notNull(),
-  judgedAt: timestamp('judged_at'),
-  userId: uuid('user_id')
-    .references(() => users.id)
-    .notNull(),
-  problemId: uuid('problem_id')
-    .references(() => problems.id)
-    .notNull(),
-  examParticipationId: uuid('exam_participation_id').references(() => examParticipations.id),
-});
+export const submissions = pgTable(
+  'submissions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    sourceCode: text('source_code').notNull(),
+    status: varchar('status', { length: 50 }).notNull().default(ESubmissionStatus.PENDING.toString()),
+    language: varchar('language', { length: 50 }).notNull(),
+    submittedAt: timestamp('submitted_at').defaultNow().notNull(),
+    judgedAt: timestamp('judged_at'),
+    userId: uuid('user_id')
+      .references(() => users.id)
+      .notNull(),
+    problemId: uuid('problem_id')
+      .references(() => problems.id)
+      .notNull(),
+    examParticipationId: uuid('exam_participation_id').references(() => examParticipations.id),
+  },
+  table => [
+    index('idx_submissions_user_submitted_at').on(table.userId, table.submittedAt),
+    index('idx_submissions_problem_submitted_at').on(table.problemId, table.submittedAt),
+    index('idx_submissions_status_submitted_at').on(table.status, table.submittedAt),
+    index('idx_submissions_user_problem_submitted_at').on(table.userId, table.problemId, table.submittedAt),
+    index('idx_submissions_accepted_solved_lookup')
+      .on(table.userId, table.problemId)
+      .where(sql`${table.status} = 'ACCEPTED' AND ${table.examParticipationId} IS NULL`),
+  ],
+);
 
 export type SubmissionEntity = typeof submissions.$inferSelect;
 export type SubmissionInsert = typeof submissions.$inferInsert;

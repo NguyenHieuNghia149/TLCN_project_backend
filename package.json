@@ -28,12 +28,13 @@
     "lint:fix": "eslint apps/*/src/**/*.ts packages/*/src/**/*.ts --fix",
     "format": "prettier --write apps/*/src/**/*.ts packages/*/src/**/*.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
     "db:drop": "drizzle-kit drop",
     "db:check": "drizzle-kit check",
     "db:seed": "ts-node scripts/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "db:push": "drizzle-kit push"
   },
   "keywords": [],
   "author": "",

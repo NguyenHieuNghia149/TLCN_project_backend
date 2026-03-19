@@ -1,25 +1,36 @@
-import { pgTable, uuid, varchar, text, integer, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { lessons } from './lesson';
 import { topics } from './topic';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 import { ProblemVisibility } from '@backend/shared/types/problemVisibility.enum';
 
-export const problems = pgTable('problems', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  title: varchar('title', { length: 255 }).notNull(),
-  description: text('description'),
-  difficult: varchar('difficult', { length: 20 }).notNull().default('easy'),
-  constraint: text('constraint'),
-  tags: text('tags'),
-  timeLimit: integer('time_limit').default(1000), // milliseconds
-  memoryLimit: varchar('memory_limit', { length: 20 }).default('128m'),
-  lessonId: uuid('lesson_id').references(() => lessons.id),
-  topicId: uuid('topic_id').references(() => topics.id),
-  visibility: varchar('visibility', { length: 30 }).default(ProblemVisibility.PUBLIC).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const problems = pgTable(
+  'problems',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    title: varchar('title', { length: 255 }).notNull(),
+    description: text('description'),
+    difficult: varchar('difficult', { length: 20 }).notNull().default('easy'),
+    constraint: text('constraint'),
+    tags: text('tags'),
+    timeLimit: integer('time_limit').default(1000),
+    memoryLimit: varchar('memory_limit', { length: 20 }).default('128m'),
+    lessonId: uuid('lesson_id').references(() => lessons.id),
+    topicId: uuid('topic_id').references(() => topics.id),
+    visibility: varchar('visibility', { length: 30 }).default(ProblemVisibility.PUBLIC).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  table => [
+    index('idx_problems_topic_visibility_created_id').on(
+      table.topicId,
+      table.visibility,
+      table.createdAt,
+      table.id,
+    ),
+  ],
+);
 
 export type ProblemEntity = typeof problems.$inferSelect;
 export type ProblemInsert = typeof problems.$inferInsert;

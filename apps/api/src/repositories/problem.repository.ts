@@ -380,20 +380,18 @@ export class ProblemRepository extends BaseRepository<
       await tx.delete(solutionApproaches).where(eq(solutionApproaches.solutionId, solutionId));
 
       if (solutionData.solutionApproaches && solutionData.solutionApproaches.length > 0) {
-        await Promise.all(
-          solutionData.solutionApproaches.map((ap: any) =>
-            tx.insert(solutionApproaches).values({
-              solutionId: solutionId,
-              title: ap.title,
-              description: ap.description,
-              sourceCode: ap.sourceCode,
-              language: ap.language,
-              timeComplexity: ap.timeComplexity,
-              spaceComplexity: ap.spaceComplexity,
-              explanation: ap.explanation,
-              order: ap.order,
-            } as any)
-          )
+        await tx.insert(solutionApproaches).values(
+          solutionData.solutionApproaches.map((ap: any) => ({
+            solutionId,
+            title: ap.title,
+            description: ap.description,
+            sourceCode: ap.sourceCode,
+            language: ap.language,
+            timeComplexity: ap.timeComplexity,
+            spaceComplexity: ap.spaceComplexity,
+            explanation: ap.explanation,
+            order: ap.order,
+          })) as any
         );
       }
     });

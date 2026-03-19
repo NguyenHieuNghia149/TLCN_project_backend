@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, count, sql, inArray } from 'drizzle-orm';
 import { BaseRepository, PaginationOptions, PaginationResult } from './base.repository';
 import {
   resultSubmissions,
@@ -25,12 +25,30 @@ export class ResultSubmissionRepository extends BaseRepository<
     return results;
   }
 
-  async createBatch(results: ResultSubmissionInsert[]): Promise<ResultSubmissionEntity[]> {
+  async findBySubmissionIds(submissionIds: string[]): Promise<ResultSubmissionEntity[]> {
+    if (submissionIds.length === 0) {
+      return [];
+    }
+
+    return this.db
+      .select()
+      .from(resultSubmissions)
+      .where(inArray(resultSubmissions.submissionId, submissionIds))
+      .orderBy(asc(resultSubmissions.submissionId), asc(resultSubmissions.testcaseId));
+  }
+
+  async createBatch(
+    results: ResultSubmissionInsert[],
+    executor?: any
+  ): Promise<ResultSubmissionEntity[]> {
     if (results.length === 0) {
       return [];
     }
 
-    const insertedResults = await this.db.insert(resultSubmissions).values(results).returning();
+    const insertedResults = await (executor ?? this.db)
+      .insert(resultSubmissions)
+      .values(results)
+      .returning();
 
     return insertedResults;
   }
@@ -71,8 +89,8 @@ export class ResultSubmissionRepository extends BaseRepository<
     return updatedResults;
   }
 
-  async deleteBySubmissionId(submissionId: string): Promise<boolean> {
-    const result = await this.db
+  async deleteBySubmissionId(submissionId: string, executor?: any): Promise<boolean> {
+    const result = await (executor ?? this.db)
       .delete(resultSubmissions)
       .where(eq(resultSubmissions.submissionId, submissionId));
 

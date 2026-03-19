@@ -426,12 +426,12 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
     return { rankingPoint: currentPoint, rank };
   }
 
-  async incrementRankingPoint(userId: string, point: number): Promise<UserEntity> {
+  async incrementRankingPoint(userId: string, point: number, executor?: any): Promise<UserEntity> {
     if (point < 0) {
       throw new ValidationException('Point cannot be negative');
     }
 
-    const [user] = await this.db
+    const [user] = await (executor ?? this.db)
       .update(users)
       .set({
         rankingPoint: sql`${users.rankingPoint} + ${point}`,

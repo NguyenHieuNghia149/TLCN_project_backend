@@ -2,7 +2,6 @@ import { JudgeUtils, logger } from '@backend/shared/utils';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { queueService, QueueJob } from './queue.service';
 import crypto from 'crypto';
-import { WebSocketService } from './websocket.service';
 import {
   CreateSubmissionInput,
   SubmissionStatus,
@@ -205,48 +204,96 @@ export class SubmissionService {
     }
   }
 
-  async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {
-    const submission = await this.submissionRepository.findById(submissionId);
-    if (!submission) {
-      return null;
+  private isCompletedStatus(status: string): boolean {
+    return status !== ESubmissionStatus.PENDING && status !== ESubmissionStatus.RUNNING;
+  }
+
+  private async buildSubmissionStatuses(
+    submissions: (SubmissionDataResponse & { problemTitle?: string })[]
+  ): Promise<SubmissionStatus[]> {
+    if (submissions.length === 0) {
+      return [];
     }
 
-    // Get result details if submission is completed
+    const completedSubmissions = submissions.filter(submission =>
+      this.isCompletedStatus(submission.status)
+    );
+
+    const submissionIds = completedSubmissions.map(submission => submission.id);
+    const problemIds = Array.from(
+      new Set(completedSubmissions.map(submission => submission.problemId))
+    );
+
+    const [resultSubmissions, testcases] = await Promise.all([
+      submissionIds.length > 0
+        ? this.resultSubmissionRepository.findBySubmissionIds(submissionIds)
+        : Promise.resolve([]),
+      problemIds.length > 0
+        ? this.testcaseRepository.findByProblemIds(problemIds)
+        : Promise.resolve([]),
+    ]);
+
+    const resultsBySubmissionId = new Map<string, any[]>();
+    for (const resultSubmission of resultSubmissions) {
+      if (!resultsBySubmissionId.has(resultSubmission.submissionId)) {
+        resultsBySubmissionId.set(resultSubmission.submissionId, []);
+      }
+
+      resultsBySubmissionId.get(resultSubmission.submissionId)!.push(resultSubmission);
+    }
+
+    const testcasesByProblemId = new Map<string, any[]>();
+    for (const testcase of testcases) {
+      if (!testcasesByProblemId.has(testcase.problemId)) {
+        testcasesByProblemId.set(testcase.problemId, []);
+      }
+
+      testcasesByProblemId.get(testcase.problemId)!.push(testcase);
+    }
+
+    return submissions.map(submission =>
+      this.mapSubmissionStatus(
+        submission,
+        resultsBySubmissionId.get(submission.id) || [],
+        testcasesByProblemId.get(submission.problemId) || []
+      )
+    );
+  }
+
+  private mapSubmissionStatus(
+    submission: SubmissionDataResponse & { problemTitle?: string },
+    resultSubmissions: any[],
+    testcases: any[]
+  ): SubmissionStatus {
     let result: SubmissionResult | undefined;
     let score: number | undefined;
 
-    if (
-      submission.status !== ESubmissionStatus.PENDING &&
-      submission.status !== ESubmissionStatus.RUNNING
-    ) {
-      const resultSubmissions =
-        await this.resultSubmissionRepository.findBySubmissionId(submissionId);
-      const testcases = await this.testcaseRepository.findByProblemId(submission.problemId);
+    if (this.isCompletedStatus(submission.status)) {
+      const testcasesById = new Map(testcases.map(testcase => [testcase.id, testcase]));
 
       result = {
-        passed: resultSubmissions.filter((rs: any) => rs.isPassed).length,
+        passed: resultSubmissions.filter((resultSubmission: any) => resultSubmission.isPassed).length,
         total: resultSubmissions.length,
-        results: resultSubmissions.map((rs: any) => {
-          const testcase = testcases.find((tc: any) => tc.id === rs.testcaseId);
+        results: resultSubmissions.map((resultSubmission: any) => {
+          const testcase = testcasesById.get(resultSubmission.testcaseId);
           return {
-            testcaseId: rs.testcaseId,
+            testcaseId: resultSubmission.testcaseId,
             input: testcase?.input || '',
             expectedOutput: testcase?.output || '',
-            actualOutput: rs.actualOutput,
-            isPassed: rs.isPassed,
-            executionTime: rs.executionTime,
-            memoryUse: rs.memoryUse,
-            error: rs.error,
+            actualOutput: resultSubmission.actualOutput,
+            isPassed: resultSubmission.isPassed,
+            executionTime: resultSubmission.executionTime,
+            memoryUse: resultSubmission.memoryUse,
+            error: resultSubmission.error,
             isPublic: testcase?.isPublic || false,
           };
         }),
       };
 
-      // Calculate score from testcases
       score = JudgeUtils.calculateScore(resultSubmissions, testcases);
     }
 
-    return {
+    const mappedStatus: SubmissionStatus = {
       submissionId: submission.id,
       userId: submission.userId,
       problemId: submission.problemId,
@@ -257,27 +304,50 @@ export class SubmissionService {
         ? {
             passed: result.passed,
             total: result.total,
-            results: result.results.map((r: any, index: any) => ({
+            results: result.results.map((item: any, index: number) => ({
               index,
-              input: r.input,
-              expected: r.expectedOutput,
-              actual: r.actualOutput || '',
-              ok: r.isPassed,
-              stderr: r.error || '',
-              executionTime: r.executionTime || 0,
-              error: r.error || undefined,
-              isPublic: r.isPublic || false,
+              input: item.input,
+              expected: item.expectedOutput,
+              actual: item.actualOutput || '',
+              ok: item.isPassed,
+              stderr: item.error || '',
+              executionTime: item.executionTime || 0,
+              error: item.error || undefined,
+              isPublic: item.isPublic || false,
             })),
           }
         : undefined,
       score,
-      submittedAt: submission.submittedAt,
-      judgedAt: submission.judgedAt || undefined,
+      submittedAt:
+        submission.submittedAt instanceof Date
+          ? submission.submittedAt
+          : new Date(submission.submittedAt),
+      judgedAt: submission.judgedAt
+        ? submission.judgedAt instanceof Date
+          ? submission.judgedAt
+          : new Date(submission.judgedAt)
+        : undefined,
       executionTime: result?.results.reduce(
-        (sum: number, r: any) => sum + (r.executionTime || 0),
+        (sum: number, item: any) => sum + (item.executionTime || 0),
         0
       ),
     };
+
+    if (submission.problemTitle) {
+      (mappedStatus as any).problemTitle = submission.problemTitle;
+    }
+
+    return mappedStatus;
+  }
+
+  async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {
+    const submission = await this.submissionRepository.findById(submissionId);
+    if (!submission) {
+      return null;
+    }
+
+    const [status] = await this.buildSubmissionStatuses([this.mapToSubmissionDataResponse(submission)]);
+    return status || null;
   }
 
   async updateSubmissionStatus(
@@ -316,39 +386,12 @@ export class SubmissionService {
       judgedAt?: string;
     }
   ): Promise<{ id: string; status: string } | null> {
-    // To check if user has already solved this problem
-    const submissionBeforeUpdate = await this.submissionRepository.findById(submissionId);
-    if (!submissionBeforeUpdate) {
-      return null;
-    }
-
-    // Determine if we should add ranking points (safe check before idempotent update)
-    let shouldAddPoints = false;
-    let rankPointsToAdd = 0;
-
-    if (data.status === ESubmissionStatus.ACCEPTED && !submissionBeforeUpdate.examParticipationId) {
-      // Check BEFORE updating status - see if user already has an ACCEPTED submission for this problem
-      const hasSolvedBefore = await this.submissionRepository.hasUserSolvedProblem(
-        submissionBeforeUpdate.userId,
-        submissionBeforeUpdate.problemId
-      );
-
-      if (!hasSolvedBefore) {
-        shouldAddPoints = true;
-        const testcases = await this.testcaseRepository.findByProblemId(
-          submissionBeforeUpdate.problemId
-        );
-        rankPointsToAdd = testcases.reduce((sum: any, tc: any) => sum + tc.point, 0);
-      }
-    }
-
-    // Idempotent Update (Rules Task 2.3)
-    // Only update if current status is PENDING or RUNNING. If rowCount=0, this is a retry of a finished job, skip it.
-    const submission = await this.submissionRepository.updateStatusIdempotent(
+    const submission = await this.submissionRepository.finalizeSubmissionResult({
       submissionId,
-      data.status,
-      data.judgedAt ? new Date(data.judgedAt) : new Date()
-    );
+      status: data.status,
+      result: data.result,
+      judgedAt: data.judgedAt,
+    });
 
     if (!submission) {
       logger.warn(
@@ -357,52 +400,13 @@ export class SubmissionService {
       return null;
     }
 
-    // Apply ranking points IF it successfully transitioned to ACCEPTED for the first time
-    if (shouldAddPoints && rankPointsToAdd > 0) {
-      try {
-        await this.userRepository.incrementRankingPoint(
-          submissionBeforeUpdate.userId,
-          rankPointsToAdd
-        );
-      } catch (error: any) {
-        throw new BaseException(error.message);
-      }
-    }
-
-    // Delete existing results
-    await this.resultSubmissionRepository.deleteBySubmissionId(submissionId);
-
-    // Create new result submissions (only store actual execution results)
-    const resultSubmissions = data.result.results.map((r: any) => ({
-      submissionId,
-      testcaseId: r.testcaseId,
-      actualOutput: r.actualOutput,
-      isPassed: r.isPassed,
-      executionTime: r.executionTime,
-      memoryUse: r.memoryUse,
-      error: r.error,
-    }));
-
-    // Create result submissions
-    await this.resultSubmissionRepository.createBatch(resultSubmissions);
-
-    return submission ? { id: submission.id, status: submission.status } : null;
+    return submission;
   }
 
   private async enrichSubmissionsWithStatus(
     submissions: (SubmissionDataResponse & { problemTitle?: string })[]
   ): Promise<SubmissionStatus[]> {
-    const data: SubmissionStatus[] = [];
-    for (const submission of submissions) {
-      const status = await this.getSubmissionStatus(submission.id);
-      if (status) {
-        if (submission.problemTitle) {
-          (status as any).problemTitle = submission.problemTitle;
-        }
-        data.push(status);
-      }
-    }
-    return data;
+    return this.buildSubmissionStatuses(submissions);
   }
 
   async listUserSubmissions(
@@ -609,3 +613,4 @@ export class SubmissionService {
 }
 
 export const submissionService = new SubmissionService();
+

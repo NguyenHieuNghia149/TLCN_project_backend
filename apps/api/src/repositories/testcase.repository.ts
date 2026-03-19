@@ -11,13 +11,21 @@ export class TestcaseRepository extends BaseRepository<
     super(testcases);
   }
 
-  async findByProblemId(problemId: string): Promise<TestcaseEntity[]> {
-    const result = await this.db
+  async findByProblemId(problemId: string, executor?: any): Promise<TestcaseEntity[]> {
+    const result = await (executor ?? this.db)
       .select()
       .from(this.table)
       .where(eq(this.table.problemId, problemId));
 
     return result;
+  }
+
+  async findByProblemIds(problemIds: string[]): Promise<TestcaseEntity[]> {
+    if (problemIds.length === 0) {
+      return [];
+    }
+
+    return this.db.select().from(this.table).where(inArray(this.table.problemId, problemIds));
   }
 
   async findPublicByProblemId(problemId: string): Promise<TestcaseEntity[]> {
@@ -38,8 +46,11 @@ export class TestcaseRepository extends BaseRepository<
     return !!result;
   }
 
-  async sumPointsByProblemIds(problemIds: string[]): Promise<Record<string, number>> {
-    const rows = await this.db
+  async sumPointsByProblemIds(
+    problemIds: string[],
+    executor?: any
+  ): Promise<Record<string, number>> {
+    const rows = await (executor ?? this.db)
       .select({ problemId: this.table.problemId, total: sql<number>`SUM(${this.table.point})` })
       .from(this.table)
       .where(inArray(this.table.problemId, problemIds))
@@ -62,16 +73,14 @@ export class TestcaseRepository extends BaseRepository<
 
       // 2. Insert new testcases
       if (testcasesData && testcasesData.length > 0) {
-        await Promise.all(
-          testcasesData.map(tc =>
-            tx.insert(this.table).values({
-              problemId: problemId,
-              input: tc.input,
-              output: tc.output,
-              isPublic: tc.isPublic ?? false,
-              point: tc.point ?? 0,
-            } as any)
-          )
+        await tx.insert(this.table).values(
+          testcasesData.map(tc => ({
+            problemId,
+            input: tc.input,
+            output: tc.output,
+            isPublic: tc.isPublic ?? false,
+            point: tc.point ?? 0,
+          })) as any
         );
       }
     });
