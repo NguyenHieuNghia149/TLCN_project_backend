@@ -1,10 +1,18 @@
-import { JudgeUtils, buildTestcaseDisplay, canonicalizeStructuredValue, logger } from '@backend/shared/utils';
+﻿import {
+  JudgeUtils,
+  buildTestcaseDisplay,
+  canonicalizeStructuredValue,
+  logger,
+} from '@backend/shared/utils';
+import { ESubmissionStatus } from '@backend/shared/types';
+import { SubmissionResult } from '@backend/shared/validations/submission.validation';
+import {
+  finalizeSubmissionResult,
+  judgeQueueService,
+  QueueJob,
+} from '@backend/shared/runtime';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
-import { queueService, QueueJob } from '@backend/api/services/queue.service';
-import { submissionService } from '@backend/api/services/submission.service';
-import { ExamService } from '@backend/api/services/exam.service';
-import { ESubmissionStatus } from '@backend/shared/types';
 import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
 import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
 import { generateWrapper } from './services/wrapperGenerator';
@@ -20,7 +28,6 @@ export class WorkerService {
   private totalErrors: number = 0;
   private worker: Worker | null = null;
   private breaker: SandboxBreaker | null = null;
-  private examFinalizerInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.workerId = `worker-${Date.now()}`;
@@ -82,9 +89,8 @@ export class WorkerService {
 
           try {
             if (queueJob.jobType !== 'RUN_CODE') {
-              await submissionService.updateSubmissionResult(queueJob.submissionId, {
+              await this.finalizeSubmission(queueJob.submissionId, {
                 status: ESubmissionStatus.SYSTEM_ERROR,
-                score: 0,
                 result: {
                   passed: 0,
                   total: queueJob.testcases.length,
@@ -93,7 +99,7 @@ export class WorkerService {
               });
             }
 
-            await queueService.publish(
+            await judgeQueueService.publish(
               'submission_updates',
               JSON.stringify({
                 submissionId: queueJob.submissionId,
@@ -111,18 +117,6 @@ export class WorkerService {
       });
 
       logger.info(`Worker ${this.workerId} started seamlessly`);
-
-      this.examFinalizerInterval = setInterval(async () => {
-        try {
-          const examService = new ExamService();
-          const finalized = await examService.finalizeExpiredParticipations();
-          if (finalized > 0) {
-            logger.info(`Auto-finalized ${finalized} expired exam participations`);
-          }
-        } catch (err) {
-          logger.error('Error running exam finalizer:', err);
-        }
-      }, 10000);
     } catch (error) {
       logger.error('Failed to start worker:', error);
       process.exit(1);
@@ -131,9 +125,6 @@ export class WorkerService {
 
   async stop(): Promise<void> {
     logger.info(`Stopping worker ${this.workerId}...`);
-    if (this.examFinalizerInterval) {
-      clearInterval(this.examFinalizerInterval);
-    }
     if (this.worker) {
       await this.worker.close();
       logger.info('Worker closed gracefully.');
@@ -144,9 +135,10 @@ export class WorkerService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-
   private prepareExecutionPayload(job: QueueJob): PreparedExecutionPayload {
-    const missingStructuredInput = job.testcases.find(testcase => !this.isStructuredInput(testcase.inputJson));
+    const missingStructuredInput = job.testcases.find(
+      testcase => !this.isStructuredInput(testcase.inputJson)
+    );
     if (missingStructuredInput) {
       throw new Error(
         `Queue job ${job.submissionId} is missing structured inputJson for testcase ${missingStructuredInput.id}`
@@ -196,6 +188,28 @@ export class WorkerService {
     return executionResult;
   }
 
+  private async finalizeSubmission(
+    submissionId: string,
+    data: {
+      status: ESubmissionStatus;
+      result: SubmissionResult;
+      judgedAt?: string;
+    }
+  ): Promise<void> {
+    const submission = await finalizeSubmissionResult({
+      submissionId,
+      status: data.status,
+      result: data.result,
+      judgedAt: data.judgedAt,
+    });
+
+    if (!submission) {
+      logger.warn(
+        `[Idempotency] Submission ${submissionId} already in terminal state. Ignoring retry.`
+      );
+    }
+  }
+
   private async processJob(bullJob: Job): Promise<void> {
     const job = bullJob.data as QueueJob;
 
@@ -207,7 +221,7 @@ export class WorkerService {
     const isRunOnly = jobType === 'RUN_CODE';
     const executionPayload = this.prepareExecutionPayload(job);
 
-    await queueService.publish(
+    await judgeQueueService.publish(
       'submission_updates',
       JSON.stringify({
         submissionId,
@@ -238,14 +252,13 @@ export class WorkerService {
     const score = JudgeUtils.calculateScore(executionResult.results, testcases);
 
     if (!isRunOnly) {
-      await submissionService.updateSubmissionResult(submissionId, {
-        status: finalStatus as any,
-        score,
+      await this.finalizeSubmission(submissionId, {
+        status: finalStatus as ESubmissionStatus,
         result: executionResult,
       });
     }
 
-    await queueService.publish(
+    await judgeQueueService.publish(
       'submission_updates',
       JSON.stringify({
         submissionId,

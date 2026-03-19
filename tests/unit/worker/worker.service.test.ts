@@ -1,19 +1,8 @@
-jest.mock('../../../apps/api/src/services/queue.service', () => ({
-  queueService: {
+﻿jest.mock('@backend/shared/runtime', () => ({
+  judgeQueueService: {
     publish: jest.fn(),
   },
-}));
-
-jest.mock('../../../apps/api/src/services/submission.service', () => ({
-  submissionService: {
-    updateSubmissionResult: jest.fn(),
-  },
-}));
-
-jest.mock('../../../apps/api/src/services/exam.service', () => ({
-  ExamService: jest.fn().mockImplementation(() => ({
-    finalizeExpiredParticipations: jest.fn().mockResolvedValue(0),
-  })),
+  finalizeSubmissionResult: jest.fn(),
 }));
 
 jest.mock('../../../apps/worker/src/grpc/client', () => ({
@@ -30,7 +19,7 @@ jest.mock('../../../apps/worker/src/grpc/circuit-breaker', () => ({
 }));
 
 import { WorkerService } from '../../../apps/worker/src/worker.service';
-import { QueueJob } from '../../../apps/api/src/services/queue.service';
+import { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { sandboxGrpcClient } from '../../../apps/worker/src/grpc/client';
 import {
   buildFunctionInputDisplayValue,
@@ -134,3 +123,4 @@ describe('WorkerService JSON-first execution payload', () => {
     expect(request.execution_mode).toBeUndefined();
   });
 });
+

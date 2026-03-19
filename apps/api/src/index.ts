@@ -1,4 +1,4 @@
-import { logger } from '@backend/shared/utils';
+﻿import { logger } from '@backend/shared/utils';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cors from 'cors';
@@ -11,7 +11,7 @@ import { DatabaseService } from '@backend/shared/db/connection';
 import route from './routes';
 import adminRouter from './routes/admin';
 import { initializeWebSocket } from './services/websocket.service';
-import { queueService } from './services/queue.service';
+import { judgeQueueService } from '@backend/shared/runtime/judge-queue';
 import { examAutoSubmitService } from './services/exam-auto-submit.service';
 import { responseMiddleware } from './middlewares/response.middleware';
 import { errorMiddleware } from './middlewares/error.middleware';
@@ -119,7 +119,7 @@ async function startServer() {
     await examAutoSubmitService.start();
 
     // Connect to Redis (optional)
-    queueService
+    judgeQueueService
       .connect()
       .then(() => logger.info('Connected to Redis'))
       .catch(error =>
@@ -156,3 +156,5 @@ async function startServer() {
 }
 
 startServer();
+
+

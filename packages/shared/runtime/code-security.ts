@@ -1,4 +1,5 @@
-import { BaseException } from '../exceptions/auth.exceptions';
+﻿import '../utils/load-env';
+
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,7 +15,16 @@ export interface SecurityProfile {
   };
 }
 
-export class SecurityService {
+export class CodeSecurityError extends Error {
+  readonly code = 'UNSAFE_CODE_DETECTED';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'CodeSecurityError';
+  }
+}
+
+export class CodeSecurityService {
   private securityDir: string;
   private seccompProfile: any;
 
@@ -31,7 +41,6 @@ export class SecurityService {
   }
 
   private initializeSeccompProfile(): void {
-    // Create a restrictive seccomp profile
     this.seccompProfile = {
       defaultAction: 'SCMP_ACT_ERRNO',
       architectures: ['SCMP_ARCH_X86_64', 'SCMP_ARCH_X86', 'SCMP_ARCH_X32'],
@@ -303,9 +312,9 @@ export class SecurityService {
             'waitid',
             'waitpid',
             'write',
-            'writev',
+            'writev'
           ],
-          action: 'SCMP_ACT_ALLOW',
+          action: 'SCMP_ACT_ALLOW'
         },
         {
           names: [
@@ -369,14 +378,13 @@ export class SecurityService {
             'vhangup',
             'vserver',
             'waitid',
-            'write',
+            'write'
           ],
-          action: 'SCMP_ACT_ERRNO',
-        },
-      ],
+          action: 'SCMP_ACT_ERRNO'
+        }
+      ]
     };
 
-    // Write seccomp profile to file
     const seccompPath = path.join(this.securityDir, 'seccomp.json');
     fs.writeFileSync(seccompPath, JSON.stringify(this.seccompProfile, null, 2));
   }
@@ -389,9 +397,9 @@ export class SecurityService {
       ulimits: {
         nproc: 64,
         nofile: 1024,
-        fsize: 1048576, // 1MB
-        cpu: 30, // 30 seconds
-      },
+        fsize: 1048576,
+        cpu: 30
+      }
     };
   }
 
@@ -399,58 +407,47 @@ export class SecurityService {
     return path.join(this.securityDir, 'seccomp.json');
   }
 
-  /**
-   * Validate code for additional security threats
-   */
   validateCodeSecurity(code: string, language: string): void {
-    // Check for potential buffer overflow attempts
     const bufferOverflowPatterns = [
       /strcpy\s*\(/gi,
       /strcat\s*\(/gi,
       /sprintf\s*\(/gi,
       /gets\s*\(/gi,
-      /scanf\s*\(/gi,
+      /scanf\s*\(/gi
     ];
 
     for (const pattern of bufferOverflowPatterns) {
       if (pattern.test(code)) {
-        throw new BaseException(
-          `Code contains potentially unsafe function: ${pattern.source}`,
-          400,
-          'UNSAFE_CODE_DETECTED'
+        throw new CodeSecurityError(
+          `Code contains potentially unsafe function: ${pattern.source}`
         );
       }
     }
 
-    // Check for infinite loop patterns
     const infiniteLoopPatterns = [
       /while\s*\(\s*true\s*\)/gi,
       /for\s*\(\s*;\s*;\s*\)/gi,
-      /while\s*\(\s*1\s*\)/gi,
+      /while\s*\(\s*1\s*\)/gi
     ];
 
     for (const pattern of infiniteLoopPatterns) {
       if (pattern.test(code)) {
-        // Silent check for infinite loop patterns
+        // Intentional detection-only hook for future policy.
       }
     }
 
-    // Check for recursion depth
     const recursionPatterns = [
       /function\s+\w+\s*\([^)]*\)\s*{[^}]*\w+\s*\([^}]*\)/gi,
-      /def\s+\w+\s*\([^)]*\):[^:]*\w+\s*\([^)]*\)/gi,
+      /def\s+\w+\s*\([^)]*\):[^:]*\w+\s*\([^)]*\)/gi
     ];
 
     for (const pattern of recursionPatterns) {
       if (pattern.test(code)) {
-        // Silent check for recursion patterns
+        // Intentional detection-only hook for future policy.
       }
     }
   }
 
-  /**
-   * Generate secure Docker run arguments
-   */
   generateSecureDockerArgs(
     image: string,
     command: string,
@@ -466,7 +463,7 @@ export class SecurityService {
       '--memory',
       memoryLimit,
       '--memory-swap',
-      memoryLimit, // Disable swap
+      memoryLimit,
       '--cpus',
       '1.0',
       '--network',
@@ -495,40 +492,31 @@ export class SecurityService {
       `${timeLimit}s`,
       'bash',
       '-c',
-      command,
+      command
     ];
   }
 
-  /**
-   * Monitor resource usage during execution
-   */
   async monitorResourceUsage(processId: string): Promise<{
     memory: number;
     cpu: number;
     duration: number;
   }> {
-    // This would integrate with system monitoring tools
-    // For now, return mock data
     return {
       memory: 0,
       cpu: 0,
-      duration: 0,
+      duration: 0
     };
   }
 
-  /**
-   * Clean up security resources
-   */
   cleanup(): void {
     try {
       if (fs.existsSync(this.securityDir)) {
         fs.rmSync(this.securityDir, { recursive: true, force: true });
       }
-    } catch (error) {
-      // Silent error handling for cleanup
+    } catch {
+      // Cleanup is best-effort only.
     }
   }
 }
 
-// Singleton instance
-export const securityService = new SecurityService();
+export const securityService = new CodeSecurityService();

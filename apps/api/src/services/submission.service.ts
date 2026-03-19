@@ -1,6 +1,6 @@
-import { JudgeUtils, logger, buildTestcaseDisplay } from '@backend/shared/utils';
+﻿import { JudgeUtils, logger, buildTestcaseDisplay } from '@backend/shared/utils';
 import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
-import { queueService, QueueJob } from './queue.service';
+import { judgeQueueService, QueueJob } from '@backend/shared/runtime/judge-queue';
 import crypto from 'crypto';
 import {
   CreateSubmissionInput,
@@ -109,7 +109,7 @@ export class SubmissionService {
       'RUN_CODE'
     );
 
-    await queueService.addJob(job);
+    await judgeQueueService.addJob(job);
 
     return {
       submissionId,
@@ -232,7 +232,7 @@ export class SubmissionService {
 
   private async getQueueLengthSafely(): Promise<number> {
     try {
-      return await queueService.getQueueLength();
+      return await judgeQueueService.getQueueLength();
     } catch (err) {
       return 0;
     }
@@ -240,7 +240,7 @@ export class SubmissionService {
 
   private async addJobToQueueSafely(job: QueueJob): Promise<boolean> {
     try {
-      await queueService.addJob(job);
+      await judgeQueueService.addJob(job);
       return true;
     } catch (err) {
       return false;
@@ -442,7 +442,7 @@ export class SubmissionService {
     const { problem, testcases } = await this.validateProblemAndTestcases(submission.problemId);
     const job = this.prepareQueueJob(submission, problem, testcases, 'SUBMISSION');
 
-    await queueService.addJob(job);
+    await judgeQueueService.addJob(job);
 
     return true;
   }
@@ -637,7 +637,7 @@ export class SubmissionService {
     queueLength: number;
     isHealthy: boolean;
   }> {
-    const status = await queueService.getQueueStatus();
+    const status = await judgeQueueService.getQueueStatus();
     return {
       queueLength: status.length,
       isHealthy: status.isHealthy,
@@ -683,6 +683,8 @@ export class SubmissionService {
 }
 
 export const submissionService = new SubmissionService();
+
+
 
 
 

@@ -1,10 +1,10 @@
-import { createBullBoard } from '@bull-board/api';
+﻿import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { logger } from '@backend/shared/utils';
 import crypto from 'crypto';
 import { NextFunction, Request, Response, Router } from 'express';
-import { queueService } from '../services/queue.service';
+import { judgeQueueService } from '@backend/shared/runtime/judge-queue';
 
 const adminRouter = Router();
 const serverAdapter = new ExpressAdapter();
@@ -12,7 +12,7 @@ const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/admin/queues');
 
 createBullBoard({
-  queues: [new BullMQAdapter(queueService.queue)],
+  queues: [new BullMQAdapter(judgeQueueService.queue)],
   serverAdapter,
 });
 
@@ -76,3 +76,5 @@ function bullBoardBasicAuth(req: Request, res: Response, next: NextFunction): Re
 adminRouter.use(bullBoardBasicAuth, serverAdapter.getRouter());
 
 export default adminRouter;
+
+

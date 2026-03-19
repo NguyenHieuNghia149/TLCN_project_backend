@@ -1,5 +1,5 @@
-jest.mock('../../../apps/api/src/services/queue.service', () => ({
-  queueService: {
+﻿jest.mock('@backend/shared/runtime', () => ({
+  judgeQueueService: {
     addJob: jest.fn(),
     getQueueLength: jest.fn(),
     getQueueStatus: jest.fn(),
@@ -8,6 +8,7 @@ jest.mock('../../../apps/api/src/services/queue.service', () => ({
 }));
 
 import { SubmissionService } from '../../../apps/api/src/services/submission.service';
+import { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { FunctionSignature } from '@backend/shared/types';
 
 describe('SubmissionService JSON-first queue payload', () => {
@@ -46,17 +47,20 @@ describe('SubmissionService JSON-first queue payload', () => {
           isPublic: true,
         },
       ]
-    );
+    ) as QueueJob;
+
+    const firstTestcase = job.testcases[0]!;
+
     expect('executionMode' in job).toBe(false);
-    expect(job.testcases[0]).toEqual({
+    expect(firstTestcase).toEqual({
       id: 'testcase-1',
       inputJson: { nums: [2, 7, 11, 15], target: 9 },
       outputJson: [0, 1],
       point: 10,
       isPublic: true,
     });
-    expect('input' in job.testcases[0]).toBe(false);
-    expect('output' in job.testcases[0]).toBe(false);
+    expect('input' in firstTestcase).toBe(false);
+    expect('output' in firstTestcase).toBe(false);
   });
 
   it('derives submission result display from JSON even when cached text is stale', () => {
@@ -84,8 +88,6 @@ describe('SubmissionService JSON-first queue payload', () => {
       [
         {
           id: 'testcase-1',
-          input: '',
-          output: '',
           inputJson: { nums: [2, 7, 11, 15], target: 9 },
           outputJson: [0, 1],
           isPublic: true,
@@ -103,3 +105,5 @@ describe('SubmissionService JSON-first queue payload', () => {
     });
   });
 });
+
+

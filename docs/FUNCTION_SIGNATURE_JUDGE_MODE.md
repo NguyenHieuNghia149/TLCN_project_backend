@@ -86,13 +86,12 @@ Worker behavior:
 - sends `JSON.stringify(inputJson)` to sandbox stdin
 - sends canonical JSON output as expected output
 - derives display text from JSON via shared helpers when needed
-- does not send `execution_mode` on new gRPC requests
+- calls gRPC without any execution-mode field
 
 Sandbox behavior:
 
-- wrapper is the only runtime behavior
-- during the compatibility phase, the gRPC boundary accepts `execution_mode = "wrapper"`, an omitted field, or `""`
-- any other `execution_mode` is rejected with `INVALID_ARGUMENT`
+- wrapper is the sole runtime mode
+- the gRPC request contract no longer includes `execution_mode`
 - reads the last non-empty stdout line as the wrapper envelope
 - requires this exact contract:
 
@@ -118,10 +117,11 @@ The legacy pre-drop audit script is archived under:
 
 - `scripts/archive/migrate/audit-post-migration.ts`
 
-The text-cache reference guard remains active:
+Active source guards are:
 
 ```bash
 npm run check:no-testcase-text-cache-refs
+npm run check:no-execution-mode-refs
 ```
 
 ## Performance Harness
@@ -130,10 +130,9 @@ The `challenge_detail_*` Artillery scripts under `tests/performance/` are stagin
 
 ## Rollout Notes
 
-For slice 5 mixed deploy safety:
+For slice 6 cleanup rollout:
 
-1. deploy sandbox first so it accepts `execution_mode = "wrapper"` and unset or empty values
-2. smoke test sandbox-new + worker-old on `cpp`, `java`, and `python`
-3. deploy worker and API after the smoke test passes
-4. monitor for `INVALID_ARGUMENT` errors related to `execution_mode`
-5. remove the wire field entirely in the next cleanup slice
+1. deploy sandbox, worker, and API together
+2. smoke test `cpp`, `java`, and `python`
+3. monitor gRPC error rate and submission flow
+4. if rollback is needed, roll back to slice 5 code only

@@ -1,11 +1,9 @@
-import { logger } from '@backend/shared/utils';
+﻿import '../utils/load-env';
+
+import { logger } from '../utils';
+import { FunctionSignature } from '../types';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import path from 'path';
-import { BaseException } from '../exceptions/auth.exceptions';
-import { FunctionSignature } from '@backend/shared/types';
-
-require('dotenv').config({ path: path.resolve(__dirname, '../../../../.env') });
 
 export interface QueueJobTestcase {
   id: string;
@@ -29,7 +27,17 @@ export interface QueueJob {
   jobType?: 'SUBMISSION' | 'RUN_CODE';
 }
 
-export class QueueService {
+export class JudgeQueueError extends Error {
+  readonly code = 'QUEUE_ERROR';
+  readonly statusCode = 500;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'JudgeQueueError';
+  }
+}
+
+export class JudgeQueueService {
   public queue: Queue;
   private publisher: Redis;
 
@@ -47,7 +55,7 @@ export class QueueService {
     this.publisher = new Redis(pubsubRedisUrl);
 
     this.publisher.on('error', (err: Error) => {
-      logger.error('[QueueService Publisher] Redis error:', err.message);
+      logger.error('[JudgeQueueService Publisher] Redis error:', err.message);
     });
   }
 
@@ -82,7 +90,7 @@ export class QueueService {
         },
       });
     } catch (error: any) {
-      throw new BaseException(`Failed to queue job: ${error.message}`, 500, 'QUEUE_ERROR');
+      throw new JudgeQueueError(`Failed to queue job: ${error.message}`);
     }
   }
 
@@ -116,9 +124,9 @@ export class QueueService {
     try {
       await this.publisher.publish(channel, message);
     } catch (error) {
-      logger.error(`[QueueService] Failed to publish message: ${error}`);
+      logger.error(`[JudgeQueueService] Failed to publish message: ${error}`);
     }
   }
 }
 
-export const queueService = new QueueService();
+export const judgeQueueService = new JudgeQueueService();

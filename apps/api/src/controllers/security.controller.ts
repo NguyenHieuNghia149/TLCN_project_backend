@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { monitoringService } from '@backend/api/services/monitoring.service';
-import { securityService } from '@backend/api/services/security.service';
+﻿import { Request, Response, NextFunction } from 'express';
+import { monitoringService } from '@backend/shared/runtime/code-monitoring';
+import { securityService } from '@backend/shared/runtime/code-security';
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class SecurityController {
@@ -75,3 +75,5 @@ export class SecurityController {
     });
   }
 }
+
+

@@ -1,4 +1,4 @@
-import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
+﻿import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
 import { isDeepStrictEqual } from 'node:util';
 import { spawn } from 'child_process';
 import * as path from 'path';
@@ -6,8 +6,8 @@ import * as yaml from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
 import { SandboxConfig as GlobalSandboxConfig } from '../../../config/sandbox.config';
 import { ExecutionResult, ExecutionConfig } from '@backend/shared/validations/submission.validation';
-import { securityService } from '@backend/api/services/security.service';
-import { monitoringService } from '@backend/api/services/monitoring.service';
+import { monitoringService } from '@backend/shared/runtime/code-monitoring';
+import { securityService } from '@backend/shared/runtime/code-security';
 
 export interface SandboxConfig {
   host: string;
@@ -571,3 +571,5 @@ export class SandboxService {
 }
 
 export const sandboxService = new SandboxService();
+
+

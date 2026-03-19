@@ -1,4 +1,4 @@
-import {
+﻿import {
   eq,
   and,
   desc,
@@ -20,27 +20,17 @@ import {
   problems,
 } from '@backend/shared/db/schema';
 import { ESubmissionStatus } from '@backend/shared/types';
-import { ResultSubmissionRepository } from './result-submission.repository';
-import { TestcaseRepository } from './testcase.repository';
-import { UserRepository } from './user.repository';
 import { SubmissionResult } from '@backend/shared/validations/submission.validation';
+import { finalizeSubmissionResult as finalizeSubmissionResultInRuntime } from '@backend/shared/runtime/submission-finalization';
 
 export class SubmissionRepository extends BaseRepository<
   typeof submissions,
   SubmissionEntity,
   SubmissionInsert
 > {
-  private resultSubmissionRepository: ResultSubmissionRepository;
-  private testcaseRepository: TestcaseRepository;
-  private userRepository: UserRepository;
-
   constructor() {
     super(submissions);
-    this.resultSubmissionRepository = new ResultSubmissionRepository();
-    this.testcaseRepository = new TestcaseRepository();
-    this.userRepository = new UserRepository();
   }
-
   async findById(id: string, executor?: any): Promise<SubmissionEntity | null> {
     const [row] = await (executor ?? this.db)
       .select()
@@ -505,71 +495,7 @@ export class SubmissionRepository extends BaseRepository<
     result: SubmissionResult;
     judgedAt?: string;
   }): Promise<{ id: string; status: string } | null> {
-    return this.db.transaction(async tx => {
-      const submissionBeforeUpdate = await this.findById(input.submissionId, tx);
-      if (!submissionBeforeUpdate) {
-        return null;
-      }
-
-      let rankPointsToAdd = 0;
-
-      if (
-        input.status === ESubmissionStatus.ACCEPTED &&
-        !submissionBeforeUpdate.examParticipationId
-      ) {
-        const rankLockKey = `submission-rank:${submissionBeforeUpdate.userId}:${submissionBeforeUpdate.problemId}`;
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${rankLockKey}))`);
-
-        const hasSolvedBefore = await this.hasUserSolvedProblem(
-          submissionBeforeUpdate.userId,
-          submissionBeforeUpdate.problemId,
-          tx
-        );
-
-        if (!hasSolvedBefore) {
-          const testcasePoints = await this.testcaseRepository.sumPointsByProblemIds(
-            [submissionBeforeUpdate.problemId],
-            tx
-          );
-          rankPointsToAdd = testcasePoints[submissionBeforeUpdate.problemId] || 0;
-        }
-      }
-
-      const submission = await this.updateStatusIdempotent(
-        input.submissionId,
-        input.status,
-        input.judgedAt ? new Date(input.judgedAt) : new Date(),
-        tx
-      );
-
-      if (!submission) {
-        return null;
-      }
-
-      if (rankPointsToAdd > 0) {
-        await this.userRepository.incrementRankingPoint(
-          submissionBeforeUpdate.userId,
-          rankPointsToAdd,
-          tx
-        );
-      }
-
-      await this.resultSubmissionRepository.deleteBySubmissionId(input.submissionId, tx);
-
-      const resultSubmissions = input.result.results.map(result => ({
-        submissionId: input.submissionId,
-        testcaseId: result.testcaseId,
-        actualOutput: result.actualOutput,
-        isPassed: result.isPassed,
-        executionTime: result.executionTime,
-        memoryUse: result.memoryUse,
-        error: result.error,
-      }));
-
-      await this.resultSubmissionRepository.createBatch(resultSubmissions, tx);
-
-      return { id: submission.id, status: submission.status };
-    });
+    return finalizeSubmissionResultInRuntime(input);
   }
 
   async findByUserAndStatus(
@@ -701,3 +627,9 @@ export class SubmissionRepository extends BaseRepository<
     return submissionStatus;
   }
 }
+
+
+
+
+
+

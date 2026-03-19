@@ -37,6 +37,9 @@
     "db:push": "drizzle-kit push",
     "audit:post-drop": "ts-node scripts/migrate/audit-post-drop.ts",
     "check:no-testcase-text-cache-refs": "ts-node scripts/check-no-testcase-text-cache-refs.ts",
+    "check:no-execution-mode-refs": "ts-node scripts/check-no-execution-mode-refs.ts",
+    "check:no-cross-app-imports": "ts-node scripts/check-no-cross-app-imports.ts",
+    "check:refactor-guards": "npm run check:no-testcase-text-cache-refs && npm run check:no-execution-mode-refs && npm run check:no-cross-app-imports",
     "perf:challenge-detail:baseline": "artillery run tests/performance/challenge_detail_baseline.yml",
     "perf:challenge-detail:load": "artillery run tests/performance/challenge_detail_load_test.yml"
   },

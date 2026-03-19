@@ -16,14 +16,6 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 
 const judgeProto = grpc.loadPackageDefinition(packageDefinition) as any;
 
-export function validateWrapperExecutionMode(value: unknown): string | null {
-  if (value === undefined || value === '' || value === 'wrapper') {
-    return null;
-  }
-
-  return `execution_mode must be 'wrapper' or unset; got: ${String(value)}`;
-}
-
 function inferTestCaseStatus(result: any): string {
   if (result.isPassed) {
     return 'ACCEPTED';
@@ -85,26 +77,13 @@ function deriveOverallStatus(summaryStatus: string | undefined, results: any[]):
   return 'WRONG_ANSWER';
 }
 
-async function executeCode(
+export async function executeCode(
   call: grpc.ServerUnaryCall<any, any>,
   callback: grpc.sendUnaryData<any>
 ): Promise<void> {
   const req = call.request;
 
   logger.info(`[gRPC] ExecuteCode received - submission_id: ${req.submission_id}`);
-
-  const executionModeError = validateWrapperExecutionMode(req.execution_mode);
-  if (executionModeError) {
-    logger.error('[gRPC] Invalid execution_mode received', {
-      submissionId: req.submission_id,
-      executionMode: req.execution_mode,
-    });
-    callback({
-      code: grpc.status.INVALID_ARGUMENT,
-      message: executionModeError,
-    });
-    return;
-  }
 
   try {
     const testcases = (req.test_cases || []).map((tc: any) => ({
