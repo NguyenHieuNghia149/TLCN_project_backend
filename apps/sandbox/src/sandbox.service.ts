@@ -279,6 +279,18 @@ export class SandboxService {
     });
   }
 
+  private resolveAddressSpaceLimit(config: ExecutionConfig, langConfig: any): number {
+    const requestedMb = Math.max(64, parseInt(config.memoryLimit || '256'));
+    const languageValue = String(langConfig?.value || config.language || '').toLowerCase();
+
+    if (languageValue === 'java') {
+      // The JVM needs a much larger baseline address space than native runtimes.
+      return Math.max(requestedMb, 1024);
+    }
+
+    return requestedMb;
+  }
+
   private async runWithNsjail(
     jobDir: string,
     langConfig: any,
@@ -310,7 +322,7 @@ export class SandboxService {
       '--time_limit',
       `${timeLimitS + 1}`,
       '--rlimit_as',
-      `${parseInt(config.memoryLimit || '256')}`,
+      `${this.resolveAddressSpaceLimit(config, langConfig)}`,
       '--rlimit_fsize',
       '2', // Task 4.2: Output size limit 2MB
       '--disable_clone_newnet', // Task 4.4: No Network

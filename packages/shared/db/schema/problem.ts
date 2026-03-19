@@ -1,9 +1,9 @@
-import { index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { lessons } from './lesson';
 import { topics } from './topic';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import { ProblemVisibility } from '@backend/shared/types/problemVisibility.enum';
+import { EProblemJudgeMode, FunctionSignature, ProblemVisibility } from '@backend/shared/types';
 
 export const problems = pgTable(
   'problems',
@@ -19,6 +19,10 @@ export const problems = pgTable(
     lessonId: uuid('lesson_id').references(() => lessons.id),
     topicId: uuid('topic_id').references(() => topics.id),
     visibility: varchar('visibility', { length: 30 }).default(ProblemVisibility.PUBLIC).notNull(),
+    judgeMode: varchar('judge_mode', { length: 32 })
+      .default(EProblemJudgeMode.STDIN_STDOUT)
+      .notNull(),
+    functionSignature: jsonb('function_signature').$type<FunctionSignature | null>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -47,6 +51,8 @@ export const insertProblemSchema = createInsertSchema(problems, {
   lessonId: z.string().uuid().optional(),
   topicId: z.string().uuid().optional(),
   visibility: z.string().default(ProblemVisibility.PUBLIC),
+  judgeMode: z.nativeEnum(EProblemJudgeMode).default(EProblemJudgeMode.STDIN_STDOUT),
+  functionSignature: z.custom<FunctionSignature>().optional(),
 });
 
 export const selectProblemSchema = createSelectSchema(problems);

@@ -3,8 +3,20 @@ import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import path from 'path';
 import { BaseException } from '../exceptions/auth.exceptions';
+import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
 
 require('dotenv').config({ path: path.resolve(__dirname, '../../../../.env') });
+
+export interface QueueJobTestcase {
+  id: string;
+  input: string;
+  output: string;
+  point: number;
+  isPublic?: boolean;
+  executionInput?: string;
+  inputJson?: Record<string, unknown> | null;
+  outputJson?: unknown;
+}
 
 export interface QueueJob {
   submissionId: string;
@@ -12,13 +24,9 @@ export interface QueueJob {
   problemId: string;
   code: string;
   language: string;
-  testcases: Array<{
-    id: string;
-    input: string;
-    output: string;
-    point: number;
-    isPublic?: boolean;
-  }>;
+  judgeMode?: EProblemJudgeMode;
+  functionSignature?: FunctionSignature | null;
+  testcases: QueueJobTestcase[];
   timeLimit: number;
   memoryLimit: string;
   createdAt: string;
@@ -30,7 +38,6 @@ export class QueueService {
   private publisher: Redis;
 
   constructor() {
-    // 1. Dedicated Redis for BullMQ Queue (e.g. DB 1)
     const queueRedisUrl =
       process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
     const queueConnection = new Redis(queueRedisUrl, {
@@ -39,7 +46,6 @@ export class QueueService {
 
     this.queue = new Queue('judge_queue', { connection: queueConnection as any });
 
-    // 2. Dedicated Redis for Cache/PubSub (e.g. DB 0)
     const pubsubRedisUrl =
       process.env.REDIS_CACHE_URL || process.env.REDIS_URL || 'redis://localhost:6379/0';
     this.publisher = new Redis(pubsubRedisUrl);
@@ -69,10 +75,9 @@ export class QueueService {
 
   async addJob(job: QueueJob): Promise<void> {
     try {
-      // Delegate to BullMQ
       await this.queue.add(job.jobType || 'SUBMISSION', job, {
-        jobId: job.submissionId, // Helps with debugging and deduplication
-        removeOnComplete: true, // Prevent RAM Bloat (Task 2.2)
+        jobId: job.submissionId,
+        removeOnComplete: true,
         removeOnFail: false,
         attempts: 3,
         backoff: {
@@ -85,7 +90,6 @@ export class QueueService {
     }
   }
 
-  // Deprecated for Worker (Worker Service will use BullMQ Worker natively)
   async getJob(): Promise<QueueJob | null> {
     return null;
   }
@@ -125,5 +129,4 @@ export class QueueService {
   }
 }
 
-// Singleton instance
 export const queueService = new QueueService();

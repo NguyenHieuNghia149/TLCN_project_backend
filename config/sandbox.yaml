@@ -14,7 +14,7 @@ judge:
         program_file_name: a.out
       test_case_run:
         image: 'docker.io/library/debian:bullseye-slim'
-        command_template: ['timeout', '--foreground', '$TIME_LIMIT', './$PROGRAM']
+        command_template: ['/usr/bin/timeout', '--foreground', '$TIME_LIMIT', './$PROGRAM']
         cpu_quota: 1000000
 
     - value: cpp
@@ -29,7 +29,7 @@ judge:
         program_file_name: a.out
       test_case_run:
         image: 'docker.io/library/debian:bullseye-slim'
-        command_template: ['timeout', '--foreground', '$TIME_LIMIT', './$PROGRAM']
+        command_template: ['/usr/bin/timeout', '--foreground', '$TIME_LIMIT', './$PROGRAM']
         cpu_quota: 1000000
 
     - value: java
@@ -44,14 +44,14 @@ judge:
         program_file_name: Main.class
       test_case_run:
         image: 'docker.io/library/openjdk:22-jdk-slim-buster'
-        command_template: ['timeout', '--foreground', '$TIME_LIMIT', 'java', 'Main']
+        command_template: ['/usr/bin/timeout', '--foreground', '$TIME_LIMIT', 'java', '-Xms8m', '-Xmx32m', '-XX:ReservedCodeCacheSize=8m', '-XX:InitialCodeCacheSize=4m', '-XX:MetaspaceSize=8m', '-XX:MaxMetaspaceSize=16m', '-XX:+UseSerialGC', '-XX:-UsePerfData', '-XX:-UseCompressedOops', '-XX:-UseCompressedClassPointers', 'Main']
         cpu_quota: 1000000
 
     - value: python
       name: Python 3
       test_case_run:
         image: 'docker.io/library/python:3.13-rc-slim'
-        command_template: ['timeout', '--foreground', '$TIME_LIMIT', 'python', '$PROGRAM']
+        command_template: ['/usr/bin/timeout', '--foreground', '$TIME_LIMIT', 'python3', '$PROGRAM']
         cpu_quota: 1000000
         source_file_name: main.py
         program_file_name: main.py

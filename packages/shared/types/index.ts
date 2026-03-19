@@ -6,3 +6,5 @@ export * from './submissionStatus.enum';
 export * from './userGender.enum';
 export * from './userRole.enum';
 export * from './userStatus.enum';
+export * from './problemJudgeMode.enum';
+export * from './functionSignature';

@@ -1,6 +1,8 @@
 import { TestcaseEntity, TestcaseInsert, testcases } from '@backend/shared/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.repository';
+import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
+import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
 export class TestcaseRepository extends BaseRepository<
   typeof testcases,
@@ -63,24 +65,55 @@ export class TestcaseRepository extends BaseRepository<
     return map;
   }
 
+  private normalizeTestcaseRecord(
+    problemId: string,
+    testcase: any,
+    judgeMode: EProblemJudgeMode,
+    functionSignature?: FunctionSignature | null
+  ) {
+    if (judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && functionSignature) {
+      return {
+        problemId,
+        input: buildFunctionInputDisplayValue(
+          functionSignature,
+          testcase.inputJson as Record<string, unknown>
+        ),
+        output: canonicalizeStructuredValue(testcase.outputJson),
+        inputJson: testcase.inputJson ?? null,
+        outputJson: testcase.outputJson ?? null,
+        isPublic: testcase.isPublic ?? false,
+        point: testcase.point ?? 0,
+      };
+    }
+
+    return {
+      problemId,
+      input: testcase.input ?? '',
+      output: testcase.output ?? '',
+      inputJson: null,
+      outputJson: null,
+      isPublic: testcase.isPublic ?? false,
+      point: testcase.point ?? 0,
+    };
+  }
+
   /**
    * Update testcases transactionally: delete all existing and insert new ones.
    */
-  async updateTestcasesTransactional(problemId: string, testcasesData: any[]): Promise<void> {
+  async updateTestcasesTransactional(
+    problemId: string,
+    testcasesData: any[],
+    judgeMode: EProblemJudgeMode,
+    functionSignature?: FunctionSignature | null
+  ): Promise<void> {
     await this.db.transaction(async (tx: any) => {
-      // 1. Delete all existing testcases for this problem
       await tx.delete(this.table).where(eq(this.table.problemId, problemId));
 
-      // 2. Insert new testcases
       if (testcasesData && testcasesData.length > 0) {
         await tx.insert(this.table).values(
-          testcasesData.map(tc => ({
-            problemId,
-            input: tc.input,
-            output: tc.output,
-            isPublic: tc.isPublic ?? false,
-            point: tc.point ?? 0,
-          })) as any
+          testcasesData.map(testcase =>
+            this.normalizeTestcaseRecord(problemId, testcase, judgeMode, functionSignature)
+          ) as any
         );
       }
     });

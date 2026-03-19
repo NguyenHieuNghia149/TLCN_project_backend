@@ -20,6 +20,8 @@ import {
   ProblemResponseSchema,
 } from '@backend/shared/validations/problem.validation';
 import { LessonEntity } from '@backend/shared/db/schema';
+import { buildStarterCodeByLanguage } from '@backend/shared/utils';
+import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
 
 export class FavoriteService {
   private readonly favoriteRepository: FavoriteRepository;
@@ -206,6 +208,8 @@ export class FavoriteService {
       topicId: string | null;
       createdAt: Date | string | null;
       updatedAt: Date | string | null;
+      judgeMode?: EProblemJudgeMode | string | null;
+      functionSignature?: FunctionSignature | null;
     } | null,
     totalPoints: number,
     isSolved: boolean = false
@@ -243,6 +247,8 @@ export class FavoriteService {
       topicId: string | null;
       createdAt: Date | string | null;
       updatedAt: Date | string | null;
+      judgeMode?: EProblemJudgeMode | string | null;
+      functionSignature?: FunctionSignature | null;
     },
     totalPoints: number,
     options?: { isSolved?: boolean; isFavorite?: boolean }
@@ -267,6 +273,15 @@ export class FavoriteService {
       totalPoints,
       isSolved: options?.isSolved ?? false,
       isFavorite: options?.isFavorite ?? false,
+      judgeMode:
+        problem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
+          ? EProblemJudgeMode.FUNCTION_SIGNATURE
+          : EProblemJudgeMode.STDIN_STDOUT,
+      functionSignature: problem.functionSignature ?? undefined,
+      starterCodeByLanguage:
+        problem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && problem.functionSignature
+          ? buildStarterCodeByLanguage(problem.functionSignature)
+          : undefined,
       createdAt: this.formatDate(problem.createdAt),
       updatedAt: this.formatDate(problem.updatedAt),
     };

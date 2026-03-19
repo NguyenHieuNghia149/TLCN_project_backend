@@ -1,5 +1,10 @@
-import { JudgeUtils, logger } from '@backend/shared/utils';
-import { ESubmissionStatus } from '@backend/shared/types';
+import {
+  JudgeUtils,
+  logger,
+  buildFunctionInputDisplayValue,
+  canonicalizeStructuredValue,
+} from '@backend/shared/utils';
+import { EProblemJudgeMode, ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
 import { queueService, QueueJob } from './queue.service';
 import crypto from 'crypto';
 import {
@@ -53,6 +58,7 @@ export class SubmissionService {
     estimatedWaitTime: number;
   }> {
     const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
+    this.assertFunctionSignatureLanguage(problem, input.language);
 
     let examParticipationId: string | undefined = undefined;
     if ((input as any).participationId) {
@@ -91,6 +97,7 @@ export class SubmissionService {
     options?: { authHeader?: string }
   ) {
     const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
+    this.assertFunctionSignatureLanguage(problem, input.language);
 
     const submissionId = crypto.randomUUID();
 
@@ -114,6 +121,29 @@ export class SubmissionService {
       status: ESubmissionStatus.PENDING,
       message: 'Queued for execution',
     };
+  }
+
+  private assertFunctionSignatureLanguage(problem: any, language: string): void {
+    const judgeMode = problem?.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
+    if (judgeMode !== EProblemJudgeMode.FUNCTION_SIGNATURE) {
+      return;
+    }
+
+    if (!problem?.functionSignature) {
+      throw new BaseException(
+        'Problem functionSignature is not configured',
+        500,
+        'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+      );
+    }
+
+    if (!['cpp', 'java', 'python'].includes(language)) {
+      throw new BaseException(
+        `Language ${language} is not supported for function-signature problems`,
+        400,
+        'FUNCTION_SIGNATURE_LANGUAGE_UNSUPPORTED'
+      );
+    }
   }
 
   private async validateProblemAndTestcases(problemId: string) {
@@ -165,25 +195,45 @@ export class SubmissionService {
     submission: any,
     problem: any,
     testcases: any[],
-    jobType: string = 'JUDGE'
+    jobType: 'SUBMISSION' | 'RUN_CODE' = 'SUBMISSION'
   ): QueueJob {
+    const judgeMode = problem.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
+    const functionSignature =
+      judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
+        ? (problem.functionSignature as FunctionSignature | null)
+        : null;
+
     return {
       submissionId: submission.id,
       userId: submission.userId,
       problemId: submission.problemId,
       code: submission.sourceCode,
       language: submission.language,
-      testcases: testcases.map((tc: any) => ({
+      judgeMode,
+      functionSignature,
+      testcases: testcases.map((tc: any, index: number) => ({
         id: tc.id,
-        input: tc.input,
-        output: tc.output,
+        input:
+          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && functionSignature && tc.inputJson
+            ? buildFunctionInputDisplayValue(functionSignature, tc.inputJson as Record<string, unknown>)
+            : tc.input,
+        output:
+          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && tc.outputJson !== undefined
+            ? canonicalizeStructuredValue(tc.outputJson)
+            : tc.output,
+        executionInput:
+          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE ? String(index) : tc.input,
+        inputJson:
+          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE ? (tc.inputJson ?? null) : undefined,
+        outputJson:
+          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE ? (tc.outputJson ?? null) : undefined,
         point: tc.point,
         isPublic: tc.isPublic ?? false,
       })),
       timeLimit: problem.timeLimit || 1000,
       memoryLimit: problem.memoryLimit || '128m',
       createdAt: new Date().toISOString(),
-      jobType: jobType as any,
+      jobType,
     };
   }
 

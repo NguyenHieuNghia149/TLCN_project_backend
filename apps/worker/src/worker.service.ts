@@ -1,10 +1,10 @@
-import { JudgeUtils, logger } from '@backend/shared/utils';
+import { JudgeUtils, logger, buildFunctionExecutionSource } from '@backend/shared/utils';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { queueService, QueueJob } from '@backend/api/services/queue.service';
 import { submissionService } from '@backend/api/services/submission.service';
 import { ExamService } from '@backend/api/services/exam.service';
-import { ESubmissionStatus } from '@backend/shared/types';
+import { EProblemJudgeMode, ESubmissionStatus } from '@backend/shared/types';
 import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
 import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
 
@@ -128,13 +128,88 @@ export class WorkerService {
     }
   }
 
+  private prepareExecutionPayload(job: QueueJob): {
+    sourceCode: string;
+    testcases: Array<{ id: string; input: string; output: string; point: number }>;
+  } {
+    const judgeMode = job.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
+
+    if (judgeMode !== EProblemJudgeMode.FUNCTION_SIGNATURE) {
+      return {
+        sourceCode: job.code,
+        testcases: job.testcases.map(testcase => ({
+          id: testcase.id,
+          input: testcase.executionInput ?? testcase.input,
+          output: testcase.output,
+          point: testcase.point,
+        })),
+      };
+    }
+
+    if (!job.functionSignature) {
+      throw new Error('Function-signature job is missing functionSignature metadata');
+    }
+
+    const testcaseInputs = job.testcases.map(testcase => {
+      if (!testcase.inputJson || typeof testcase.inputJson !== 'object') {
+        throw new Error(`Function-signature testcase ${testcase.id} is missing inputJson`);
+      }
+      return testcase.inputJson as Record<string, unknown>;
+    });
+
+    const sourceCode = buildFunctionExecutionSource({
+      language: job.language as 'cpp' | 'java' | 'python',
+      userSource: job.code,
+      signature: job.functionSignature,
+      testcases: testcaseInputs,
+    });
+
+    return {
+      sourceCode,
+      testcases: job.testcases.map((testcase, index) => ({
+        id: testcase.id,
+        input: testcase.executionInput ?? String(index),
+        output: testcase.output,
+        point: testcase.point,
+      })),
+    };
+  }
+
+  private remapExecutionResults(job: QueueJob, executionResult: any): any {
+    const testcaseMeta = new Map(
+      job.testcases.map(testcase => [
+        testcase.id,
+        {
+          input: testcase.input,
+          output: testcase.output,
+          isPublic: testcase.isPublic ?? false,
+        },
+      ])
+    );
+
+    if (executionResult.results && Array.isArray(executionResult.results)) {
+      executionResult.results = executionResult.results.map((result: any) => {
+        const testcase = testcaseMeta.get(result.testcaseId);
+        return {
+          ...result,
+          input: testcase?.input ?? result.input,
+          expectedOutput: testcase?.output ?? result.expectedOutput,
+          isPublic: testcase?.isPublic ?? false,
+        };
+      });
+    }
+
+    return executionResult;
+  }
+
   private async processJob(job: QueueJob): Promise<void> {
     logger.info(
       `Processing job for submission ${job.submissionId} (Type: ${job.jobType || 'SUBMISSION'})`
     );
 
-    const { submissionId, code, language, testcases, timeLimit, memoryLimit, jobType } = job;
+    const { submissionId, language, testcases, timeLimit, memoryLimit, jobType } = job;
     const isRunOnly = jobType === 'RUN_CODE';
+    const executionPayload = this.prepareExecutionPayload(job);
 
     await queueService.publish(
       'submission_updates',
@@ -148,27 +223,17 @@ export class WorkerService {
       })
     );
 
-    const executionResult = await this.executeInSandbox({
-      code,
-      language,
-      testcases: testcases.map(tc => ({
-        id: tc.id,
-        input: tc.input,
-        output: tc.output,
-        point: tc.point,
-      })),
-      timeLimit,
-      memoryLimit,
-    });
-
-    const testcaseMap = new Map(testcases.map(tc => [tc.id, tc.isPublic ?? false]));
-
-    if (executionResult.results && Array.isArray(executionResult.results)) {
-      executionResult.results = executionResult.results.map((result: any) => ({
-        ...result,
-        isPublic: testcaseMap.get(result.testcaseId) ?? false,
-      }));
-    }
+    const executionResult = this.remapExecutionResults(
+      job,
+      await this.executeInSandbox({
+        submissionId,
+        code: executionPayload.sourceCode,
+        language,
+        testcases: executionPayload.testcases,
+        timeLimit,
+        memoryLimit,
+      })
+    );
 
     const finalStatus = JudgeUtils.determineFinalStatus(
       executionResult.summary,

@@ -6,6 +6,8 @@ import { SolutionRepository } from '../repositories/solution.repository';
 import { TestcaseRepository } from '../repositories/testcase.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
+import { buildStarterCodeByLanguage } from '@backend/shared/utils';
+import { EProblemJudgeMode } from '@backend/shared/types';
 import {
   ChallengeResponse,
   ProblemInput,
@@ -93,7 +95,12 @@ export class ChallengeService {
         totalPoints,
         isSolved,
         isFavorite,
-        // visibility: problem.visibility,
+        judgeMode: problem.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT,
+        functionSignature: problem.functionSignature ?? undefined,
+        starterCodeByLanguage:
+          problem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && problem.functionSignature
+            ? buildStarterCodeByLanguage(problem.functionSignature as any)
+            : undefined,
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
@@ -101,6 +108,8 @@ export class ChallengeService {
         id: tc.id,
         input: tc.input,
         output: tc.output,
+        inputJson: tc.inputJson ?? undefined,
+        outputJson: tc.outputJson ?? undefined,
         isPublic: tc.isPublic,
         point: tc.point,
         createdAt: tc.createdAt?.toISOString?.() ?? String(tc.createdAt),
@@ -421,6 +430,8 @@ export class ChallengeService {
       topicId: updateData.topicId,
       lessonId: updateData.lessonId,
       difficult: updateData.difficulty,
+      judgeMode: updateData.judgeMode,
+      functionSignature: updateData.functionSignature,
     };
 
     // Remove fields that shouldn't be updated directly
@@ -443,7 +454,18 @@ export class ChallengeService {
     // Handle testcases update if provided
     if (updateData.testcases) {
       logger.info('Updating testcases:', updateData.testcases.length);
-      await this.testcaseRepository.updateTestcasesTransactional(challengeId, updateData.testcases);
+      const effectiveJudgeMode =
+        (updateData.judgeMode as any) ?? existingProblem.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
+      const effectiveFunctionSignature =
+        updateData.functionSignature !== undefined
+          ? updateData.functionSignature
+          : existingProblem.functionSignature;
+      await this.testcaseRepository.updateTestcasesTransactional(
+        challengeId,
+        updateData.testcases,
+        effectiveJudgeMode,
+        effectiveFunctionSignature as any
+      );
     } else {
       logger.info('No testcases provided in updateData');
     }

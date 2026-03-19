@@ -18,7 +18,26 @@ scenarios:
           json:
             problemId: '0f465ec8-b3a7-402e-8d5a-a7e99a2f37cb'
             language: 'cpp'
-            sourceCode: "#include <iostream>\n#include <vector>\n#include <unordered_map>\nusing namespace std;\n\nvector<int> twoSum(vector<int>& nums, int target) {\n    unordered_map<int, int> seen;\n    for (int i = 0; i < nums.size(); i++) {\n        int complement = target - nums[i];\n        if (seen.count(complement)) {\n            return {seen[complement], i};\n        }\n        seen[nums[i]] = i;\n    }\n    return {};\n}\n\nint main() {\n    int n;\n    cin >> n;\n    vector<int> nums(n);\n    for (int i = 0; i < n; i++) {\n        cin >> nums[i];\n    }\n\n    int target;\n    cin >> target;\n\n    vector<int> result = twoSum(nums, target);\n    cout << \"[\" << result[0] << \",\" << result[1] << \"]\" << endl;\n\n    return 0;\n}\n"
+            sourceCode: |
+              #include <unordered_map>
+              #include <vector>
+              using namespace std;
+
+              class Solution {
+              public:
+                  vector<int> twoSum(vector<int>& nums, int target) {
+                      unordered_map<int, int> seen;
+                      for (int i = 0; i < static_cast<int>(nums.size()); ++i) {
+                          int complement = target - nums[i];
+                          auto it = seen.find(complement);
+                          if (it != seen.end()) {
+                              return {it->second, i};
+                          }
+                          seen[nums[i]] = i;
+                      }
+                      return {};
+                  }
+              };
           capture:
             - json: '$.submissionId'
               as: 'submissionId'

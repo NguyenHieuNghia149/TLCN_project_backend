@@ -11,8 +11,9 @@ import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@backend/shared/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@backend/shared/db/schema';
 import { and, desc, eq, gt, ilike, lt, or, inArray, sql, count } from 'drizzle-orm';
-import { ProblemVisibility } from '@backend/shared/types';
+import { EProblemJudgeMode, ProblemVisibility } from '@backend/shared/types';
 import { topics } from '@backend/shared/db/schema';
+import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
 export type ChallengeCreationResult = {
   problem: ProblemEntity;
@@ -45,6 +46,11 @@ export class ProblemRepository extends BaseRepository<
         lessonId: problemData.lessonId,
         topicId: problemData.topicId,
         visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
+        judgeMode: problemData.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT,
+        functionSignature:
+          problemData.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
+            ? (problemData.functionSignature ?? null)
+            : null,
       } as any)
       .returning();
 
@@ -57,8 +63,24 @@ export class ProblemRepository extends BaseRepository<
         .insert(testcases)
         .values(
           testcaseInputs.map(tc => ({
-            input: tc.input,
-            output: tc.output,
+            input:
+              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE &&
+              createdProblem.functionSignature &&
+              tc.inputJson
+                ? buildFunctionInputDisplayValue(createdProblem.functionSignature as any, tc.inputJson as Record<string, unknown>)
+                : tc.input ?? '',
+            output:
+              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && tc.outputJson !== undefined
+                ? canonicalizeStructuredValue(tc.outputJson)
+                : tc.output ?? '',
+            inputJson:
+              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
+                ? (tc.inputJson ?? null)
+                : null,
+            outputJson:
+              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
+                ? (tc.outputJson ?? null)
+                : null,
             isPublic: tc.isPublic ?? false,
             point: tc.point ?? 0,
             problemId: createdProblem.id,

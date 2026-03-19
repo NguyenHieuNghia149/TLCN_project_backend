@@ -89,6 +89,7 @@ services:
       - SETGID
     security_opt:
       - apparmor:unconfined
+      - seccomp=unconfined
     volumes:
       - ./workspace:/app/workspace
       - ./security:/app/security
