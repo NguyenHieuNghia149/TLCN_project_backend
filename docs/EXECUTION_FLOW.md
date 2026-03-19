@@ -165,6 +165,8 @@ submission_error               // Job failed
 
 ### **Sandbox Service (Port 4000)**
 
+Note: /api/sandbox/* endpoints are served by the sandbox service directly for ops/debug and are no longer mounted by the API app.
+
 ```typescript
 // Endpoints
 POST /api/sandbox/execute      // Execute code

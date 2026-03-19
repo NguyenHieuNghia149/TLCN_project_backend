@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { SandboxController } from './sandbox.controller';
-import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { rateLimitMiddleware } from '@backend/shared/http/rate-limit';
 
 const router = Router();
 const sandboxController = new SandboxController();

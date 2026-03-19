@@ -6,7 +6,6 @@ import challengeRoutes from './challenge.routes';
 import topicRoutes from './topic.routes';
 import submissionRoutes from './submission.routes';
 import securityRoutes from './security.routes';
-import sandboxRoutes from '@backend/sandbox/sandbox.routes';
 import lessonRoutes from './lesson.routes';
 import lessonDetailRoutes from './lessonDetail.routes';
 import adminUserRoutes from './admin/adminUser.routes';
@@ -32,7 +31,6 @@ function route(app: Application): void {
   app.use('/api/topics', topicRoutes);
   app.use('/api/submissions', submissionRoutes);
   app.use('/api/security', securityRoutes);
-  app.use('/api/sandbox', sandboxRoutes);
   app.use('/api/lessons', lessonRoutes);
   app.use('/api/lesson-details', lessonDetailRoutes);
   app.use('/api/admin/users', adminUserRoutes);

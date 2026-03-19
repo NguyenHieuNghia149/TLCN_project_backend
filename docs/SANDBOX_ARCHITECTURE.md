@@ -16,7 +16,7 @@ Hệ thống Code Execution Platform đã được tách thành các microservic
 ### 2. **Sandbox Service** (Port 4000)
 
 - **Chức năng**: Isolated code execution environment
-- **Endpoints**: `/api/sandbox/execute`, `/api/sandbox/status`, `/api/sandbox/health`
+- **Endpoints**: `/api/sandbox/execute`, `/api/sandbox/status`, `/api/sandbox/health` (served directly by the sandbox service, not mounted by the API app)
 - **Dependencies**: Docker, Security profiles
 - **Security**: Container isolation, resource limits, malicious code detection
 
@@ -191,6 +191,8 @@ GET  /api/health               # Health check
 ```
 
 ### Sandbox Service (Port 4000)
+
+These /api/sandbox/* endpoints remain available on the sandbox service for ops/debug. The API app no longer mounts them.
 
 ```
 POST /api/sandbox/execute      # Execute code

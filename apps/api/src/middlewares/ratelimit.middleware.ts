@@ -1,39 +1,6 @@
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { ipKeyGenerator } from 'express-rate-limit';
 import { Request, Response } from 'express';
-
-interface RateLimitOptions {
-  windowMs: number;
-  max: number;
-  message?: string;
-  skipSuccessfulRequests?: boolean;
-  skipFailedRequests?: boolean;
-  keyGenerator?: (req: Request, res: Response) => string | Promise<string>;
-}
-
-export const rateLimitMiddleware = (options: RateLimitOptions) => {
-  return rateLimit({
-    windowMs: options.windowMs,
-    max: options.max,
-    message: {
-      success: false,
-      message: options.message || 'Too many requests, please try again later.',
-      code: 'RATE_LIMIT_EXCEEDED',
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: options.skipSuccessfulRequests || false,
-    skipFailedRequests: options.skipFailedRequests || false,
-    keyGenerator: options.keyGenerator,
-    handler: (req: Request, res: Response) => {
-      res.status(429).json({
-        success: false,
-        message: options.message || 'Too many requests, please try again later.',
-        code: 'RATE_LIMIT_EXCEEDED',
-        retryAfter: Math.round(options.windowMs / 1000),
-      });
-    },
-  });
-};
+import { rateLimitMiddleware } from '@backend/shared/http/rate-limit';
 
 export const authLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -80,3 +47,5 @@ export const userSpecificLimiter = rateLimitMiddleware({
   },
   message: 'Too many requests from this user, please try again later.',
 });
+
+export { rateLimitMiddleware };

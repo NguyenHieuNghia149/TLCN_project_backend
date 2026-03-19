@@ -152,6 +152,8 @@ Authorization: Bearer <your_token_here>
 Nếu muốn test sandbox trực tiếp:
 
 ```
+Sandbox service ownership note: call these endpoints directly on the sandbox service host/port. They are no longer mounted by the API app.
+
 POST http://localhost:4000/api/sandbox/execute
 Content-Type: application/json
 

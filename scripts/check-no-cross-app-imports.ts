@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs';
+import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = path.resolve(__dirname, '..');
@@ -6,18 +6,17 @@ const targets = [
   {
     scope: 'worker',
     root: path.join(rootDir, 'apps', 'worker'),
-    patterns: [
-      { name: 'api-services-import', regex: /@backend\/api\/services/g },
-      { name: 'api-repositories-import', regex: /@backend\/api\/repositories/g },
-    ],
+    patterns: [{ name: 'api-cross-import', regex: /@backend\/api\//g }],
   },
   {
     scope: 'sandbox',
     root: path.join(rootDir, 'apps', 'sandbox'),
-    patterns: [
-      { name: 'api-services-import', regex: /@backend\/api\/services/g },
-      { name: 'api-repositories-import', regex: /@backend\/api\/repositories/g },
-    ],
+    patterns: [{ name: 'api-cross-import', regex: /@backend\/api\//g }],
+  },
+  {
+    scope: 'api',
+    root: path.join(rootDir, 'apps', 'api'),
+    patterns: [{ name: 'sandbox-cross-import', regex: /@backend\/sandbox\//g }],
   },
 ] as const;
 const fileExtensions = new Set(['.ts', '.js']);
@@ -34,8 +33,10 @@ function shouldSkip(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/');
   return (
     normalized.includes('/tests/') ||
+    normalized.includes('/scripts/archive/') ||
     normalized.endsWith('.test.ts') ||
-    normalized.endsWith('.spec.ts')
+    normalized.endsWith('.spec.ts') ||
+    normalized.includes('/migrations/')
   );
 }
 
@@ -59,7 +60,11 @@ function collectFiles(currentPath: string, files: string[]): void {
   files.push(currentPath);
 }
 
-function findViolations(filePath: string, scope: string, patterns: readonly { name: string; regex: RegExp }[]): Violation[] {
+function findViolations(
+  filePath: string,
+  scope: string,
+  patterns: readonly { name: string; regex: RegExp }[]
+): Violation[] {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
   const violations: Violation[] = [];
