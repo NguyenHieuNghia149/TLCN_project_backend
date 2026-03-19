@@ -1,34 +1,21 @@
-export type ScalarTypeName = 'int' | 'long' | 'double' | 'bool' | 'string';
+﻿export type FunctionScalarType = 'integer' | 'string' | 'boolean';
 
-export interface ScalarTypeDescriptor {
-  kind: 'scalar';
-  name: ScalarTypeName;
-}
+export type FunctionTypeNode =
+  | { type: FunctionScalarType }
+  | { type: 'array'; items: FunctionScalarType };
 
-export interface ArrayTypeDescriptor {
-  kind: 'array';
-  element: ScalarTypeName;
-}
-
-export interface MatrixTypeDescriptor {
-  kind: 'matrix';
-  element: ScalarTypeName;
-}
-
-export type FunctionValueTypeDescriptor =
-  | ScalarTypeDescriptor
-  | ArrayTypeDescriptor
-  | MatrixTypeDescriptor;
-
-export interface FunctionParameter {
+export interface FunctionArgument {
   name: string;
-  type: FunctionValueTypeDescriptor;
+  type: FunctionScalarType | 'array';
+  items?: FunctionScalarType;
 }
 
 export interface FunctionSignature {
-  methodName: string;
-  parameters: FunctionParameter[];
-  returnType: FunctionValueTypeDescriptor;
+  name: string;
+  args: FunctionArgument[];
+  returnType: FunctionTypeNode;
 }
 
 export type FunctionStarterCodeByLanguage = Partial<Record<'cpp' | 'java' | 'python', string>>;
+
+

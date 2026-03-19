@@ -1,4 +1,4 @@
-import {
+﻿import {
   FavoriteRepository,
   FavoriteWithProblem,
   FavoriteWithLesson,
@@ -20,7 +20,7 @@ import {
   ProblemResponseSchema,
 } from '@backend/shared/validations/problem.validation';
 import { LessonEntity } from '@backend/shared/db/schema';
-import { buildStarterCodeByLanguage } from '@backend/shared/utils';
+import { buildStarterCodeByLanguage, logger } from '@backend/shared/utils';
 import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
 
 export class FavoriteService {
@@ -235,6 +235,22 @@ export class FavoriteService {
     return new Date(value).toISOString();
   }
 
+  private buildStarterCodeByLanguageSafe(functionSignature?: FunctionSignature | null) {
+    if (!functionSignature) {
+      return { cpp: '', java: '', python: '' };
+    }
+
+    try {
+      return buildStarterCodeByLanguage(functionSignature);
+    } catch (error) {
+      logger.warn('Failed to build starter code for favorite problem response', {
+        error,
+        functionSignature,
+      });
+      return { cpp: '', java: '', python: '' };
+    }
+  }
+
   private mapProblemToResponse(
     problem: {
       id: string;
@@ -258,6 +274,14 @@ export class FavoriteService {
       ? (problem.difficult as 'easy' | 'medium' | 'hard')
       : 'easy';
 
+    if (!problem.functionSignature) {
+      throw new BaseException(
+        'Problem functionSignature is not configured',
+        500,
+        'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+      );
+    }
+
     const response: ProblemResponse = {
       id: problem.id,
       title: problem.title,
@@ -273,15 +297,9 @@ export class FavoriteService {
       totalPoints,
       isSolved: options?.isSolved ?? false,
       isFavorite: options?.isFavorite ?? false,
-      judgeMode:
-        problem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
-          ? EProblemJudgeMode.FUNCTION_SIGNATURE
-          : EProblemJudgeMode.STDIN_STDOUT,
-      functionSignature: problem.functionSignature ?? undefined,
-      starterCodeByLanguage:
-        problem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && problem.functionSignature
-          ? buildStarterCodeByLanguage(problem.functionSignature)
-          : undefined,
+      judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
+      functionSignature: problem.functionSignature,
+      starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(problem.functionSignature),
       createdAt: this.formatDate(problem.createdAt),
       updatedAt: this.formatDate(problem.updatedAt),
     };
@@ -432,3 +450,5 @@ export class FavoriteService {
     };
   }
 }
+
+

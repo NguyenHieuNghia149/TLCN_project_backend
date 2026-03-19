@@ -4,11 +4,6 @@ import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
 import { sandboxService } from '../sandbox.service';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Load .proto from packages/shared/proto/sandbox.proto
-// Using path.resolve from __dirname to be cwd-independent.
-// ISOLATION RULE: This file must NOT import anything from @backend/api/*
-// ─────────────────────────────────────────────────────────────────────────────
 const PROTO_PATH = path.resolve(__dirname, '../../../../packages/shared/proto/sandbox.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
@@ -21,20 +16,15 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 
 const judgeProto = grpc.loadPackageDefinition(packageDefinition) as any;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// gRPC Handler: ExecuteCode
-// Maps the proto ExecutionRequest → sandboxService.executeCode → ExecutionResponse
-// ─────────────────────────────────────────────────────────────────────────────
 async function executeCode(
   call: grpc.ServerUnaryCall<any, any>,
   callback: grpc.sendUnaryData<any>
 ): Promise<void> {
   const req = call.request;
 
-  logger.info(`[gRPC] ExecuteCode received — submission_id: ${req.submission_id}`);
+  logger.info(`[gRPC] ExecuteCode received - submission_id: ${req.submission_id}`);
 
   try {
-    // Map proto TestCase[] → internal ExecutionConfig format
     const testcases = (req.test_cases || []).map((tc: any) => ({
       id: tc.id,
       input: tc.input,
@@ -47,11 +37,11 @@ async function executeCode(
       language: req.language,
       timeLimit: req.time_limit_ms,
       memoryLimit: `${Math.floor(req.memory_limit_kb / 1024)}m`,
+      executionMode: req.execution_mode,
       testcases,
     });
 
     if (!result.success) {
-      // Compile error or execution error
       const response = {
         submission_id: req.submission_id,
         overall_status: 'COMPILE_ERROR',
@@ -61,15 +51,14 @@ async function executeCode(
       return callback(null, response);
     }
 
-    // Map internal results → proto TestCaseResult[]
     const protoResults = (result.result?.results || []).map((r: any) => ({
       test_case_id: r.testcaseId || '',
       status: r.isPassed
         ? 'ACCEPTED'
-        : r.error?.includes('time')
+        : r.error?.toLowerCase().includes('time')
           ? 'TIME_LIMIT_EXCEEDED'
           : 'WRONG_ANSWER',
-      time_taken_ms: r.executionTime || 0,
+      time_taken_ms: Math.round(r.executionTime || 0),
       memory_used_kb: 0,
       actual_output: r.actualOutput || '',
       error_message: r.error || '',
@@ -94,9 +83,6 @@ async function executeCode(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Create and start gRPC server
-// ─────────────────────────────────────────────────────────────────────────────
 export function createGrpcServer(): grpc.Server {
   const server = new grpc.Server();
 

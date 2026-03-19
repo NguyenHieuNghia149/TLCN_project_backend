@@ -1,4 +1,10 @@
-import { JudgeUtils, logger, buildFunctionExecutionSource } from '@backend/shared/utils';
+﻿import {
+  JudgeUtils,
+  logger,
+  buildFunctionExecutionSource,
+  normalizeRuntimeSignature,
+  NormalizerError,
+} from '@backend/shared/utils';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { queueService, QueueJob } from '@backend/api/services/queue.service';
@@ -7,11 +13,21 @@ import { ExamService } from '@backend/api/services/exam.service';
 import { EProblemJudgeMode, ESubmissionStatus } from '@backend/shared/types';
 import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
 import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
+import { generateWrapper } from './services/wrapperGenerator';
+
+type ExecutionMode = 'wrapper' | 'legacy';
+
+type PreparedExecutionPayload = {
+  sourceCode: string;
+  executionMode: ExecutionMode;
+  testcases: Array<{ id: string; input: string; output: string; point: number }>;
+};
 
 export class WorkerService {
   private workerId: string;
   private totalProcessed: number = 0;
   private totalErrors: number = 0;
+  private legacyFallbackCount: number = 0;
   private worker: Worker | null = null;
   private breaker: SandboxBreaker | null = null;
   private examFinalizerInterval: NodeJS.Timeout | null = null;
@@ -36,8 +52,8 @@ export class WorkerService {
 
       this.worker = new Worker(
         'judge_queue',
-        async (job: Job) => {
-          await this.processJob(job.data as QueueJob);
+        async (bullJob: Job) => {
+          await this.processJob(bullJob);
         },
         {
           connection: connection as any,
@@ -55,15 +71,27 @@ export class WorkerService {
 
       this.worker.on('failed', async (job: Job | undefined, err: Error) => {
         if (job) {
+          const failureReason = (err as any)?.failureReason as string | undefined;
+          const normalizerCode = (err as any)?.normalizerCode as string | undefined;
+
           logger.error(
             `Job ${job.id} failed (Attempt ${job.attemptsMade}/${job.opts.attempts}):`,
             err.message
           );
+
+          if (failureReason) {
+            logger.error(`Job ${job.id} failed with reason=${failureReason}${normalizerCode ? ` code=${normalizerCode}` : ''}`);
+          }
+
           this.totalErrors++;
 
-          if (job.attemptsMade >= (job.opts.attempts || 3)) {
-            logger.error(`Job ${job.id} exhausted all attempts. Setting to SYSTEM_ERROR.`);
-            const queueJob = job.data as QueueJob;
+          const queueJob = job.data as QueueJob;
+          const maxAttempts = job.opts.attempts || 3;
+          const shouldFinalizeFailure =
+            failureReason === 'signature_validation' || job.attemptsMade >= maxAttempts;
+
+          if (shouldFinalizeFailure) {
+            logger.error(`Job ${job.id} exhausted all attempts or hit a non-retryable error. Setting to SYSTEM_ERROR.`);
 
             try {
               if (queueJob.jobType !== 'RUN_CODE') {
@@ -78,6 +106,11 @@ export class WorkerService {
                 });
               }
 
+              const message =
+                failureReason === 'signature_validation'
+                  ? `System error during execution (Invalid function signature metadata: ${normalizerCode || 'unknown'})`
+                  : 'System error during execution (Max retries exceeded)';
+
               await queueService.publish(
                 'submission_updates',
                 JSON.stringify({
@@ -85,7 +118,8 @@ export class WorkerService {
                   data: {
                     submissionId: queueJob.submissionId,
                     status: ESubmissionStatus.SYSTEM_ERROR,
-                    message: 'System error during execution (Max retries exceeded)',
+                    message,
+                    failureReason,
                   },
                 })
               );
@@ -128,15 +162,61 @@ export class WorkerService {
     }
   }
 
-  private prepareExecutionPayload(job: QueueJob): {
-    sourceCode: string;
-    testcases: Array<{ id: string; input: string; output: string; point: number }>;
-  } {
+  private isStructuredInput(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private resolveStructuredTestcaseInput(testcase: QueueJob['testcases'][number]): Record<string, unknown> {
+    if (this.isStructuredInput(testcase.inputJson)) {
+      return testcase.inputJson;
+    }
+
+    if (typeof testcase.input === 'string' && testcase.input.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(testcase.input);
+        if (this.isStructuredInput(parsed)) {
+          return parsed;
+        }
+      } catch (error) {
+        logger.warn(`Failed to parse legacy structured input for testcase ${testcase.id}: ${String(error)}`);
+      }
+    }
+
+    throw new Error(`Function-signature testcase ${testcase.id} is missing structured input data`);
+  }
+
+  private buildLegacyFunctionPayload(job: QueueJob): PreparedExecutionPayload {
+    this.legacyFallbackCount++;
+    logger.warn(`job ${job.submissionId} has no inputJson; falling back to legacy buildFunctionExecutionSource`);
+
+    const testcaseInputs = job.testcases.map(testcase => this.resolveStructuredTestcaseInput(testcase));
+
+    const sourceCode = buildFunctionExecutionSource({
+      language: job.language as 'cpp' | 'java' | 'python',
+      userSource: job.code,
+      signature: job.functionSignature as any,
+      testcases: testcaseInputs,
+    });
+
+    return {
+      sourceCode,
+      executionMode: 'legacy',
+      testcases: job.testcases.map((testcase, index) => ({
+        id: testcase.id,
+        input: testcase.executionInput ?? String(index),
+        output: testcase.output,
+        point: testcase.point,
+      })),
+    };
+  }
+
+  private prepareExecutionPayload(job: QueueJob): PreparedExecutionPayload {
     const judgeMode = job.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
 
     if (judgeMode !== EProblemJudgeMode.FUNCTION_SIGNATURE) {
       return {
         sourceCode: job.code,
+        executionMode: 'legacy',
         testcases: job.testcases.map(testcase => ({
           id: testcase.id,
           input: testcase.executionInput ?? testcase.input,
@@ -150,25 +230,36 @@ export class WorkerService {
       throw new Error('Function-signature job is missing functionSignature metadata');
     }
 
-    const testcaseInputs = job.testcases.map(testcase => {
-      if (!testcase.inputJson || typeof testcase.inputJson !== 'object') {
-        throw new Error(`Function-signature testcase ${testcase.id} is missing inputJson`);
-      }
-      return testcase.inputJson as Record<string, unknown>;
-    });
+    const requestedExecutionMode = job.executionMode;
+    const hasStructuredInputs = job.testcases.every(testcase => this.isStructuredInput(testcase.inputJson));
 
-    const sourceCode = buildFunctionExecutionSource({
-      language: job.language as 'cpp' | 'java' | 'python',
-      userSource: job.code,
-      signature: job.functionSignature,
-      testcases: testcaseInputs,
-    });
+    if (requestedExecutionMode === 'wrapper' && !hasStructuredInputs) {
+      throw new Error(
+        `Function-signature job ${job.submissionId} requested wrapper mode but testcase inputJson is missing`
+      );
+    }
+
+    if (requestedExecutionMode === 'legacy') {
+      return this.buildLegacyFunctionPayload(job);
+    }
+
+    if (!hasStructuredInputs) {
+      return this.buildLegacyFunctionPayload(job);
+    }
+
+    const normalizedSignature = normalizeRuntimeSignature(job.functionSignature);
+    const sourceCode = generateWrapper(
+      job.language as 'cpp' | 'java' | 'python',
+      normalizedSignature,
+      job.code
+    );
 
     return {
       sourceCode,
-      testcases: job.testcases.map((testcase, index) => ({
+      executionMode: 'wrapper',
+      testcases: job.testcases.map(testcase => ({
         id: testcase.id,
-        input: testcase.executionInput ?? String(index),
+        input: JSON.stringify(testcase.inputJson),
         output: testcase.output,
         point: testcase.point,
       })),
@@ -202,68 +293,84 @@ export class WorkerService {
     return executionResult;
   }
 
-  private async processJob(job: QueueJob): Promise<void> {
+  private async processJob(bullJob: Job): Promise<void> {
+    const job = bullJob.data as QueueJob;
+
     logger.info(
       `Processing job for submission ${job.submissionId} (Type: ${job.jobType || 'SUBMISSION'})`
     );
 
-    const { submissionId, language, testcases, timeLimit, memoryLimit, jobType } = job;
-    const isRunOnly = jobType === 'RUN_CODE';
-    const executionPayload = this.prepareExecutionPayload(job);
+    try {
+      const { submissionId, language, testcases, timeLimit, memoryLimit, jobType } = job;
+      const isRunOnly = jobType === 'RUN_CODE';
+      const executionPayload = this.prepareExecutionPayload(job);
 
-    await queueService.publish(
-      'submission_updates',
-      JSON.stringify({
-        submissionId,
-        data: {
+      await queueService.publish(
+        'submission_updates',
+        JSON.stringify({
           submissionId,
-          status: ESubmissionStatus.RUNNING,
-          message: 'Compiling and Running...',
-        },
-      })
-    );
+          data: {
+            submissionId,
+            status: ESubmissionStatus.RUNNING,
+            message: 'Compiling and Running...',
+          },
+        })
+      );
 
-    const executionResult = this.remapExecutionResults(
-      job,
-      await this.executeInSandbox({
-        submissionId,
-        code: executionPayload.sourceCode,
-        language,
-        testcases: executionPayload.testcases,
-        timeLimit,
-        memoryLimit,
-      })
-    );
-
-    const finalStatus = JudgeUtils.determineFinalStatus(
-      executionResult.summary,
-      executionResult.results
-    );
-    const score = JudgeUtils.calculateScore(executionResult.results, testcases);
-
-    if (!isRunOnly) {
-      await submissionService.updateSubmissionResult(submissionId, {
-        status: finalStatus as any,
-        score,
-        result: executionResult,
-      });
-    }
-
-    await queueService.publish(
-      'submission_updates',
-      JSON.stringify({
-        submissionId,
-        data: {
+      const executionResult = this.remapExecutionResults(
+        job,
+        await this.executeInSandbox({
           submissionId,
-          status: finalStatus,
-          result: executionResult,
+          code: executionPayload.sourceCode,
+          language,
+          testcases: executionPayload.testcases,
+          timeLimit,
+          memoryLimit,
+          executionMode: executionPayload.executionMode,
+        })
+      );
+
+      const finalStatus = JudgeUtils.determineFinalStatus(
+        executionResult.summary,
+        executionResult.results
+      );
+      const score = JudgeUtils.calculateScore(executionResult.results, testcases);
+
+      if (!isRunOnly) {
+        await submissionService.updateSubmissionResult(submissionId, {
+          status: finalStatus as any,
           score,
-          isRunOnly,
-        },
-      })
-    );
+          result: executionResult,
+        });
+      }
 
-    this.totalProcessed++;
+      await queueService.publish(
+        'submission_updates',
+        JSON.stringify({
+          submissionId,
+          data: {
+            submissionId,
+            status: finalStatus,
+            result: executionResult,
+            score,
+            isRunOnly,
+          },
+        })
+      );
+
+      this.totalProcessed++;
+    } catch (error) {
+      if (error instanceof NormalizerError) {
+        bullJob.discard();
+        const wrappedError = new Error(`Function signature validation failed: ${error.message}`);
+        wrappedError.name = 'WorkerSignatureValidationError';
+        (wrappedError as any).failureReason = 'signature_validation';
+        (wrappedError as any).normalizerCode = error.code;
+        throw wrappedError;
+      }
+
+      throw error;
+    }
   }
 
   private async testSandboxService(): Promise<boolean> {
@@ -274,6 +381,7 @@ export class WorkerService {
         language: 'python',
         time_limit_ms: 5000,
         memory_limit_kb: 65536,
+        execution_mode: 'legacy',
         test_cases: [{ id: 'probe', input: '', expected_output: '1' }],
       };
       await sandboxGrpcClient.executeCode(probe);
@@ -290,6 +398,7 @@ export class WorkerService {
       language: config.language,
       time_limit_ms: config.timeLimit || 5000,
       memory_limit_kb: config.memoryLimit ? parseInt(config.memoryLimit) * 1024 : 262144,
+      execution_mode: (config.executionMode || 'legacy') as ExecutionMode,
       test_cases: (config.testcases || []).map((tc: any) => ({
         id: tc.id,
         input: tc.input || '',
@@ -356,6 +465,7 @@ export class WorkerService {
       workerId: this.workerId,
       totalProcessed: this.totalProcessed,
       totalErrors: this.totalErrors,
+      legacyFallbackCount: this.legacyFallbackCount,
       sandboxGrpcUrl: process.env.SANDBOX_GRPC_URL || 'localhost:50051',
       circuitBreakerOpen: this.breaker ? this.breaker.opened : false,
     };
@@ -363,3 +473,6 @@ export class WorkerService {
 }
 
 export const workerService = new WorkerService();
+
+
+

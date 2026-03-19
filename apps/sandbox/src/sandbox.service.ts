@@ -1,14 +1,11 @@
 import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
+import { isDeepStrictEqual } from 'node:util';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as yaml from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
 import { SandboxConfig as GlobalSandboxConfig } from '../../../config/sandbox.config';
-import {
-  ExecutionResult,
-  Testcase,
-  ExecutionConfig,
-} from '@backend/shared/validations/submission.validation';
+import { ExecutionResult, ExecutionConfig } from '@backend/shared/validations/submission.validation';
 import { securityService } from '@backend/api/services/security.service';
 import { monitoringService } from '@backend/api/services/monitoring.service';
 
@@ -41,6 +38,13 @@ export interface SandboxResponse {
   };
   error?: string;
 }
+
+type ResolvedExecutionMode = 'wrapper' | 'legacy';
+
+type WrapperEnvelope = {
+  actual_output: unknown;
+  time_taken_ms: number;
+};
 
 export class SandboxService {
   private config: SandboxConfig;
@@ -83,37 +87,27 @@ export class SandboxService {
     }
   }
 
-  /**
-   * Execute code in isolated nsjail environment
-   */
   async executeCode(config: ExecutionConfig): Promise<SandboxResponse> {
     const executionId = uuidv4();
     const jobDir = path.join(this.workspaceDir, executionId);
     const startTime = Date.now();
 
     try {
-      // Check concurrent job limit
       if (this.activeJobs.size >= this.config.maxConcurrent) {
         throw new Error('Sandbox is at maximum capacity');
       }
 
-      // Register active job
       this.activeJobs.set(executionId, {
         startTime,
         config,
         status: 'running',
       });
 
-      // Validate code security (Mental/Static Check)
       this.validateCodeSecurity(config.code, config.language);
-
-      // 1. Create isolated workspace
       await this.createIsolatedWorkspace(jobDir, config);
 
-      // 2. Execute code with Task 4.4: Two-Step Engine
       const result = await this.executeInSandbox(jobDir, config);
 
-      // Clean up
       this.cleanupWorkspace(jobDir);
       this.activeJobs.delete(executionId);
 
@@ -126,7 +120,6 @@ export class SandboxService {
         },
       };
     } catch (error: any) {
-      // Clean up on error
       this.cleanupWorkspace(jobDir);
       this.activeJobs.delete(executionId);
 
@@ -148,6 +141,111 @@ export class SandboxService {
     }
   }
 
+  private resolveExecutionMode(mode: string | undefined): ResolvedExecutionMode {
+    if (mode === 'wrapper' || mode === 'legacy') {
+      return mode;
+    }
+
+    if (typeof mode === 'string' && mode.trim().length > 0) {
+      logger.warn(`Unknown executionMode "${mode}" received. Falling back to legacy mode.`);
+    } else {
+      logger.warn('Missing executionMode received. Falling back to legacy mode.');
+    }
+
+    return 'legacy';
+  }
+
+  private getLastNonEmptyLine(stdout: string): string {
+    const lines = stdout.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+    return lines.at(-1) ?? '';
+  }
+
+  private tryParseJson(text: string): { success: true; value: unknown } | { success: false } {
+    const candidate = this.trimOutput(text);
+    if (!candidate) {
+      return { success: false };
+    }
+
+    try {
+      return { success: true, value: JSON.parse(candidate) };
+    } catch {
+      return { success: false };
+    }
+  }
+
+  private parseWrapperEnvelope(stdout: string):
+    | { valid: true; envelope: WrapperEnvelope }
+    | { valid: false; error: string } {
+    const candidate = this.getLastNonEmptyLine(stdout);
+    if (!candidate) {
+      return { valid: false, error: 'wrapper envelope missing or malformed' };
+    }
+
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return { valid: false, error: 'wrapper envelope missing or malformed' };
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(parsed, 'actual_output')) {
+        return { valid: false, error: 'wrapper envelope missing or malformed' };
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(parsed, 'time_taken_ms')) {
+        return { valid: false, error: 'wrapper envelope missing or malformed' };
+      }
+
+      const timeTakenMs = (parsed as Record<string, unknown>).time_taken_ms;
+      if (typeof timeTakenMs !== 'number' || Number.isNaN(timeTakenMs) || timeTakenMs < 0) {
+        return {
+          valid: false,
+          error: 'invalid envelope: time_taken_ms must be a non-negative number',
+        };
+      }
+
+      return {
+        valid: true,
+        envelope: {
+          actual_output: (parsed as Record<string, unknown>).actual_output,
+          time_taken_ms: timeTakenMs,
+        },
+      };
+    } catch {
+      return { valid: false, error: 'wrapper envelope missing or malformed' };
+    }
+  }
+
+  private compareWrapperOutput(expectedOutput: string, actualOutput: unknown): boolean {
+    const parsedExpected = this.tryParseJson(expectedOutput);
+    if (parsedExpected.success) {
+      return isDeepStrictEqual(parsedExpected.value, actualOutput);
+    }
+
+    return JSON.stringify(actualOutput) === this.trimOutput(expectedOutput);
+  }
+
+  private compareLegacyOutput(expectedOutput: string, actualOutput: string): boolean {
+    const parsedExpected = this.tryParseJson(expectedOutput);
+    const parsedActual = this.tryParseJson(actualOutput);
+
+    if (parsedExpected.success && parsedActual.success) {
+      return isDeepStrictEqual(parsedExpected.value, parsedActual.value);
+    }
+
+    return this.trimOutput(actualOutput) === this.trimOutput(expectedOutput);
+  }
+
+  private buildFailureContext(reason: string, stdout: string, stderr: string): string {
+    const safeStdout = this.trimOutput(stdout);
+    const safeStderr = this.trimOutput(stderr);
+
+    return [
+      reason,
+      `stdout: ${safeStdout || '<empty>'}`,
+      `stderr: ${safeStderr || '<empty>'}`,
+    ].join('\n');
+  }
+
   private async createIsolatedWorkspace(jobDir: string, config: ExecutionConfig): Promise<void> {
     FsUtils.ensureDir(jobDir);
     const langConfig = this.getLanguageConfig(config.language);
@@ -164,10 +262,10 @@ export class SandboxService {
 
   private async executeInSandbox(jobDir: string, config: ExecutionConfig): Promise<any> {
     const langConfig = this.getLanguageConfig(config.language);
+    const executionMode = this.resolveExecutionMode(config.executionMode);
     const results: any[] = [];
     let passed = 0;
 
-    // Step 1: Compile (If needed) - Native execution within sandbox container
     if (langConfig.compile) {
       try {
         await this.compileCode(jobDir, langConfig);
@@ -187,14 +285,13 @@ export class SandboxService {
             isPassed: false,
             executionTime: 0,
             memoryUse: null,
-            error: compileError.message,
+            error: this.buildFailureContext(compileError.message, '', ''),
             stderr: compileError.message,
           })),
         };
       }
     }
 
-    // Step 2: Execute Test Cases - Wrapped in NSJAIL
     for (let i = 0; i < config.testcases.length; i++) {
       const testcase = config.testcases[i];
       if (!testcase) continue;
@@ -202,25 +299,74 @@ export class SandboxService {
       const testStart = Date.now();
       try {
         const result = await this.runWithNsjail(jobDir, langConfig, testcase.input || '', config);
+        const rawStdout = result.stdout || '';
+        const rawStderr = result.stderr || '';
+        const expectedOutput = this.trimOutput(testcase.output || '');
 
-        const expected = this.trimOutput(testcase.output || '');
-        const actual = this.trimOutput(result.stdout || '');
-        const ok = actual === expected && result.exitCode === 0;
+        if (executionMode === 'wrapper') {
+          const envelopeResult = this.parseWrapperEnvelope(rawStdout);
+          if (!envelopeResult.valid) {
+            results.push({
+              testcaseId: testcase.id,
+              input: testcase.input || '',
+              expectedOutput,
+              actualOutput: null,
+              isPassed: false,
+              executionTime: 0,
+              memoryUse: null,
+              error: this.buildFailureContext(envelopeResult.error, rawStdout, rawStderr),
+              stderr: rawStderr,
+            });
+            continue;
+          }
 
-        if (ok) passed++;
+          const actualOutput = JSON.stringify(envelopeResult.envelope.actual_output);
+          const ok =
+            result.exitCode === 0 &&
+            this.compareWrapperOutput(expectedOutput, envelopeResult.envelope.actual_output);
 
-        const errorMessage = !ok ? result.stderr || 'Wrong Answer' : null;
+          if (ok) {
+            passed++;
+          }
+
+          const failureReason =
+            result.exitCode !== 0 ? `Process exited with code ${result.exitCode}` : 'Wrong Answer';
+
+          results.push({
+            testcaseId: testcase.id,
+            input: testcase.input || '',
+            expectedOutput,
+            actualOutput,
+            isPassed: ok,
+            executionTime: envelopeResult.envelope.time_taken_ms,
+            memoryUse: null,
+            error: ok ? null : this.buildFailureContext(failureReason, rawStdout, rawStderr),
+            stderr: rawStderr,
+          });
+
+          continue;
+        }
+
+        const actualOutput = this.trimOutput(rawStdout);
+        const ok = result.exitCode === 0 && this.compareLegacyOutput(expectedOutput, actualOutput);
+
+        if (ok) {
+          passed++;
+        }
+
+        const failureReason =
+          result.exitCode !== 0 ? `Process exited with code ${result.exitCode}` : 'Wrong Answer';
 
         results.push({
           testcaseId: testcase.id,
           input: testcase.input || '',
-          expectedOutput: expected,
-          actualOutput: actual,
+          expectedOutput,
+          actualOutput,
           isPassed: ok,
           executionTime: Date.now() - testStart,
           memoryUse: null,
-          error: errorMessage,
-          stderr: result.stderr,
+          error: ok ? null : this.buildFailureContext(failureReason, rawStdout, rawStderr),
+          stderr: rawStderr,
         });
       } catch (error: any) {
         results.push({
@@ -229,9 +375,10 @@ export class SandboxService {
           expectedOutput: testcase.output || '',
           actualOutput: null,
           isPassed: false,
-          executionTime: Date.now() - testStart,
+          executionTime: executionMode === 'wrapper' ? 0 : Date.now() - testStart,
           memoryUse: null,
-          error: error.message,
+          error: this.buildFailureContext(error.message, '', ''),
+          stderr: '',
         });
       }
     }
@@ -284,7 +431,6 @@ export class SandboxService {
     const languageValue = String(langConfig?.value || config.language || '').toLowerCase();
 
     if (languageValue === 'java') {
-      // The JVM needs a much larger baseline address space than native runtimes.
       return Math.max(requestedMb, 1024);
     }
 
@@ -312,7 +458,6 @@ export class SandboxService {
         .replace('$TIME_LIMIT', `${timeLimitS}s`)
     );
 
-    // Hardened NSJAIL Configuration
     const nsjailArgs = [
       '--mode',
       'onc',
@@ -324,8 +469,8 @@ export class SandboxService {
       '--rlimit_as',
       `${this.resolveAddressSpaceLimit(config, langConfig)}`,
       '--rlimit_fsize',
-      '2', // Task 4.2: Output size limit 2MB
-      '--disable_clone_newnet', // Task 4.4: No Network
+      '2',
+      '--disable_clone_newnet',
       '--chroot',
       '/',
       '-R',
@@ -367,7 +512,7 @@ export class SandboxService {
         if (killed) return reject(new Error(`Time limit exceeded (${config.timeLimit}ms)`));
 
         resolve({
-          stdout: stdout.substring(0, 10000), // Safety internal cap
+          stdout: stdout.substring(0, 10000),
           stderr: stderr.trim(),
           exitCode: code || 0,
           executionTime: 0,

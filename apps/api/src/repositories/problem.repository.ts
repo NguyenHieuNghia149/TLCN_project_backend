@@ -1,4 +1,4 @@
-import {
+﻿import {
   ProblemEntity,
   ProblemInsert,
   problems,
@@ -46,11 +46,9 @@ export class ProblemRepository extends BaseRepository<
         lessonId: problemData.lessonId,
         topicId: problemData.topicId,
         visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
-        judgeMode: problemData.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT,
-        functionSignature:
-          problemData.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
-            ? (problemData.functionSignature ?? null)
-            : null,
+        judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
+        functionSignature: problemData.functionSignature,
+
       } as any)
       .returning();
 
@@ -63,24 +61,13 @@ export class ProblemRepository extends BaseRepository<
         .insert(testcases)
         .values(
           testcaseInputs.map(tc => ({
-            input:
-              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE &&
-              createdProblem.functionSignature &&
-              tc.inputJson
-                ? buildFunctionInputDisplayValue(createdProblem.functionSignature as any, tc.inputJson as Record<string, unknown>)
-                : tc.input ?? '',
-            output:
-              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && tc.outputJson !== undefined
-                ? canonicalizeStructuredValue(tc.outputJson)
-                : tc.output ?? '',
-            inputJson:
-              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
-                ? (tc.inputJson ?? null)
-                : null,
-            outputJson:
-              createdProblem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
-                ? (tc.outputJson ?? null)
-                : null,
+            input: buildFunctionInputDisplayValue(
+              problemData.functionSignature,
+              tc.inputJson as Record<string, unknown>
+            ),
+            output: canonicalizeStructuredValue(tc.outputJson),
+            inputJson: tc.inputJson ?? null,
+            outputJson: tc.outputJson ?? null,
             isPublic: tc.isPublic ?? false,
             point: tc.point ?? 0,
             problemId: createdProblem.id,
@@ -444,3 +431,5 @@ export class ProblemRepository extends BaseRepository<
       .limit(limit);
   }
 }
+
+

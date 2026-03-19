@@ -8,3 +8,4 @@ export * from './logger';
 export * from './response';
 export * from './security';
 export * from './function-signature';
+export * from './ast-normalizer';

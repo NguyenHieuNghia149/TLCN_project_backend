@@ -26,6 +26,7 @@ export interface QueueJob {
   language: string;
   judgeMode?: EProblemJudgeMode;
   functionSignature?: FunctionSignature | null;
+  executionMode?: 'wrapper' | 'legacy';
   testcases: QueueJobTestcase[];
   timeLimit: number;
   memoryLimit: string;
@@ -130,3 +131,4 @@ export class QueueService {
 }
 
 export const queueService = new QueueService();
+

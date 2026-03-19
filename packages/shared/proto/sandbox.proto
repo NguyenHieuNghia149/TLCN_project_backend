@@ -12,6 +12,7 @@ message ExecutionRequest {
   int32 time_limit_ms = 4;
   int32 memory_limit_kb = 5;
   repeated TestCase test_cases = 6;
+  string execution_mode = 7;
 }
 
 message TestCase {

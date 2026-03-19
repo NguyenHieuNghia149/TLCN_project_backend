@@ -1,4 +1,4 @@
-import { logger } from '@backend/shared/utils';
+﻿import { logger } from '@backend/shared/utils';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { ChallengeHasSubmissionsException } from '../exceptions/challenge.exceptions';
 import { ProblemRepository } from '../repositories/problem.repository';
@@ -70,6 +70,22 @@ export class ChallengeService {
     }
   }
 
+  private buildStarterCodeByLanguageSafe(functionSignature: any) {
+    if (!functionSignature) {
+      return { cpp: '', java: '', python: '' };
+    }
+
+    try {
+      return buildStarterCodeByLanguage(functionSignature);
+    } catch (error) {
+      logger.warn('Failed to build starter code for challenge response', {
+        error,
+        functionSignature,
+      });
+      return { cpp: '', java: '', python: '' };
+    }
+  }
+
   private mapToChallengeResponse(result: any): ChallengeResponse {
     const { problem, testcases, solution } = result;
     const totalPoints = (testcases || []).reduce((sum: number, tc: any) => {
@@ -95,12 +111,9 @@ export class ChallengeService {
         totalPoints,
         isSolved,
         isFavorite,
-        judgeMode: problem.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT,
-        functionSignature: problem.functionSignature ?? undefined,
-        starterCodeByLanguage:
-          problem.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && problem.functionSignature
-            ? buildStarterCodeByLanguage(problem.functionSignature as any)
-            : undefined,
+        judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
+        functionSignature: problem.functionSignature,
+        starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(problem.functionSignature),
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
@@ -423,6 +436,15 @@ export class ChallengeService {
       await this.validateTopicAndLesson(updateData.topicId, updateData.lessonId);
     }
 
+    const effectiveFunctionSignature =
+      updateData.functionSignature !== undefined
+        ? updateData.functionSignature
+        : existingProblem.functionSignature;
+
+    if (!effectiveFunctionSignature) {
+      throw new NotFoundException('Challenge function signature is not configured.');
+    }
+
     // Convert updateData to match database schema
     const dbUpdateData: any = {
       ...updateData,
@@ -430,8 +452,8 @@ export class ChallengeService {
       topicId: updateData.topicId,
       lessonId: updateData.lessonId,
       difficult: updateData.difficulty,
-      judgeMode: updateData.judgeMode,
-      functionSignature: updateData.functionSignature,
+      judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
+      functionSignature: effectiveFunctionSignature,
     };
 
     // Remove fields that shouldn't be updated directly
@@ -454,16 +476,9 @@ export class ChallengeService {
     // Handle testcases update if provided
     if (updateData.testcases) {
       logger.info('Updating testcases:', updateData.testcases.length);
-      const effectiveJudgeMode =
-        (updateData.judgeMode as any) ?? existingProblem.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
-      const effectiveFunctionSignature =
-        updateData.functionSignature !== undefined
-          ? updateData.functionSignature
-          : existingProblem.functionSignature;
       await this.testcaseRepository.updateTestcasesTransactional(
         challengeId,
         updateData.testcases,
-        effectiveJudgeMode,
         effectiveFunctionSignature as any
       );
     } else {
@@ -507,3 +522,5 @@ export class ChallengeService {
     }
   }
 }
+
+

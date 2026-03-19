@@ -21,6 +21,7 @@ export interface ExecutionConfig {
   testcases: Testcase[];
   timeLimit: number;
   memoryLimit: string;
+  executionMode?: 'wrapper' | 'legacy';
 }
 
 // Supported languages
@@ -181,3 +182,5 @@ export const SubmissionDataResponseSchema = z.object({
 });
 
 export type SubmissionDataResponse = z.infer<typeof SubmissionDataResponseSchema>;
+
+

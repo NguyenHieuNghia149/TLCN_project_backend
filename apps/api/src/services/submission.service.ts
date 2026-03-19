@@ -1,4 +1,4 @@
-import {
+﻿import {
   JudgeUtils,
   logger,
   buildFunctionInputDisplayValue,
@@ -124,11 +124,6 @@ export class SubmissionService {
   }
 
   private assertFunctionSignatureLanguage(problem: any, language: string): void {
-    const judgeMode = problem?.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
-    if (judgeMode !== EProblemJudgeMode.FUNCTION_SIGNATURE) {
-      return;
-    }
-
     if (!problem?.functionSignature) {
       throw new BaseException(
         'Problem functionSignature is not configured',
@@ -152,9 +147,29 @@ export class SubmissionService {
       throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
     }
 
+    if (!problem.functionSignature) {
+      throw new BaseException(
+        'Problem functionSignature is not configured',
+        500,
+        'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+      );
+    }
+
     const testcases = await this.testcaseRepository.findByProblemId(problemId);
     if (testcases.length === 0) {
       throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
+    }
+
+    const missingStructuredTestcase = testcases.find(
+      testcase => testcase.inputJson === null || testcase.outputJson === null
+    );
+
+    if (missingStructuredTestcase) {
+      throw new BaseException(
+        'Problem testcases are missing structured function-signature data',
+        500,
+        'FUNCTION_SIGNATURE_TESTCASE_INVALID'
+      );
     }
 
     return { problem, testcases };
@@ -197,11 +212,7 @@ export class SubmissionService {
     testcases: any[],
     jobType: 'SUBMISSION' | 'RUN_CODE' = 'SUBMISSION'
   ): QueueJob {
-    const judgeMode = problem.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
-    const functionSignature =
-      judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
-        ? (problem.functionSignature as FunctionSignature | null)
-        : null;
+    const functionSignature = problem.functionSignature as FunctionSignature;
 
     return {
       submissionId: submission.id,
@@ -209,27 +220,22 @@ export class SubmissionService {
       problemId: submission.problemId,
       code: submission.sourceCode,
       language: submission.language,
-      judgeMode,
+      judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
       functionSignature,
-      testcases: testcases.map((tc: any, index: number) => ({
-        id: tc.id,
-        input:
-          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && functionSignature && tc.inputJson
-            ? buildFunctionInputDisplayValue(functionSignature, tc.inputJson as Record<string, unknown>)
-            : tc.input,
-        output:
-          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && tc.outputJson !== undefined
-            ? canonicalizeStructuredValue(tc.outputJson)
-            : tc.output,
-        executionInput:
-          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE ? String(index) : tc.input,
-        inputJson:
-          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE ? (tc.inputJson ?? null) : undefined,
-        outputJson:
-          judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE ? (tc.outputJson ?? null) : undefined,
-        point: tc.point,
-        isPublic: tc.isPublic ?? false,
-      })),
+      executionMode: 'wrapper',
+      testcases: testcases.map((tc: any) => {
+        const inputJson = tc.inputJson as Record<string, unknown>;
+        return {
+          id: tc.id,
+          input: buildFunctionInputDisplayValue(functionSignature, inputJson),
+          output: canonicalizeStructuredValue(tc.outputJson),
+          executionInput: JSON.stringify(inputJson),
+          inputJson,
+          outputJson: tc.outputJson,
+          point: tc.point,
+          isPublic: tc.isPublic ?? false,
+        };
+      }),
       timeLimit: problem.timeLimit || 1000,
       memoryLimit: problem.memoryLimit || '128m',
       createdAt: new Date().toISOString(),
@@ -663,4 +669,6 @@ export class SubmissionService {
 }
 
 export const submissionService = new SubmissionService();
+
+
 

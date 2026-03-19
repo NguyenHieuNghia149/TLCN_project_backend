@@ -1,52 +1,36 @@
 import {
-  FunctionParameter,
   FunctionSignature,
   FunctionStarterCodeByLanguage,
-  FunctionValueTypeDescriptor,
-  ScalarTypeName,
+  FunctionTypeNode,
+  FunctionScalarType,
 } from '@backend/shared/types';
+import { normalizeRuntimeSignature } from './ast-normalizer';
 
 export type SupportedFunctionLanguage = 'cpp' | 'java' | 'python';
 
+type RuntimeSignature = FunctionSignature;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value == 'object' && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function validateScalar(value: unknown, scalarType: ScalarTypeName): boolean {
+function validateScalar(value: unknown, scalarType: FunctionScalarType): boolean {
   switch (scalarType) {
-    case 'int':
-    case 'long':
+    case 'integer':
       return typeof value === 'number' && Number.isInteger(value);
-    case 'double':
-      return typeof value === 'number' && Number.isFinite(value);
-    case 'bool':
+    case 'boolean':
       return typeof value === 'boolean';
     case 'string':
       return typeof value === 'string';
-    default:
-      return false;
   }
 }
 
-export function validateFunctionValue(
-  value: unknown,
-  descriptor: FunctionValueTypeDescriptor
-): boolean {
-  switch (descriptor.kind) {
-    case 'scalar':
-      return validateScalar(value, descriptor.name);
-    case 'array':
-      return Array.isArray(value) && value.every(item => validateScalar(item, descriptor.element));
-    case 'matrix':
-      return (
-        Array.isArray(value) &&
-        value.every(
-          row => Array.isArray(row) && row.every(item => validateScalar(item, descriptor.element))
-        )
-      );
-    default:
-      return false;
+export function validateFunctionValue(value: unknown, descriptor: FunctionTypeNode): boolean {
+  if (descriptor.type === 'array') {
+    return Array.isArray(value) && value.every(item => validateScalar(item, descriptor.items));
   }
+
+  return validateScalar(value, descriptor.type);
 }
 
 export function validateFunctionTestcaseInput(
@@ -54,27 +38,32 @@ export function validateFunctionTestcaseInput(
   input: unknown
 ): string | null {
   if (!isRecord(input)) {
-    return 'Function-style testcase input must be an object keyed by parameter name.';
+    return 'Function-style testcase input must be an object keyed by argument name.';
   }
 
   const inputKeys = Object.keys(input);
-  const expectedKeys = signature.parameters.map(parameter => parameter.name);
+  const expectedKeys = signature.args.map(argument => argument.name);
 
   for (const key of expectedKeys) {
     if (!(key in input)) {
-      return `Missing parameter input: ${key}`;
+      return `Missing argument input: ${key}`;
     }
   }
 
   for (const key of inputKeys) {
     if (!expectedKeys.includes(key)) {
-      return `Unexpected parameter input: ${key}`;
+      return `Unexpected argument input: ${key}`;
     }
   }
 
-  for (const parameter of signature.parameters) {
-    if (!validateFunctionValue(input[parameter.name], parameter.type)) {
-      return `Invalid input type for parameter: ${parameter.name}`;
+  for (const argument of signature.args) {
+    const descriptor: FunctionTypeNode =
+      argument.type === 'array'
+        ? { type: 'array', items: argument.items as FunctionScalarType }
+        : { type: argument.type };
+
+    if (!validateFunctionValue(input[argument.name], descriptor)) {
+      return `Invalid input type for argument: ${argument.name}`;
     }
   }
 
@@ -96,206 +85,179 @@ export function canonicalizeStructuredValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function formatDisplayValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => formatDisplayValue(item)).join(', ')}]`;
+  }
+
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return JSON.stringify(value);
+  }
+
+  return JSON.stringify(value);
+}
+
 export function buildFunctionInputDisplayValue(
   signature: FunctionSignature,
   input: Record<string, unknown>
 ): string {
-  const orderedInput = signature.parameters.reduce<Record<string, unknown>>((accumulator, parameter) => {
-    accumulator[parameter.name] = input[parameter.name];
-    return accumulator;
-  }, {});
-
-  return canonicalizeStructuredValue(orderedInput);
+  return signature.args
+    .map(argument => `${argument.name}: ${formatDisplayValue(input[argument.name])}`)
+    .join('\n');
 }
 
-function toCppType(descriptor: FunctionValueTypeDescriptor): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-          return 'int';
-        case 'long':
-          return 'long long';
-        case 'double':
-          return 'double';
-        case 'bool':
-          return 'bool';
-        case 'string':
-          return 'string';
-      }
-    case 'array':
-      return `vector<${toCppScalarType(descriptor.element)}>`;
-    case 'matrix':
-      return `vector<vector<${toCppScalarType(descriptor.element)}>>`;
-  }
-}
-
-function toCppScalarType(typeName: ScalarTypeName): string {
+function toCppScalarType(typeName: FunctionScalarType): string {
   switch (typeName) {
-    case 'int':
+    case 'integer':
       return 'int';
-    case 'long':
-      return 'long long';
-    case 'double':
-      return 'double';
-    case 'bool':
+    case 'boolean':
       return 'bool';
     case 'string':
-      return 'string';
+      return 'std::string';
   }
 }
 
-function toJavaType(descriptor: FunctionValueTypeDescriptor): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-          return 'int';
-        case 'long':
-          return 'long';
-        case 'double':
-          return 'double';
-        case 'bool':
-          return 'boolean';
-        case 'string':
-          return 'String';
-      }
-    case 'array':
-      return `${toJavaScalarType(descriptor.element)}[]`;
-    case 'matrix':
-      return `${toJavaScalarType(descriptor.element)}[][]`;
+function toCppType(descriptor: FunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return `std::vector<${toCppScalarType(descriptor.items)}>`;
   }
+
+  return toCppScalarType(descriptor.type);
 }
 
-function toJavaScalarType(typeName: ScalarTypeName): string {
+function toJavaScalarType(typeName: FunctionScalarType): string {
   switch (typeName) {
-    case 'int':
+    case 'integer':
       return 'int';
-    case 'long':
-      return 'long';
-    case 'double':
-      return 'double';
-    case 'bool':
+    case 'boolean':
       return 'boolean';
     case 'string':
       return 'String';
   }
 }
 
-function toPythonTypeHint(descriptor: FunctionValueTypeDescriptor): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-        case 'long':
-          return 'int';
-        case 'double':
-          return 'float';
-        case 'bool':
-          return 'bool';
-        case 'string':
-          return 'str';
-      }
-    case 'array':
-      return `list[${toPythonScalarTypeHint(descriptor.element)}]`;
-    case 'matrix':
-      return `list[list[${toPythonScalarTypeHint(descriptor.element)}]]`;
+function toJavaType(descriptor: FunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return `${toJavaScalarType(descriptor.items)}[]`;
   }
+
+  return toJavaScalarType(descriptor.type);
 }
 
-function toPythonScalarTypeHint(typeName: ScalarTypeName): string {
+function toPythonScalarType(typeName: FunctionScalarType): string {
   switch (typeName) {
-    case 'int':
-    case 'long':
+    case 'integer':
       return 'int';
-    case 'double':
-      return 'float';
-    case 'bool':
+    case 'boolean':
       return 'bool';
     case 'string':
       return 'str';
   }
 }
 
-function defaultJavaReturn(descriptor: FunctionValueTypeDescriptor): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-          return '0';
-        case 'long':
-          return '0L';
-        case 'double':
-          return '0.0';
-        case 'bool':
-          return 'false';
-        case 'string':
-          return '""';
-      }
-    case 'array':
-    case 'matrix':
-      return 'null';
+function toPythonTypeHint(descriptor: FunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return `List[${toPythonScalarType(descriptor.items)}]`;
+  }
+
+  return toPythonScalarType(descriptor.type);
+}
+
+function defaultCppReturn(descriptor: FunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return '{}';
+  }
+
+  switch (descriptor.type) {
+    case 'integer':
+      return '0';
+    case 'boolean':
+      return 'false';
+    case 'string':
+      return '""';
   }
 }
 
-function defaultPythonReturn(descriptor: FunctionValueTypeDescriptor): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-        case 'long':
-          return '0';
-        case 'double':
-          return '0.0';
-        case 'bool':
-          return 'False';
-        case 'string':
-          return '""';
-      }
-    case 'array':
-    case 'matrix':
-      return '[]';
+function defaultJavaReturn(descriptor: FunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return 'null';
+  }
+
+  switch (descriptor.type) {
+    case 'integer':
+      return '0';
+    case 'boolean':
+      return 'false';
+    case 'string':
+      return '""';
   }
 }
 
-function toCppParameterType(descriptor: FunctionValueTypeDescriptor): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      return toCppType(descriptor);
-    case 'array':
-    case 'matrix':
-      return `${toCppType(descriptor)}&`;
+function defaultPythonReturn(descriptor: FunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return '[]';
   }
+
+  switch (descriptor.type) {
+    case 'integer':
+      return '0';
+    case 'boolean':
+      return 'False';
+    case 'string':
+      return '""';
+  }
+}
+
+function toCppParameterType(argument: RuntimeSignature['args'][number]): string {
+  const descriptor: FunctionTypeNode =
+    argument.type === 'array'
+      ? { type: 'array', items: argument.items as FunctionScalarType }
+      : { type: argument.type };
+
+  if (descriptor.type === 'array') {
+    return `${toCppType(descriptor)}&`;
+  }
+
+  return toCppType(descriptor);
 }
 
 function buildCppStarterCode(signature: FunctionSignature): string {
-  const parameters = signature.parameters
-    .map(parameter => `${toCppParameterType(parameter.type)} ${parameter.name}`)
+  const parameters = signature.args
+    .map(argument => `${toCppParameterType(argument)} ${argument.name}`)
     .join(', ');
 
   return [
     '#include <vector>',
     '#include <string>',
-    'using namespace std;',
     '',
     'class Solution {',
     'public:',
-    `    ${toCppType(signature.returnType)} ${signature.methodName}(${parameters}) {`,
+    `    ${toCppType(signature.returnType)} ${signature.name}(${parameters}) {`,
     '        ',
-    '        return {};',
+    `        return ${defaultCppReturn(signature.returnType)};`,
     '    }',
     '};',
   ].join('\n');
 }
 
 function buildJavaStarterCode(signature: FunctionSignature): string {
-  const parameters = signature.parameters
-    .map(parameter => `${toJavaType(parameter.type)} ${parameter.name}`)
+  const parameters = signature.args
+    .map(argument => {
+      const descriptor: FunctionTypeNode =
+        argument.type === 'array'
+          ? { type: 'array', items: argument.items as FunctionScalarType }
+          : { type: argument.type };
+      return `${toJavaType(descriptor)} ${argument.name}`;
+    })
     .join(', ');
 
   return [
     'class Solution {',
-    `    public ${toJavaType(signature.returnType)} ${signature.methodName}(${parameters}) {`,
+    `    public ${toJavaType(signature.returnType)} ${signature.name}(${parameters}) {`,
     '        ',
     `        return ${defaultJavaReturn(signature.returnType)};`,
     '    }',
@@ -304,15 +266,23 @@ function buildJavaStarterCode(signature: FunctionSignature): string {
 }
 
 function buildPythonStarterCode(signature: FunctionSignature): string {
-  const parameters = signature.parameters
-    .map(parameter => `${parameter.name}: ${toPythonTypeHint(parameter.type)}`)
+  const parameters = signature.args
+    .map(argument => {
+      const descriptor: FunctionTypeNode =
+        argument.type === 'array'
+          ? { type: 'array', items: argument.items as FunctionScalarType }
+          : { type: argument.type };
+      return `${argument.name}: ${toPythonTypeHint(descriptor)}`;
+    })
     .join(', ');
 
   const parameterList = parameters ? `self, ${parameters}` : 'self';
 
   return [
+    'from typing import List',
+    '',
     'class Solution:',
-    `    def ${signature.methodName}(${parameterList}) -> ${toPythonTypeHint(signature.returnType)}:`,
+    `    def ${signature.name}(${parameterList}) -> ${toPythonTypeHint(signature.returnType)}:`,
     '        ',
     `        return ${defaultPythonReturn(signature.returnType)}`,
   ].join('\n');
@@ -346,106 +316,81 @@ function escapeStringLiteral(value: string): string {
   return JSON.stringify(value);
 }
 
-function toCppLiteral(descriptor: FunctionValueTypeDescriptor, value: unknown): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-          return String(value);
-        case 'long':
-          return `${String(value)}LL`;
-        case 'double': {
-          const text = String(value);
-          return text.includes('.') ? text : `${text}.0`;
-        }
-        case 'bool':
-          return value ? 'true' : 'false';
-        case 'string':
-          return escapeStringLiteral(String(value));
-      }
-    case 'array':
-      return `{${(value as unknown[]).map(item => toCppLiteral({ kind: 'scalar', name: descriptor.element }, item)).join(', ')}}`;
-    case 'matrix':
-      return `{${(value as unknown[]).map(row => toCppLiteral({ kind: 'array', element: descriptor.element }, row)).join(', ')}}`;
+function toCppLiteral(descriptor: FunctionTypeNode, value: unknown): string {
+  if (descriptor.type === 'array') {
+    return `{${(value as unknown[])
+      .map(item => toCppLiteral({ type: descriptor.items }, item))
+      .join(', ')}}`;
+  }
+
+  switch (descriptor.type) {
+    case 'integer':
+      return String(value);
+    case 'boolean':
+      return value ? 'true' : 'false';
+    case 'string':
+      return escapeStringLiteral(String(value));
   }
 }
 
-function toJavaLiteral(descriptor: FunctionValueTypeDescriptor, value: unknown): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-          return String(value);
-        case 'long':
-          return `${String(value)}L`;
-        case 'double': {
-          const text = String(value);
-          return text.includes('.') ? text : `${text}.0`;
-        }
-        case 'bool':
-          return value ? 'true' : 'false';
-        case 'string':
-          return escapeStringLiteral(String(value));
-      }
-    case 'array':
-      return `new ${toJavaScalarType(descriptor.element)}[]{${(value as unknown[])
-        .map(item => toJavaLiteral({ kind: 'scalar', name: descriptor.element }, item))
-        .join(', ')}}`;
-    case 'matrix':
-      return `new ${toJavaScalarType(descriptor.element)}[][]{${(value as unknown[])
-        .map(row => `{${(row as unknown[])
-          .map(item => toJavaLiteral({ kind: 'scalar', name: descriptor.element }, item))
-          .join(', ')}}`)
-        .join(', ')}}`;
+function toJavaLiteral(descriptor: FunctionTypeNode, value: unknown): string {
+  if (descriptor.type === 'array') {
+    return `new ${toJavaScalarType(descriptor.items)}[]{${(value as unknown[])
+      .map(item => toJavaLiteral({ type: descriptor.items }, item))
+      .join(', ')}}`;
+  }
+
+  switch (descriptor.type) {
+    case 'integer':
+      return String(value);
+    case 'boolean':
+      return value ? 'true' : 'false';
+    case 'string':
+      return escapeStringLiteral(String(value));
   }
 }
 
-function toPythonLiteral(descriptor: FunctionValueTypeDescriptor, value: unknown): string {
-  switch (descriptor.kind) {
-    case 'scalar':
-      switch (descriptor.name) {
-        case 'int':
-        case 'long':
-        case 'double':
-          return String(value);
-        case 'bool':
-          return value ? 'True' : 'False';
-        case 'string':
-          return escapeStringLiteral(String(value));
-      }
-    case 'array':
-      return `[${(value as unknown[])
-        .map(item => toPythonLiteral({ kind: 'scalar', name: descriptor.element }, item))
-        .join(', ')}]`;
-    case 'matrix':
-      return `[${(value as unknown[])
-        .map(row => `[${(row as unknown[])
-          .map(item => toPythonLiteral({ kind: 'scalar', name: descriptor.element }, item))
-          .join(', ')}]`)
-        .join(', ')}]`;
+function toPythonLiteral(descriptor: FunctionTypeNode, value: unknown): string {
+  if (descriptor.type === 'array') {
+    return `[${(value as unknown[])
+      .map(item => toPythonLiteral({ type: descriptor.items }, item))
+      .join(', ')}]`;
+  }
+
+  switch (descriptor.type) {
+    case 'integer':
+      return String(value);
+    case 'boolean':
+      return value ? 'True' : 'False';
+    case 'string':
+      return escapeStringLiteral(String(value));
   }
 }
 
 function buildCppExecutionSource(
   userSource: string,
-  signature: FunctionSignature,
+  signature: RuntimeSignature,
   testcases: Array<Record<string, unknown>>
 ): string {
   const cases = testcases
     .map((input, index) => {
-      const declarations = signature.parameters
-        .map(parameter => {
-          const literal = toCppLiteral(parameter.type, input[parameter.name]);
-          return `            ${toCppType(parameter.type)} ${parameter.name} = ${literal};`;
+      const declarations = signature.args
+        .map(argument => {
+          const descriptor: FunctionTypeNode =
+            argument.type === 'array'
+              ? { type: 'array', items: argument.items as FunctionScalarType }
+              : { type: argument.type };
+          const literal = toCppLiteral(descriptor, input[argument.name]);
+          return `            ${toCppType(descriptor)} ${argument.name} = ${literal};`;
         })
         .join('\n');
 
-      const args = signature.parameters.map(parameter => parameter.name).join(', ');
+      const args = signature.args.map(argument => argument.name).join(', ');
 
       return [
         `        case ${index}: {`,
         declarations,
-        `            auto result = solution.${signature.methodName}(${args});`,
+        `            auto result = solution.${signature.name}(${args});`,
         '            cout << __toJson(result);',
         '            return 0;',
         '        }',
@@ -474,19 +419,6 @@ function buildCppExecutionSource(
     'template <typename T, typename enable_if<is_integral<T>::value && !is_same<T, bool>::value, int>::type = 0>',
     'static string __toJson(const T& value) {',
     '    return to_string(value);',
-    '}',
-    '',
-    'template <typename T, typename enable_if<is_floating_point<T>::value, int>::type = 0>',
-    'static string __toJson(const T& value) {',
-    '    if (!isfinite(value)) return "null";',
-    '    ostringstream stream;',
-    '    stream << setprecision(15) << value;',
-    '    string text = stream.str();',
-    '    if (text.find(".") != string::npos) {',
-    '        while (text.size() > 1 && text.back() == "0"[0]) text.pop_back();',
-    '        if (!text.empty() && text.back() == "."[0]) text.pop_back();',
-    '    }',
-    '    return text;',
     '}',
     '',
     'static string __toJson(const bool& value) {',
@@ -533,22 +465,26 @@ function buildCppExecutionSource(
 
 function buildJavaExecutionSource(
   userSource: string,
-  signature: FunctionSignature,
+  signature: RuntimeSignature,
   testcases: Array<Record<string, unknown>>
 ): string {
   const cases = testcases
     .map((input, index) => {
-      const declarations = signature.parameters
-        .map(parameter => {
-          const literal = toJavaLiteral(parameter.type, input[parameter.name]);
-          return `                ${toJavaType(parameter.type)} ${parameter.name} = ${literal};`;
+      const declarations = signature.args
+        .map(argument => {
+          const descriptor: FunctionTypeNode =
+            argument.type === 'array'
+              ? { type: 'array', items: argument.items as FunctionScalarType }
+              : { type: argument.type };
+          const literal = toJavaLiteral(descriptor, input[argument.name]);
+          return `                ${toJavaType(descriptor)} ${argument.name} = ${literal};`;
         })
         .join('\n');
-      const args = signature.parameters.map(parameter => parameter.name).join(', ');
+      const args = signature.args.map(argument => argument.name).join(', ');
       return [
         `            case ${index}: {`,
         declarations,
-        `                Object result = solution.${signature.methodName}(${args});`,
+        `                Object result = solution.${signature.name}(${args});`,
         '                System.out.print(toJson(result));',
         '                return;',
         '            }',
@@ -559,7 +495,6 @@ function buildJavaExecutionSource(
   return [
     'import java.io.*;',
     'import java.lang.reflect.Array;',
-    'import java.math.BigDecimal;',
     'import java.nio.charset.StandardCharsets;',
     'import java.util.*;',
     '',
@@ -582,27 +517,18 @@ function buildJavaExecutionSource(
     '        return builder.toString();',
     '    }',
     '',
-    '    private static String numberToJson(Number value) {',
-    '        if (value instanceof Float || value instanceof Double) {',
-    '            BigDecimal decimal = BigDecimal.valueOf(value.doubleValue()).stripTrailingZeros();',
-    '            String text = decimal.toPlainString();',
-    '            return text.equals("-0") ? "0" : text;',
-    '        }',
-    '        return value.toString();',
-    '    }',
-    '',
     '    private static String toJson(Object value) {',
     '        if (value == null) return "null";',
     '        if (value instanceof String) return "\\\"" + escapeJson((String) value) + "\\\"";',
     '        if (value instanceof Boolean) return ((Boolean) value) ? "true" : "false";',
-    '        if (value instanceof Number) return numberToJson((Number) value);',
+    '        if (value instanceof Number) return value.toString();',
     '        Class<?> clazz = value.getClass();',
     '        if (clazz.isArray()) {',
     '            int length = Array.getLength(value);',
     '            StringBuilder builder = new StringBuilder("[");',
-    '            for (int index = 0; index < length; index++) {',
-    '                if (index > 0) builder.append(",");',
-    '                builder.append(toJson(Array.get(value, index)));',
+    '            for (int idx = 0; idx < length; idx++) {',
+    '                if (idx > 0) builder.append(",");',
+    '                builder.append(toJson(Array.get(value, idx)));',
     '            }',
     '            builder.append("]");',
     '            return builder.toString();',
@@ -629,19 +555,25 @@ function buildJavaExecutionSource(
 
 function buildPythonExecutionSource(
   userSource: string,
-  signature: FunctionSignature,
+  signature: RuntimeSignature,
   testcases: Array<Record<string, unknown>>
 ): string {
   const cases = testcases
     .map((input, index) => {
-      const declarations = signature.parameters
-        .map(parameter => `        ${parameter.name} = ${toPythonLiteral(parameter.type, input[parameter.name])}`)
+      const declarations = signature.args
+        .map(argument => {
+          const descriptor: FunctionTypeNode =
+            argument.type === 'array'
+              ? { type: 'array', items: argument.items as FunctionScalarType }
+              : { type: argument.type };
+          return `        ${argument.name} = ${toPythonLiteral(descriptor, input[argument.name])}`;
+        })
         .join('\n');
-      const args = signature.parameters.map(parameter => parameter.name).join(', ');
+      const args = signature.args.map(argument => argument.name).join(', ');
       return [
-        `${index_marker(index)}:`,
+        `${index === 0 ? '    if case_index == 0' : `    elif case_index == ${index}`}:`,
         declarations,
-        `        result = solution.${signature.methodName}(${args})`,
+        `        result = solution.${signature.name}(${args})`,
         '        sys.stdout.write(_to_json(result))',
         '        return',
       ].join('\n');
@@ -650,7 +582,6 @@ function buildPythonExecutionSource(
 
   return [
     'import json',
-    'import math',
     'import sys',
     '',
     userSource,
@@ -662,10 +593,6 @@ function buildPythonExecutionSource(
     '        return "true" if value else "false"',
     '    if isinstance(value, int) and not isinstance(value, bool):',
     '        return str(value)',
-    '    if isinstance(value, float):',
-    '        if not math.isfinite(value):',
-    '            return "null"',
-    '        return format(value, ".15g")',
     '    if isinstance(value, str):',
     '        return json.dumps(value, ensure_ascii=False)',
     '    if isinstance(value, (list, tuple)):',
@@ -686,24 +613,21 @@ function buildPythonExecutionSource(
   ].join('\n');
 }
 
-function index_marker(index: number): string {
-  return index === 0 ? '    if case_index == 0' : `    elif case_index == ${index}`;
-}
-
 export function buildFunctionExecutionSource(params: {
   language: SupportedFunctionLanguage;
   userSource: string;
-  signature: FunctionSignature;
+  signature: unknown;
   testcases: Array<Record<string, unknown>>;
 }): string {
   const { language, userSource, signature, testcases } = params;
+  const normalizedSignature = normalizeRuntimeSignature(signature) as RuntimeSignature;
 
   switch (language) {
     case 'cpp':
-      return buildCppExecutionSource(userSource, signature, testcases);
+      return buildCppExecutionSource(userSource, normalizedSignature, testcases);
     case 'java':
-      return buildJavaExecutionSource(userSource, signature, testcases);
+      return buildJavaExecutionSource(userSource, normalizedSignature, testcases);
     case 'python':
-      return buildPythonExecutionSource(userSource, signature, testcases);
+      return buildPythonExecutionSource(userSource, normalizedSignature, testcases);
   }
 }

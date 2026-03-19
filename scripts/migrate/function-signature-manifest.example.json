@@ -1,0 +1,35 @@
+﻿{
+  "problems": [
+    {
+      "problemId": "00000000-0000-0000-0000-000000000000",
+      "functionSignature": {
+        "name": "twoSum",
+        "args": [
+          {
+            "name": "nums",
+            "type": "array",
+            "items": "integer"
+          },
+          {
+            "name": "target",
+            "type": "integer"
+          }
+        ],
+        "returnType": {
+          "type": "array",
+          "items": "integer"
+        }
+      },
+      "testcases": [
+        {
+          "testcaseId": "00000000-0000-0000-0000-000000000001",
+          "inputJson": {
+            "nums": [2, 7, 11, 15],
+            "target": 9
+          },
+          "outputJson": [0, 1]
+        }
+      ]
+    }
+  ]
+}

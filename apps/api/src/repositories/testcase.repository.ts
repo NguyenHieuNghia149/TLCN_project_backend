@@ -1,7 +1,7 @@
 import { TestcaseEntity, TestcaseInsert, testcases } from '@backend/shared/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.repository';
-import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
+import { FunctionSignature } from '@backend/shared/types';
 import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
 export class TestcaseRepository extends BaseRepository<
@@ -65,46 +65,25 @@ export class TestcaseRepository extends BaseRepository<
     return map;
   }
 
-  private normalizeTestcaseRecord(
-    problemId: string,
-    testcase: any,
-    judgeMode: EProblemJudgeMode,
-    functionSignature?: FunctionSignature | null
-  ) {
-    if (judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE && functionSignature) {
-      return {
-        problemId,
-        input: buildFunctionInputDisplayValue(
-          functionSignature,
-          testcase.inputJson as Record<string, unknown>
-        ),
-        output: canonicalizeStructuredValue(testcase.outputJson),
-        inputJson: testcase.inputJson ?? null,
-        outputJson: testcase.outputJson ?? null,
-        isPublic: testcase.isPublic ?? false,
-        point: testcase.point ?? 0,
-      };
-    }
-
+  private normalizeTestcaseRecord(problemId: string, testcase: any, functionSignature: FunctionSignature) {
     return {
       problemId,
-      input: testcase.input ?? '',
-      output: testcase.output ?? '',
-      inputJson: null,
-      outputJson: null,
+      input: buildFunctionInputDisplayValue(
+        functionSignature,
+        testcase.inputJson as Record<string, unknown>
+      ),
+      output: canonicalizeStructuredValue(testcase.outputJson),
+      inputJson: testcase.inputJson ?? null,
+      outputJson: testcase.outputJson ?? null,
       isPublic: testcase.isPublic ?? false,
       point: testcase.point ?? 0,
     };
   }
 
-  /**
-   * Update testcases transactionally: delete all existing and insert new ones.
-   */
   async updateTestcasesTransactional(
     problemId: string,
     testcasesData: any[],
-    judgeMode: EProblemJudgeMode,
-    functionSignature?: FunctionSignature | null
+    functionSignature: FunctionSignature
   ): Promise<void> {
     await this.db.transaction(async (tx: any) => {
       await tx.delete(this.table).where(eq(this.table.problemId, problemId));
@@ -112,7 +91,7 @@ export class TestcaseRepository extends BaseRepository<
       if (testcasesData && testcasesData.length > 0) {
         await tx.insert(this.table).values(
           testcasesData.map(testcase =>
-            this.normalizeTestcaseRecord(problemId, testcase, judgeMode, functionSignature)
+            this.normalizeTestcaseRecord(problemId, testcase, functionSignature)
           ) as any
         );
       }
