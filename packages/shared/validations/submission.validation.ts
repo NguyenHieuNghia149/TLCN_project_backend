@@ -1,6 +1,5 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
-// Execution interfaces moved from code-execution.service.ts
 export interface ExecutionResult {
   stdout: string;
   stderr: string;
@@ -21,17 +20,15 @@ export interface ExecutionConfig {
   testcases: Testcase[];
   timeLimit: number;
   memoryLimit: string;
-  executionMode?: 'wrapper' | 'legacy';
+  executionMode?: 'wrapper';
 }
 
-// Supported languages
-const supportedLanguages = ['cpp', 'python', 'java', 'javascript'] as const;
+const supportedLanguages = ['cpp', 'python', 'java'] as const;
 
-// Create submission schema
 export const CreateSubmissionSchema = z.object({
   sourceCode: z.string().min(1, 'Source code is required').max(50000, 'Code too long (max 50KB)'),
   language: z.enum(supportedLanguages, {
-    message: 'Unsupported language. Supported: cpp, python, java, javascript',
+    message: 'Unsupported language. Supported: cpp, python, java',
   }),
   problemId: z.string().uuid('Invalid problem ID'),
   participationId: z.string().uuid().optional(),
@@ -39,7 +36,6 @@ export const CreateSubmissionSchema = z.object({
 
 export type CreateSubmissionInput = z.infer<typeof CreateSubmissionSchema>;
 
-// Submission response schema
 export const SubmissionResponseSchema = z.object({
   submissionId: z.string().uuid(),
   status: z.string(),
@@ -50,7 +46,6 @@ export const SubmissionResponseSchema = z.object({
 
 export type SubmissionResponse = z.infer<typeof SubmissionResponseSchema>;
 
-// Submission status schema
 export const SubmissionStatusSchema = z.object({
   submissionId: z.string().uuid(),
   userId: z.string().uuid(),
@@ -95,7 +90,6 @@ export const SubmissionStatusSchema = z.object({
 
 export type SubmissionStatus = z.infer<typeof SubmissionStatusSchema>;
 
-// Get submissions query schema
 export const GetSubmissionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
@@ -117,7 +111,6 @@ export const GetSubmissionsQuerySchema = z.object({
 
 export type GetSubmissionsQuery = z.infer<typeof GetSubmissionsQuerySchema>;
 
-// Queue status schema
 export const QueueStatusSchema = z.object({
   queueLength: z.number(),
   isHealthy: z.boolean(),
@@ -125,7 +118,6 @@ export const QueueStatusSchema = z.object({
 
 export type QueueStatus = z.infer<typeof QueueStatusSchema>;
 
-// Testcase result schema
 export const TestcaseResultSchema = z.object({
   index: z.number(),
   input: z.string(),
@@ -140,7 +132,6 @@ export const TestcaseResultSchema = z.object({
 
 export type TestcaseResult = z.infer<typeof TestcaseResultSchema>;
 
-// Batch execution result schema
 export const BatchExecutionResultSchema = z.object({
   summary: z.object({
     passed: z.number(),
@@ -153,7 +144,6 @@ export const BatchExecutionResultSchema = z.object({
 
 export type BatchExecutionResult = z.infer<typeof BatchExecutionResultSchema>;
 
-// Submission result interface
 export interface SubmissionResult {
   passed: number;
   total: number;
@@ -182,5 +172,3 @@ export const SubmissionDataResponseSchema = z.object({
 });
 
 export type SubmissionDataResponse = z.infer<typeof SubmissionDataResponseSchema>;
-
-

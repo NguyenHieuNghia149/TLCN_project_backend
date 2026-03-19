@@ -1,25 +1,21 @@
 ﻿import {
   JudgeUtils,
+  buildFunctionInputDisplayValue,
+  canonicalizeStructuredValue,
   logger,
-  buildFunctionExecutionSource,
-  normalizeRuntimeSignature,
-  NormalizerError,
 } from '@backend/shared/utils';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { queueService, QueueJob } from '@backend/api/services/queue.service';
 import { submissionService } from '@backend/api/services/submission.service';
 import { ExamService } from '@backend/api/services/exam.service';
-import { EProblemJudgeMode, ESubmissionStatus } from '@backend/shared/types';
+import { ESubmissionStatus } from '@backend/shared/types';
 import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
 import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
 import { generateWrapper } from './services/wrapperGenerator';
 
-type ExecutionMode = 'wrapper' | 'legacy';
-
 type PreparedExecutionPayload = {
   sourceCode: string;
-  executionMode: ExecutionMode;
   testcases: Array<{ id: string; input: string; output: string; point: number }>;
 };
 
@@ -27,7 +23,6 @@ export class WorkerService {
   private workerId: string;
   private totalProcessed: number = 0;
   private totalErrors: number = 0;
-  private legacyFallbackCount: number = 0;
   private worker: Worker | null = null;
   private breaker: SandboxBreaker | null = null;
   private examFinalizerInterval: NodeJS.Timeout | null = null;
@@ -70,65 +65,53 @@ export class WorkerService {
       });
 
       this.worker.on('failed', async (job: Job | undefined, err: Error) => {
-        if (job) {
-          const failureReason = (err as any)?.failureReason as string | undefined;
-          const normalizerCode = (err as any)?.normalizerCode as string | undefined;
+        if (!job) {
+          logger.error('Worker global error:', err.message);
+          return;
+        }
 
+        logger.error(
+          `Job ${job.id} failed (Attempt ${job.attemptsMade}/${job.opts.attempts}):`,
+          err.message
+        );
+
+        this.totalErrors++;
+
+        const queueJob = job.data as QueueJob;
+        const maxAttempts = job.opts.attempts || 3;
+
+        if (job.attemptsMade >= maxAttempts) {
           logger.error(
-            `Job ${job.id} failed (Attempt ${job.attemptsMade}/${job.opts.attempts}):`,
-            err.message
+            `Job ${job.id} exhausted all attempts. Setting submission to SYSTEM_ERROR.`
           );
 
-          if (failureReason) {
-            logger.error(`Job ${job.id} failed with reason=${failureReason}${normalizerCode ? ` code=${normalizerCode}` : ''}`);
-          }
-
-          this.totalErrors++;
-
-          const queueJob = job.data as QueueJob;
-          const maxAttempts = job.opts.attempts || 3;
-          const shouldFinalizeFailure =
-            failureReason === 'signature_validation' || job.attemptsMade >= maxAttempts;
-
-          if (shouldFinalizeFailure) {
-            logger.error(`Job ${job.id} exhausted all attempts or hit a non-retryable error. Setting to SYSTEM_ERROR.`);
-
-            try {
-              if (queueJob.jobType !== 'RUN_CODE') {
-                await submissionService.updateSubmissionResult(queueJob.submissionId, {
-                  status: ESubmissionStatus.SYSTEM_ERROR,
-                  score: 0,
-                  result: {
-                    passed: 0,
-                    total: queueJob.testcases.length,
-                    results: [],
-                  },
-                });
-              }
-
-              const message =
-                failureReason === 'signature_validation'
-                  ? `System error during execution (Invalid function signature metadata: ${normalizerCode || 'unknown'})`
-                  : 'System error during execution (Max retries exceeded)';
-
-              await queueService.publish(
-                'submission_updates',
-                JSON.stringify({
-                  submissionId: queueJob.submissionId,
-                  data: {
-                    submissionId: queueJob.submissionId,
-                    status: ESubmissionStatus.SYSTEM_ERROR,
-                    message,
-                    failureReason,
-                  },
-                })
-              );
-            } catch (failErr) {
-              logger.error('Fail to handle dead letter update mapping:', failErr);
+          try {
+            if (queueJob.jobType !== 'RUN_CODE') {
+              await submissionService.updateSubmissionResult(queueJob.submissionId, {
+                status: ESubmissionStatus.SYSTEM_ERROR,
+                score: 0,
+                result: {
+                  passed: 0,
+                  total: queueJob.testcases.length,
+                  results: [],
+                },
+              });
             }
+
+            await queueService.publish(
+              'submission_updates',
+              JSON.stringify({
+                submissionId: queueJob.submissionId,
+                data: {
+                  submissionId: queueJob.submissionId,
+                  status: ESubmissionStatus.SYSTEM_ERROR,
+                  message: 'System error during execution (Max retries exceeded)',
+                },
+              })
+            );
+          } catch (failErr) {
+            logger.error('Failed to finalize SYSTEM_ERROR after job exhaustion', failErr);
           }
-        } else {
-          logger.error('Worker global error:', err.message);
         }
       });
 
@@ -166,101 +149,44 @@ export class WorkerService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  private resolveStructuredTestcaseInput(testcase: QueueJob['testcases'][number]): Record<string, unknown> {
-    if (this.isStructuredInput(testcase.inputJson)) {
-      return testcase.inputJson;
-    }
-
-    if (typeof testcase.input === 'string' && testcase.input.trim().length > 0) {
-      try {
-        const parsed = JSON.parse(testcase.input);
-        if (this.isStructuredInput(parsed)) {
-          return parsed;
-        }
-      } catch (error) {
-        logger.warn(`Failed to parse legacy structured input for testcase ${testcase.id}: ${String(error)}`);
-      }
-    }
-
-    throw new Error(`Function-signature testcase ${testcase.id} is missing structured input data`);
-  }
-
-  private buildLegacyFunctionPayload(job: QueueJob): PreparedExecutionPayload {
-    this.legacyFallbackCount++;
-    logger.warn(`job ${job.submissionId} has no inputJson; falling back to legacy buildFunctionExecutionSource`);
-
-    const testcaseInputs = job.testcases.map(testcase => this.resolveStructuredTestcaseInput(testcase));
-
-    const sourceCode = buildFunctionExecutionSource({
-      language: job.language as 'cpp' | 'java' | 'python',
-      userSource: job.code,
-      signature: job.functionSignature as any,
-      testcases: testcaseInputs,
-    });
-
+  private buildTestcaseDisplay(job: QueueJob, testcase: QueueJob['testcases'][number]): {
+    input: string;
+    output: string;
+    isPublic: boolean;
+  } {
     return {
-      sourceCode,
-      executionMode: 'legacy',
-      testcases: job.testcases.map((testcase, index) => ({
-        id: testcase.id,
-        input: testcase.executionInput ?? String(index),
-        output: testcase.output,
-        point: testcase.point,
-      })),
+      input: buildFunctionInputDisplayValue(job.functionSignature, testcase.inputJson),
+      output: canonicalizeStructuredValue(testcase.outputJson),
+      isPublic: testcase.isPublic ?? false,
     };
   }
 
   private prepareExecutionPayload(job: QueueJob): PreparedExecutionPayload {
-    const judgeMode = job.judgeMode ?? EProblemJudgeMode.STDIN_STDOUT;
-
-    if (judgeMode !== EProblemJudgeMode.FUNCTION_SIGNATURE) {
-      return {
-        sourceCode: job.code,
-        executionMode: 'legacy',
-        testcases: job.testcases.map(testcase => ({
-          id: testcase.id,
-          input: testcase.executionInput ?? testcase.input,
-          output: testcase.output,
-          point: testcase.point,
-        })),
-      };
-    }
-
-    if (!job.functionSignature) {
-      throw new Error('Function-signature job is missing functionSignature metadata');
-    }
-
-    const requestedExecutionMode = job.executionMode;
-    const hasStructuredInputs = job.testcases.every(testcase => this.isStructuredInput(testcase.inputJson));
-
-    if (requestedExecutionMode === 'wrapper' && !hasStructuredInputs) {
+    if (job.executionMode !== 'wrapper') {
       throw new Error(
-        `Function-signature job ${job.submissionId} requested wrapper mode but testcase inputJson is missing`
+        `Unsupported queue executionMode for submission ${job.submissionId}: ${String(job.executionMode)}`
       );
     }
 
-    if (requestedExecutionMode === 'legacy') {
-      return this.buildLegacyFunctionPayload(job);
+    const missingStructuredInput = job.testcases.find(testcase => !this.isStructuredInput(testcase.inputJson));
+    if (missingStructuredInput) {
+      throw new Error(
+        `Queue job ${job.submissionId} is missing structured inputJson for testcase ${missingStructuredInput.id}`
+      );
     }
 
-    if (!hasStructuredInputs) {
-      return this.buildLegacyFunctionPayload(job);
-    }
-
-    const normalizedSignature = normalizeRuntimeSignature(job.functionSignature);
     const sourceCode = generateWrapper(
       job.language as 'cpp' | 'java' | 'python',
-      normalizedSignature,
+      job.functionSignature as any,
       job.code
     );
 
     return {
       sourceCode,
-      executionMode: 'wrapper',
       testcases: job.testcases.map(testcase => ({
         id: testcase.id,
         input: JSON.stringify(testcase.inputJson),
-        output: testcase.output,
+        output: canonicalizeStructuredValue(testcase.outputJson),
         point: testcase.point,
       })),
     };
@@ -268,14 +194,7 @@ export class WorkerService {
 
   private remapExecutionResults(job: QueueJob, executionResult: any): any {
     const testcaseMeta = new Map(
-      job.testcases.map(testcase => [
-        testcase.id,
-        {
-          input: testcase.input,
-          output: testcase.output,
-          isPublic: testcase.isPublic ?? false,
-        },
-      ])
+      job.testcases.map(testcase => [testcase.id, this.buildTestcaseDisplay(job, testcase)])
     );
 
     if (executionResult.results && Array.isArray(executionResult.results)) {
@@ -300,93 +219,80 @@ export class WorkerService {
       `Processing job for submission ${job.submissionId} (Type: ${job.jobType || 'SUBMISSION'})`
     );
 
-    try {
-      const { submissionId, language, testcases, timeLimit, memoryLimit, jobType } = job;
-      const isRunOnly = jobType === 'RUN_CODE';
-      const executionPayload = this.prepareExecutionPayload(job);
+    const { submissionId, language, testcases, timeLimit, memoryLimit, jobType } = job;
+    const isRunOnly = jobType === 'RUN_CODE';
+    const executionPayload = this.prepareExecutionPayload(job);
 
-      await queueService.publish(
-        'submission_updates',
-        JSON.stringify({
+    await queueService.publish(
+      'submission_updates',
+      JSON.stringify({
+        submissionId,
+        data: {
           submissionId,
-          data: {
-            submissionId,
-            status: ESubmissionStatus.RUNNING,
-            message: 'Compiling and Running...',
-          },
-        })
-      );
+          status: ESubmissionStatus.RUNNING,
+          message: 'Compiling and Running...',
+        },
+      })
+    );
 
-      const executionResult = this.remapExecutionResults(
-        job,
-        await this.executeInSandbox({
-          submissionId,
-          code: executionPayload.sourceCode,
-          language,
-          testcases: executionPayload.testcases,
-          timeLimit,
-          memoryLimit,
-          executionMode: executionPayload.executionMode,
-        })
-      );
+    const executionResult = this.remapExecutionResults(
+      job,
+      await this.executeInSandbox({
+        submissionId,
+        code: executionPayload.sourceCode,
+        language,
+        testcases: executionPayload.testcases,
+        timeLimit,
+        memoryLimit,
+      })
+    );
 
-      const finalStatus = JudgeUtils.determineFinalStatus(
-        executionResult.summary,
-        executionResult.results
-      );
-      const score = JudgeUtils.calculateScore(executionResult.results, testcases);
+    const finalStatus = JudgeUtils.determineFinalStatus(
+      executionResult.summary,
+      executionResult.results
+    );
+    const score = JudgeUtils.calculateScore(executionResult.results, testcases);
 
-      if (!isRunOnly) {
-        await submissionService.updateSubmissionResult(submissionId, {
-          status: finalStatus as any,
-          score,
-          result: executionResult,
-        });
-      }
-
-      await queueService.publish(
-        'submission_updates',
-        JSON.stringify({
-          submissionId,
-          data: {
-            submissionId,
-            status: finalStatus,
-            result: executionResult,
-            score,
-            isRunOnly,
-          },
-        })
-      );
-
-      this.totalProcessed++;
-    } catch (error) {
-      if (error instanceof NormalizerError) {
-        bullJob.discard();
-        const wrappedError = new Error(`Function signature validation failed: ${error.message}`);
-        wrappedError.name = 'WorkerSignatureValidationError';
-        (wrappedError as any).failureReason = 'signature_validation';
-        (wrappedError as any).normalizerCode = error.code;
-        throw wrappedError;
-      }
-
-      throw error;
+    if (!isRunOnly) {
+      await submissionService.updateSubmissionResult(submissionId, {
+        status: finalStatus as any,
+        score,
+        result: executionResult,
+      });
     }
+
+    await queueService.publish(
+      'submission_updates',
+      JSON.stringify({
+        submissionId,
+        data: {
+          submissionId,
+          status: finalStatus,
+          result: executionResult,
+          score,
+          isRunOnly,
+        },
+      })
+    );
+
+    this.totalProcessed++;
   }
 
   private async testSandboxService(): Promise<boolean> {
     try {
       const probe: GrpcExecutionRequest = {
         submission_id: 'health-probe',
-        source_code: 'print(1)',
+        source_code:
+          'import json\nimport sys\nif __name__ == "__main__":\n    sys.stdout.write(json.dumps({"actual_output": 1, "time_taken_ms": 0}))',
         language: 'python',
         time_limit_ms: 5000,
         memory_limit_kb: 65536,
-        execution_mode: 'legacy',
-        test_cases: [{ id: 'probe', input: '', expected_output: '1' }],
+        execution_mode: 'wrapper',
+        test_cases: [{ id: 'probe', input: '{}', expected_output: '1' }],
       };
       await sandboxGrpcClient.executeCode(probe);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -398,7 +304,7 @@ export class WorkerService {
       language: config.language,
       time_limit_ms: config.timeLimit || 5000,
       memory_limit_kb: config.memoryLimit ? parseInt(config.memoryLimit) * 1024 : 262144,
-      execution_mode: (config.executionMode || 'legacy') as ExecutionMode,
+      execution_mode: 'wrapper',
       test_cases: (config.testcases || []).map((tc: any) => ({
         id: tc.id,
         input: tc.input || '',
@@ -415,48 +321,93 @@ export class WorkerService {
     return this.mapGrpcResponseToLegacy(grpcResponse);
   }
 
+  private buildFallbackErrorMessage(status: string, compileError: string): string {
+    switch (status) {
+      case 'TIME_LIMIT_EXCEEDED':
+        return 'Time limit exceeded';
+      case 'MEMORY_LIMIT_EXCEEDED':
+        return 'Memory limit exceeded';
+      case 'COMPILATION_ERROR':
+        return compileError || 'Compilation failed';
+      case 'RUNTIME_ERROR':
+        return 'Runtime error';
+      case 'WRONG_ANSWER':
+        return 'Wrong Answer';
+      default:
+        return compileError || 'Sandbox execution failed';
+    }
+  }
+
   private mapGrpcResponseToLegacy(grpcResponse: any): any {
-    if (!grpcResponse || grpcResponse.overall_status === 'SYSTEM_ERROR') {
-      throw new Error('Sandbox system error - circuit breaker fallback activated');
+    if (!grpcResponse) {
+      throw new Error('Sandbox returned an empty response');
     }
 
-    const results = (grpcResponse.results || []).map((r: any) => {
+    if (grpcResponse.overall_status === 'SYSTEM_ERROR') {
+      throw new Error(grpcResponse.compile_error || 'Sandbox system error');
+    }
+
+    const compileError = grpcResponse.compile_error || '';
+    let results = (grpcResponse.results || []).map((r: any) => {
       const maxLength = 2048;
       let actualOutput = r.actual_output || '';
-      let errorMessage = r.error_message || null;
+      let errorMessage = r.error_message || '';
 
       if (actualOutput.length > maxLength) {
         actualOutput = actualOutput.substring(0, maxLength) + '\n... [TRUNCATED]';
       }
 
-      if (errorMessage && errorMessage.length > maxLength) {
+      if (errorMessage.length > maxLength) {
         errorMessage = errorMessage.substring(0, maxLength) + '\n... [TRUNCATED]';
       }
+
+      const status = String(r.status || 'WRONG_ANSWER');
+      const normalizedError =
+        status === 'ACCEPTED'
+          ? null
+          : errorMessage || this.buildFallbackErrorMessage(status, compileError);
 
       return {
         testcaseId: r.test_case_id,
         input: '',
         expectedOutput: '',
         actualOutput,
-        isPassed: r.status === 'ACCEPTED',
+        isPassed: status === 'ACCEPTED',
         executionTime: r.time_taken_ms,
         memoryUse: r.memory_used_kb,
-        error: errorMessage,
-        stderr: errorMessage,
+        error: normalizedError,
+        stderr: normalizedError,
       };
     });
 
+    if (results.length === 0 && compileError) {
+      results = [
+        {
+          testcaseId: 'compile-error',
+          input: '',
+          expectedOutput: '',
+          actualOutput: '',
+          isPassed: false,
+          executionTime: 0,
+          memoryUse: null,
+          error: compileError,
+          stderr: compileError,
+        },
+      ];
+    }
+
     const passed = results.filter((result: any) => result.isPassed).length;
+    const total = results.length;
 
     return {
       summary: {
         passed,
-        total: results.length,
-        successRate: results.length > 0 ? ((passed / results.length) * 100).toFixed(2) : '0.00',
+        total,
+        successRate: total > 0 ? ((passed / total) * 100).toFixed(2) : '0.00',
         status: grpcResponse.overall_status,
       },
       results,
-      compileError: grpcResponse.compile_error || null,
+      compileError: compileError || null,
     };
   }
 
@@ -465,7 +416,6 @@ export class WorkerService {
       workerId: this.workerId,
       totalProcessed: this.totalProcessed,
       totalErrors: this.totalErrors,
-      legacyFallbackCount: this.legacyFallbackCount,
       sandboxGrpcUrl: process.env.SANDBOX_GRPC_URL || 'localhost:50051',
       circuitBreakerOpen: this.breaker ? this.breaker.opened : false,
     };
@@ -473,6 +423,4 @@ export class WorkerService {
 }
 
 export const workerService = new WorkerService();
-
-
 

@@ -1,4 +1,4 @@
-﻿import {
+import {
   ProblemEntity,
   ProblemInsert,
   problems,
@@ -11,7 +11,7 @@ import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@backend/shared/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@backend/shared/db/schema';
 import { and, desc, eq, gt, ilike, lt, or, inArray, sql, count } from 'drizzle-orm';
-import { EProblemJudgeMode, ProblemVisibility } from '@backend/shared/types';
+import { ProblemVisibility } from '@backend/shared/types';
 import { topics } from '@backend/shared/db/schema';
 import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
@@ -46,7 +46,6 @@ export class ProblemRepository extends BaseRepository<
         lessonId: problemData.lessonId,
         topicId: problemData.topicId,
         visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
-        judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
         functionSignature: problemData.functionSignature,
 
       } as any)
@@ -66,8 +65,8 @@ export class ProblemRepository extends BaseRepository<
               tc.inputJson as Record<string, unknown>
             ),
             output: canonicalizeStructuredValue(tc.outputJson),
-            inputJson: tc.inputJson ?? null,
-            outputJson: tc.outputJson ?? null,
+            inputJson: tc.inputJson as Record<string, unknown>,
+            outputJson: tc.outputJson,
             isPublic: tc.isPublic ?? false,
             point: tc.point ?? 0,
             problemId: createdProblem.id,
@@ -431,5 +430,8 @@ export class ProblemRepository extends BaseRepository<
       .limit(limit);
   }
 }
+
+
+
 
 

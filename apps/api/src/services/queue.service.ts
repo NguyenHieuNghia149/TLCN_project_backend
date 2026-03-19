@@ -1,21 +1,18 @@
-import { logger } from '@backend/shared/utils';
+﻿import { logger } from '@backend/shared/utils';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import path from 'path';
 import { BaseException } from '../exceptions/auth.exceptions';
-import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
+import { FunctionSignature } from '@backend/shared/types';
 
 require('dotenv').config({ path: path.resolve(__dirname, '../../../../.env') });
 
 export interface QueueJobTestcase {
   id: string;
-  input: string;
-  output: string;
   point: number;
   isPublic?: boolean;
-  executionInput?: string;
-  inputJson?: Record<string, unknown> | null;
-  outputJson?: unknown;
+  inputJson: Record<string, unknown>;
+  outputJson: unknown;
 }
 
 export interface QueueJob {
@@ -24,9 +21,8 @@ export interface QueueJob {
   problemId: string;
   code: string;
   language: string;
-  judgeMode?: EProblemJudgeMode;
-  functionSignature?: FunctionSignature | null;
-  executionMode?: 'wrapper' | 'legacy';
+  functionSignature: FunctionSignature;
+  executionMode: 'wrapper';
   testcases: QueueJobTestcase[];
   timeLimit: number;
   memoryLimit: string;
@@ -69,7 +65,7 @@ export class QueueService {
     try {
       await this.publisher.ping();
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -98,17 +94,13 @@ export class QueueService {
   async getQueueLength(): Promise<number> {
     try {
       return await this.queue.count();
-    } catch (error) {
+    } catch {
       return 0;
     }
   }
 
   async clearQueue(): Promise<void> {
-    try {
-      await this.queue.obliterate({ force: true });
-    } catch (error) {
-      throw error;
-    }
+    await this.queue.obliterate({ force: true });
   }
 
   async getQueueStatus(): Promise<{ length: number; isHealthy: boolean }> {
@@ -116,7 +108,7 @@ export class QueueService {
       const length = await this.getQueueLength();
       const isHealthy = await this.isHealthy();
       return { length, isHealthy };
-    } catch (error) {
+    } catch {
       return { length: 0, isHealthy: false };
     }
   }
@@ -131,4 +123,3 @@ export class QueueService {
 }
 
 export const queueService = new QueueService();
-

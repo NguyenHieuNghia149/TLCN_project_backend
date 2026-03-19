@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+const requiredUnknown = (message: string) => z.unknown().refine(value => value !== undefined, message);
+
 export const CreateTestcaseSchema = z.object({
   input: z.string().min(1, 'Testcase input cannot be empty.').optional(),
   output: z.string().min(1, 'Testcase expected output cannot be empty.').optional(),
-  inputJson: z.unknown().optional(),
-  outputJson: z.unknown().optional(),
+  inputJson: requiredUnknown('Structured testcase inputJson is required.'),
+  outputJson: requiredUnknown('Structured testcase outputJson is required.'),
   isPublic: z.boolean().optional(),
   point: z.number().int().optional(),
 });
@@ -13,10 +15,10 @@ export type TestcaseInput = z.infer<typeof CreateTestcaseSchema>;
 
 export const TestcaseResponseSchema = z.object({
   id: z.string(),
+  inputJson: requiredUnknown('Structured testcase inputJson is required.'),
+  outputJson: requiredUnknown('Structured testcase outputJson is required.'),
   input: z.string(),
   output: z.string(),
-  inputJson: z.unknown().optional(),
-  outputJson: z.unknown().optional(),
   isPublic: z.boolean(),
   point: z.number(),
   createdAt: z.string(),

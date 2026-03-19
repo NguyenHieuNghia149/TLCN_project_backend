@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
 import { CreateTestcaseSchema, TestcaseResponseSchema } from './testcase.validation';
 import { CreateSolutionSchema, SolutionResponseSchema } from './solution.validation';
@@ -7,11 +7,7 @@ import {
   validateFunctionTestcaseInput,
   validateFunctionTestcaseOutput,
 } from '@backend/shared/utils';
-import {
-  EProblemJudgeMode,
-  FunctionSignature,
-  FunctionStarterCodeByLanguage,
-} from '@backend/shared/types';
+import { FunctionSignature, FunctionStarterCodeByLanguage } from '@backend/shared/types';
 
 export {
   CreateTestcaseSchema,
@@ -88,11 +84,9 @@ const BaseProblemSchema = z
   .object({
     title: z.string().min(1, 'Problem title is required.'),
     description: z.string().min(1, 'Problem description is required.'),
-    difficulty: z
-      .enum(['easy', 'medium', 'hard'], {
-        message: 'Problem difficulty is required.',
-      })
-      .default('easy'),
+    difficulty: z.enum(['easy', 'medium', 'hard'], {
+      message: 'Problem difficulty is required.',
+    }).default('easy'),
     constraint: z.string(),
     tags: z.array(z.string()).optional(),
     lessonId: z.string().uuid({ message: 'Invalid Lesson ID.' }).optional(),
@@ -100,9 +94,7 @@ const BaseProblemSchema = z
     visibility: z.string().optional(),
     functionSignature: FunctionSignatureSchema,
     solution: CreateSolutionSchema.optional(),
-    testcases: z
-      .array(CreateTestcaseSchema)
-      .min(1, 'At least one testcase is required for a problem.'),
+    testcases: z.array(CreateTestcaseSchema).min(1, 'At least one testcase is required for a problem.'),
   })
   .strict();
 
@@ -194,7 +186,6 @@ export const ProblemResponseSchema = z.object({
   totalPoints: z.number().default(0),
   isSolved: z.boolean().default(false),
   isFavorite: z.boolean().default(false),
-  judgeMode: z.literal(EProblemJudgeMode.FUNCTION_SIGNATURE).default(EProblemJudgeMode.FUNCTION_SIGNATURE),
   functionSignature: FunctionSignatureSchema,
   starterCodeByLanguage: z.record(z.string(), z.string()).optional(),
   createdAt: z.string(),

@@ -1,4 +1,4 @@
-import { logger } from '@backend/shared/utils';
+﻿import { logger } from '@backend/shared/utils';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
@@ -16,6 +16,67 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 
 const judgeProto = grpc.loadPackageDefinition(packageDefinition) as any;
 
+function inferTestCaseStatus(result: any): string {
+  if (result.isPassed) {
+    return 'ACCEPTED';
+  }
+
+  const normalized = `${result.error || ''}\n${result.stderr || ''}`.toLowerCase();
+
+  if (normalized.includes('time limit exceeded') || normalized.includes('timeout')) {
+    return 'TIME_LIMIT_EXCEEDED';
+  }
+
+  if (normalized.includes('memory limit exceeded') || normalized.includes('out of memory')) {
+    return 'MEMORY_LIMIT_EXCEEDED';
+  }
+
+  if (normalized.includes('compilation') || normalized.includes('compile')) {
+    return 'COMPILATION_ERROR';
+  }
+
+  if (
+    normalized.includes('runtime') ||
+    normalized.includes('process exited with code') ||
+    normalized.includes('wrapper envelope missing or malformed') ||
+    normalized.includes('invalid envelope')
+  ) {
+    return 'RUNTIME_ERROR';
+  }
+
+  return 'WRONG_ANSWER';
+}
+
+function deriveOverallStatus(summaryStatus: string | undefined, results: any[]): string {
+  if (summaryStatus && summaryStatus.length > 0) {
+    return summaryStatus;
+  }
+
+  if (results.length === 0) {
+    return 'SYSTEM_ERROR';
+  }
+
+  if (results.every(result => result.status === 'ACCEPTED')) {
+    return 'ACCEPTED';
+  }
+
+  const priorities = [
+    'COMPILATION_ERROR',
+    'TIME_LIMIT_EXCEEDED',
+    'MEMORY_LIMIT_EXCEEDED',
+    'RUNTIME_ERROR',
+    'WRONG_ANSWER',
+  ];
+
+  for (const status of priorities) {
+    if (results.some(result => result.status === status)) {
+      return status;
+    }
+  }
+
+  return 'WRONG_ANSWER';
+}
+
 async function executeCode(
   call: grpc.ServerUnaryCall<any, any>,
   callback: grpc.sendUnaryData<any>
@@ -23,6 +84,14 @@ async function executeCode(
   const req = call.request;
 
   logger.info(`[gRPC] ExecuteCode received - submission_id: ${req.submission_id}`);
+
+  if (req.execution_mode !== 'wrapper') {
+    callback({
+      code: grpc.status.INVALID_ARGUMENT,
+      message: `Unsupported execution_mode: ${req.execution_mode ?? '<missing>'}`,
+    });
+    return;
+  }
 
   try {
     const testcases = (req.test_cases || []).map((tc: any) => ({
@@ -37,43 +106,41 @@ async function executeCode(
       language: req.language,
       timeLimit: req.time_limit_ms,
       memoryLimit: `${Math.floor(req.memory_limit_kb / 1024)}m`,
-      executionMode: req.execution_mode,
+      executionMode: 'wrapper',
       testcases,
     });
 
     if (!result.success) {
-      const response = {
+      callback(null, {
         submission_id: req.submission_id,
-        overall_status: 'COMPILE_ERROR',
+        overall_status: 'SYSTEM_ERROR',
         compile_error: result.error || '',
         results: [],
-      };
-      return callback(null, response);
+      });
+      return;
     }
 
     const protoResults = (result.result?.results || []).map((r: any) => ({
       test_case_id: r.testcaseId || '',
-      status: r.isPassed
-        ? 'ACCEPTED'
-        : r.error?.toLowerCase().includes('time')
-          ? 'TIME_LIMIT_EXCEEDED'
-          : 'WRONG_ANSWER',
+      status: inferTestCaseStatus(r),
       time_taken_ms: Math.round(r.executionTime || 0),
       memory_used_kb: 0,
       actual_output: r.actualOutput || '',
       error_message: r.error || '',
     }));
 
-    const allPassed = protoResults.every((r: any) => r.status === 'ACCEPTED');
+    const overallStatus = deriveOverallStatus(result.result?.summary?.status, protoResults);
+    const compileError =
+      overallStatus === 'COMPILATION_ERROR'
+        ? protoResults.find((row: any) => row.error_message)?.error_message || ''
+        : '';
 
-    const response = {
+    callback(null, {
       submission_id: req.submission_id,
-      overall_status: allPassed ? 'ACCEPTED' : 'WRONG_ANSWER',
-      compile_error: '',
+      overall_status: overallStatus,
+      compile_error: compileError,
       results: protoResults,
-    };
-
-    callback(null, response);
+    });
   } catch (err: any) {
     logger.error('[gRPC] ExecuteCode error:', err.message);
     callback({

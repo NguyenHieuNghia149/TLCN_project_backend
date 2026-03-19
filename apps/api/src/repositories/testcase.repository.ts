@@ -73,8 +73,8 @@ export class TestcaseRepository extends BaseRepository<
         testcase.inputJson as Record<string, unknown>
       ),
       output: canonicalizeStructuredValue(testcase.outputJson),
-      inputJson: testcase.inputJson ?? null,
-      outputJson: testcase.outputJson ?? null,
+      inputJson: testcase.inputJson as Record<string, unknown>,
+      outputJson: testcase.outputJson,
       isPublic: testcase.isPublic ?? false,
       point: testcase.point ?? 0,
     };
@@ -98,3 +98,6 @@ export class TestcaseRepository extends BaseRepository<
     });
   }
 }
+
+
+

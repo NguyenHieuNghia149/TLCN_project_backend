@@ -3,7 +3,7 @@ import { lessons } from './lesson';
 import { topics } from './topic';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import { EProblemJudgeMode, FunctionSignature, ProblemVisibility } from '@backend/shared/types';
+import { FunctionSignature, ProblemVisibility } from '@backend/shared/types';
 
 export const problems = pgTable(
   'problems',
@@ -19,10 +19,7 @@ export const problems = pgTable(
     lessonId: uuid('lesson_id').references(() => lessons.id),
     topicId: uuid('topic_id').references(() => topics.id),
     visibility: varchar('visibility', { length: 30 }).default(ProblemVisibility.PUBLIC).notNull(),
-    judgeMode: varchar('judge_mode', { length: 32 })
-      .default(EProblemJudgeMode.FUNCTION_SIGNATURE)
-      .notNull(),
-    functionSignature: jsonb('function_signature').$type<FunctionSignature | null>(),
+    functionSignature: jsonb('function_signature').$type<FunctionSignature>().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -51,9 +48,7 @@ export const insertProblemSchema = createInsertSchema(problems, {
   lessonId: z.string().uuid().optional(),
   topicId: z.string().uuid().optional(),
   visibility: z.string().default(ProblemVisibility.PUBLIC),
-  judgeMode: z.nativeEnum(EProblemJudgeMode).default(EProblemJudgeMode.FUNCTION_SIGNATURE),
-  functionSignature: z.custom<FunctionSignature>().optional(),
+  functionSignature: z.custom<FunctionSignature>(),
 });
 
 export const selectProblemSchema = createSelectSchema(problems);
-

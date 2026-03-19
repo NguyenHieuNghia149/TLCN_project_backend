@@ -1,345 +1,177 @@
-# Function Signature Judge Mode Summary
+# Function-Signature-Only Judge
 
-## Muc tieu
+## Overview
 
-Tai lieu nay tong hop nhung thay doi da duoc them de ho tro kieu cham bai giong LeetCode ben canh kieu cham truyen thong `stdin_stdout`.
+Backend now judges problems in one mode only: `function_signature`.
 
-He thong hien tai ho tro 2 mode:
+Users do not write full stdin/stdout programs anymore for supported problems. They implement the problem logic inside a language-specific `Solution` template, and the server generates the execution harness that:
 
-- `stdin_stdout`: nguoi dung tu viet `main()` va tu doc `stdin`
-- `function_signature`: nguoi dung chi can viet logic cho ham bai toan, server se tu sinh wrapper, parse testcase, goi ham, va serialize output
+- parses structured testcase JSON
+- calls the target function on `Solution`
+- measures only the user function runtime
+- prints a wrapper envelope in JSON
 
-## Function Signature la gi?
+Supported submission languages are:
 
-`function_signature` la metadata mo ta chinh xac ham ma nguoi dung phai hoan thanh.
+- `cpp`
+- `java`
+- `python`
 
-Vi du voi bai `Two Sum`:
+## Function Signature AST
 
-```json
-{
-  "methodName": "twoSum",
-  "parameters": [
-    {
-      "name": "nums",
-      "type": { "kind": "array", "element": "int" }
-    },
-    {
-      "name": "target",
-      "type": { "kind": "scalar", "name": "int" }
-    }
-  ],
-  "returnType": { "kind": "array", "element": "int" }
-}
-```
+Each problem stores a required `functionSignature` JSON AST in `problems.function_signature`.
 
-Y nghia cua metadata nay:
-
-- Ten ham can goi la `twoSum`
-- Ham nhan 2 tham so:
-  - `nums: array<int>`
-  - `target: int`
-- Ham tra ve `array<int>`
-
-Tu metadata nay, server co the:
-
-- sinh starter code cho `cpp`, `java`, `python`
-- validate testcase co dung kieu du lieu hay khong
-- sinh wrapper/harness an de goi dung ham cua user
-- so sanh ket qua theo dang canonical JSON
-
-## Vi sao can `inputJson` thay vi chi `input` text?
-
-Voi `stdin_stdout`, `input` text la du vi chuong trinh cua user tu doc `stdin`.
-
-Voi `function_signature`, server phai hieu ro du lieu de map vao tung tham so cua ham. Vi vay can `inputJson` va `outputJson` lam source of truth.
-
-Vi du:
+Shape:
 
 ```json
 {
-  "nums": [2, 7, 11, 15],
-  "target": 9
+  "name": "twoSum",
+  "returnType": { "type": "array", "items": "integer" },
+  "args": [
+    { "name": "nums", "type": "array", "items": "integer" },
+    { "name": "target", "type": "integer" }
+  ]
 }
 ```
 
-Neu chi co text nhu `2 7 11 15 9` thi server khong biet chac:
+Supported types:
 
-- day la 1 mang va 1 scalar
-- hay 5 tham so rieng
-- hay co them do dai mang
-- hay co nested array, bool, string, matrix
+- scalar: `integer`, `string`, `boolean`
+- container: `array<scalar>`
 
-Dung `inputJson` giup:
+## Canonical Testcase Storage
 
-- giu duoc type that cua testcase
-- map dung theo ten tham so
-- validate testcase theo `function_signature`
-- sinh wrapper da ngon ngu mot cach an toan va nhat quan
-- khong bat nguoi dung tu parse JSON hay tu viet `main()`
+Execution source of truth lives in structured JSON columns:
 
-Luu y:
-
-- `function_signature`: `inputJson` / `outputJson` la canonical data
-- `input` / `output` text van duoc giu lai de hien thi, debug, va giu tuong thich response
-- `stdin_stdout`: van tiep tuc dung `input` / `output` text nhu cu
-
-## Nhung thay doi da thuc hien
-
-### 1. Shared types
-
-Da them cac type moi:
-
-- `packages/shared/types/problemJudgeMode.enum.ts`
-- `packages/shared/types/functionSignature.ts`
-- cap nhat export trong `packages/shared/types/index.ts`
-
-Noi dung chinh:
-
-- enum `EProblemJudgeMode`
-- `FunctionSignature`
-- `FunctionParameter`
-- mo ta type scalar / array / matrix
-- starter-code types cho `cpp`, `java`, `python`
-
-### 2. Schema database
-
-Da cap nhat schema:
-
-- `packages/shared/db/schema/problem.ts`
-- `packages/shared/db/schema/testcase.ts`
-
-Them cac cot moi:
-
-- `problems.judge_mode`
-- `problems.function_signature`
 - `testcases.input_json`
 - `testcases.output_json`
 
-### 3. Validation layer
+Text fields remain stored only as cached display values:
 
-Da cap nhat:
+- `input`: one argument per line, format `argName: value`
+- `output`: `JSON.stringify(outputJson)`
 
-- `packages/shared/validations/problem.validation.ts`
-- `packages/shared/validations/testcase.validation.ts`
+Example:
 
-Chuc nang moi:
-
-- validate `judgeMode`
-- validate `functionSignature`
-- validate testcase JSON dung theo signature
-- phan biet ro 2 mode:
-  - `stdin_stdout`
-  - `function_signature`
-
-### 4. Shared helper cho function mode
-
-Da them:
-
-- `packages/shared/utils/function-signature.ts`
-- export tai `packages/shared/utils/index.ts`
-
-Helper nay phu trach:
-
-- validate structured testcase input/output
-- canonicalize JSON output
-- sinh starter code cho `cpp`, `java`, `python`
-- sinh hidden wrapper/harness cho worker runtime
-
-### 5. Repository va API service
-
-Da cap nhat:
-
-- `apps/api/src/repositories/problem.repository.ts`
-- `apps/api/src/repositories/testcase.repository.ts`
-- `apps/api/src/services/challenge.service.ts`
-- `apps/api/src/services/submission.service.ts`
-- `apps/api/src/services/queue.service.ts`
-- `apps/api/src/services/favorite.service.ts`
-
-Thay doi chinh:
-
-- problem create/update co the luu `judgeMode` va `functionSignature`
-- testcase create/update co the luu `inputJson` / `outputJson`
-- challenge detail tra ve:
-  - `judgeMode`
-  - `functionSignature`
-  - `starterCodeByLanguage`
-  - `inputJson` / `outputJson`
-- submission flow dua them metadata function mode vao queue job
-- favorite/problem response khong bi mat thong tin mode moi
-
-## 6. Worker va queue pipeline
-
-Da cap nhat:
-
-- `apps/api/src/services/queue.service.ts`
-- `apps/worker/src/worker.service.ts`
-
-Flow moi cho `function_signature`:
-
-1. API tao queue job co:
-   - `judgeMode`
-   - `functionSignature`
-   - `inputJson` / `outputJson`
-   - display `input` / `output`
-2. Worker nhan job
-3. Worker sinh full source tam tu:
-   - source code cua user
-   - hidden wrapper theo ngon ngu
-   - testcase metadata
-4. Worker gui full source da sinh vao sandbox
-5. Sandbox chi viec compile va run nhu binh thuong
-6. Worker remap ket qua ve dang hien thi cho API / SSE / DB
-
-## 7. Sandbox va runtime
-
-Da cap nhat:
-
-- `config/sandbox.yaml`
-- `apps/sandbox/src/sandbox.service.ts`
-
-Thay doi quan trong:
-
-- Python runtime dung `python3` thay vi `python`
-- Java runtime duoc them JVM flags de giam memory footprint trong `nsjail`
-- Sandbox service duoc them Java-specific address-space floor de JVM co the khoi dong on dinh
-
-## 8. Migration va du lieu
-
-Da them migration:
-
-- `packages/shared/db/migrations/20260319074403_lovely_giant_man.sql`
-
-Migration nay:
-
-- them cot moi cho `problems` va `testcases`
-- migrate bai `Two Sum` sang `function_signature`
-- chuyen testcase `Two Sum` sang `input_json` / `output_json`
-
-## 9. Bai Two Sum da duoc migrate
-
-Problem ID:
-
-- `0f465ec8-b3a7-402e-8d5a-a7e99a2f37cb`
-
-Trang thai moi:
-
-- `judgeMode = function_signature`
-- `methodName = twoSum`
-- starter code tra ve theo tung ngon ngu
-
-Vi du starter code C++ hien tai:
-
-```cpp
-#include <vector>
-#include <string>
-using namespace std;
-
-class Solution {
-public:
-    vector<int> twoSum(vector<int>& nums, int target) {
-        
-        return {};
-    }
-};
+```text
+nums: [1, 2, 3]
+target: 5
 ```
 
-Nguoi dung khong can tu viet `main()` nua.
+## JSON-First Read Model
 
-## 10. Fixture va test
+Challenge and testcase read models are JSON-first. Responses keep both the structured values and the cached text fields:
 
-Da cap nhat:
+```ts
+{
+  inputJson: Record<string, unknown>; // source of truth
+  outputJson: unknown;                // source of truth
+  input: string;                      // cached display only
+  output: string;                     // cached display only
+}
+```
 
-- `tests/performance/submission_load_test.yml`
+Important rules:
 
-Load test hien tai dung snippet LeetCode-style thay vi full `main()`.
+- execution never reads `input` or `output`
+- repositories rebuild cached text from JSON when writing
+- service and worker code must use shared helpers instead of inline formatting
+- cached text may be stale historically, but it cannot affect judging
 
-## Verify da thuc hien
+The shared helpers are:
 
-Da verify thanh cong:
+- `buildFunctionInputDisplayValue(functionSignature, inputJson)`
+- `canonicalizeStructuredValue(outputJson)`
 
-- `npm run build`
-- `npm run db:migrate`
-- `npm run db:check`
-- challenge detail tra ve dung `judgeMode`, `functionSignature`, `starterCodeByLanguage`
-- submit end-to-end thanh cong cho bai `Two Sum` voi:
-  - C++: `accepted`, `100`, `5/5`
-  - Java: `accepted`, `100`, `5/5`
-  - Python: `accepted`, `100`, `5/5`
+## Read Model
 
-## So sanh nhanh 2 mode
+Problem and challenge detail responses expose:
 
-### `stdin_stdout`
+```ts
+{
+  functionSignature: AST;
+  starterCodeByLanguage: {
+    cpp: string;
+    java: string;
+    python: string;
+  };
+}
+```
 
-Dung khi:
+Starter code is generated on the fly from the AST. It is not stored in the database.
 
-- bai theo kieu OJ truyen thong
-- user tu viet full program
-- user tu doc `stdin` va in `stdout`
+If a problem row is missing `functionSignature`, the API logs the `problemId` and returns `500` with the generic message:
 
-Storage chinh:
+```text
+problem configuration invalid
+```
 
-- `input`
-- `output`
+## Queue And Execution Pipeline
 
-### `function_signature`
+New jobs are wrapper-only.
 
-Dung khi:
+Queue payload contract:
 
-- bai theo kieu LeetCode
-- user chi can viet logic cho ham
-- server tu lo wrapper, testcase parsing, va output serialization
+```ts
+{
+  functionSignature: AST;
+  executionMode: "wrapper";
+  testcases: Array<{
+    inputJson: Record<string, unknown>;
+    outputJson: unknown;
+  }>;
+}
+```
 
-Storage chinh:
+Worker behavior:
 
-- `inputJson`
-- `outputJson`
+- generates full executable source with `wrapperGenerator.ts`
+- sends `JSON.stringify(inputJson)` to sandbox stdin
+- sends `JSON.stringify(outputJson)` as expected output
+- derives any display text from JSON via shared helpers
+- always sets `execution_mode = "wrapper"` on gRPC
 
-Display / backward compatibility:
+Sandbox behavior:
 
-- van giu `input`
-- van giu `output`
+- accepts only `execution_mode = "wrapper"`
+- reads the last non-empty stdout line as the wrapper envelope
+- requires this exact contract:
 
-## Tinh toi uu hien tai
+```json
+{"actual_output": <json-value>, "time_taken_ms": <non-negative number>}
+```
 
-Huong toi uu da duoc chon la:
+- compares semantic output with JSON parsing + deep equality
+- treats malformed or missing envelopes as testcase failure
+- does not fall back to legacy raw stdout mode
 
-- giu ca 2 mode song song
-- `function_signature` dung `inputJson` / `outputJson` lam source of truth
-- van giu `input` / `output` text de hien thi va giu tuong thich API hien tai
+## Migration State
 
-Dieu nay giup:
+This repository state is the final function-signature-only state.
 
-- khong pha bai cu theo `stdin_stdout`
-- rollout an toan hon
-- de debug hon
-- khong can sua toan bo response/UI trong 1 lan
+Operational migration history is kept under:
 
-## Huong toi uu tiep theo
+- `scripts/archive/migrate/`
 
-Neu muon toi uu them sau nay, co the lam tiep:
+The active post-cutover verification command is:
 
-1. Tach ro canonical data va display data trong testcase response
-2. Voi `function_signature`, can nhac khong luu `input` / `output` text nua, ma generate display string luc doc
-3. Mo rong type support them:
-   - `ListNode`
-   - `TreeNode`
-   - object custom
-4. Them E2E test rieng cho tung ngon ngu trong function mode
-5. Tach sandbox test route mounted trong API khoi runtime path de tranh nham voi sandbox container that
+```bash
+npm run audit:post-migration
+```
 
-## Ket luan
+It checks:
 
-`function_signature` giup he thong ho tro trai nghiem submit bai giong LeetCode:
+- `problems.function_signature IS NOT NULL`
+- `testcases.input_json IS NOT NULL`
+- `testcases.output_json IS NOT NULL`
+- `problems.judge_mode` no longer exists
 
-- user chi can viet logic
-- server lo wrapper va testcase binding
-- worker lo execution source generation
-- sandbox van giu vai tro generic compile/run engine
+## Rollout Notes
 
-Ket qua la kien truc hien tai da ho tro duoc ca:
+For deployments that still need the historical migration story:
 
-- bai OJ truyen thong (`stdin_stdout`)
-- bai LeetCode-style (`function_signature`)
-
-ma khong can bo kieu cham cu.
+1. verify pre-cutover backfill on the archived scripts
+2. deploy code before dropping `judge_mode`
+3. run the irreversible DB migration
+4. run `npm run audit:post-migration`
+5. run smoke and E2E for `cpp`, `java`, and `python`

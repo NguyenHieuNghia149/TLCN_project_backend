@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "backend",
   "version": "1.0.0",
   "main": "index.js",
@@ -35,8 +35,7 @@
     "db:studio": "drizzle-kit studio",
     "prepare": "husky install",
     "db:push": "drizzle-kit push",
-    "backfill:function-signature": "ts-node scripts/migrate/backfill-function-signature.ts",
-    "audit:migration": "ts-node scripts/migrate/audit-function-signature.ts"
+    "audit:post-migration": "ts-node scripts/migrate/audit-post-migration.ts"
   },
   "keywords": [],
   "author": "",
@@ -115,5 +114,8 @@
     "tsconfig-paths": "^4.2.0"
   }
 }
+
+
+
 
 

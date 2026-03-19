@@ -1,4 +1,4 @@
-import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
+﻿import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
 import { isDeepStrictEqual } from 'node:util';
 import { spawn } from 'child_process';
 import * as path from 'path';
@@ -23,23 +23,26 @@ export interface SandboxResponse {
       passed: number;
       total: number;
       successRate: string;
+      status?: string;
     };
     results: Array<{
-      index: number;
+      index?: number;
+      testcaseId?: string;
       input: string;
-      expected: string;
-      actual: string;
-      ok: boolean;
+      expectedOutput?: string;
+      expected?: string;
+      actualOutput?: string | null;
+      actual?: string;
+      isPassed?: boolean;
+      ok?: boolean;
       stderr: string;
       executionTime: number;
-      error?: string;
+      error?: string | null;
     }>;
     processingTime: number;
   };
   error?: string;
 }
-
-type ResolvedExecutionMode = 'wrapper' | 'legacy';
 
 type WrapperEnvelope = {
   actual_output: unknown;
@@ -97,6 +100,8 @@ export class SandboxService {
         throw new Error('Sandbox is at maximum capacity');
       }
 
+      this.assertWrapperExecutionMode(config.executionMode);
+
       this.activeJobs.set(executionId, {
         startTime,
         config,
@@ -141,22 +146,17 @@ export class SandboxService {
     }
   }
 
-  private resolveExecutionMode(mode: string | undefined): ResolvedExecutionMode {
-    if (mode === 'wrapper' || mode === 'legacy') {
-      return mode;
+  private assertWrapperExecutionMode(mode: string | undefined): void {
+    if (mode !== 'wrapper') {
+      throw new Error(`Unsupported execution mode: ${mode ?? '<missing>'}`);
     }
-
-    if (typeof mode === 'string' && mode.trim().length > 0) {
-      logger.warn(`Unknown executionMode "${mode}" received. Falling back to legacy mode.`);
-    } else {
-      logger.warn('Missing executionMode received. Falling back to legacy mode.');
-    }
-
-    return 'legacy';
   }
 
   private getLastNonEmptyLine(stdout: string): string {
-    const lines = stdout.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+    const lines = stdout
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
     return lines.at(-1) ?? '';
   }
 
@@ -224,17 +224,6 @@ export class SandboxService {
     return JSON.stringify(actualOutput) === this.trimOutput(expectedOutput);
   }
 
-  private compareLegacyOutput(expectedOutput: string, actualOutput: string): boolean {
-    const parsedExpected = this.tryParseJson(expectedOutput);
-    const parsedActual = this.tryParseJson(actualOutput);
-
-    if (parsedExpected.success && parsedActual.success) {
-      return isDeepStrictEqual(parsedExpected.value, parsedActual.value);
-    }
-
-    return this.trimOutput(actualOutput) === this.trimOutput(expectedOutput);
-  }
-
   private buildFailureContext(reason: string, stdout: string, stderr: string): string {
     const safeStdout = this.trimOutput(stdout);
     const safeStderr = this.trimOutput(stderr);
@@ -244,6 +233,55 @@ export class SandboxService {
       `stdout: ${safeStdout || '<empty>'}`,
       `stderr: ${safeStderr || '<empty>'}`,
     ].join('\n');
+  }
+
+  private classifyFailureStatus(errorMessage: string): string {
+    const normalized = errorMessage.toLowerCase();
+
+    if (normalized.includes('time limit exceeded') || normalized.includes('timeout')) {
+      return 'TIME_LIMIT_EXCEEDED';
+    }
+
+    if (normalized.includes('memory limit exceeded') || normalized.includes('out of memory')) {
+      return 'MEMORY_LIMIT_EXCEEDED';
+    }
+
+    if (normalized.includes('compilation') || normalized.includes('compile')) {
+      return 'COMPILATION_ERROR';
+    }
+
+    if (
+      normalized.includes('runtime') ||
+      normalized.includes('process exited with code') ||
+      normalized.includes('wrapper envelope missing or malformed') ||
+      normalized.includes('invalid envelope')
+    ) {
+      return 'RUNTIME_ERROR';
+    }
+
+    return 'WRONG_ANSWER';
+  }
+
+  private determineSummaryStatus(
+    results: Array<{ isPassed: boolean; error?: string | null }>,
+    total: number
+  ): string {
+    if (total === 0 || results.every(result => result.isPassed)) {
+      return 'ACCEPTED';
+    }
+
+    for (const result of results) {
+      if (result.isPassed || !result.error) {
+        continue;
+      }
+
+      const status = this.classifyFailureStatus(result.error);
+      if (status !== 'WRONG_ANSWER') {
+        return status;
+      }
+    }
+
+    return 'WRONG_ANSWER';
   }
 
   private async createIsolatedWorkspace(jobDir: string, config: ExecutionConfig): Promise<void> {
@@ -262,7 +300,6 @@ export class SandboxService {
 
   private async executeInSandbox(jobDir: string, config: ExecutionConfig): Promise<any> {
     const langConfig = this.getLanguageConfig(config.language);
-    const executionMode = this.resolveExecutionMode(config.executionMode);
     const results: any[] = [];
     let passed = 0;
 
@@ -292,63 +329,34 @@ export class SandboxService {
       }
     }
 
-    for (let i = 0; i < config.testcases.length; i++) {
-      const testcase = config.testcases[i];
-      if (!testcase) continue;
+    for (const testcase of config.testcases) {
+      const expectedOutput = this.trimOutput(testcase.output || '');
 
-      const testStart = Date.now();
       try {
         const result = await this.runWithNsjail(jobDir, langConfig, testcase.input || '', config);
         const rawStdout = result.stdout || '';
         const rawStderr = result.stderr || '';
-        const expectedOutput = this.trimOutput(testcase.output || '');
 
-        if (executionMode === 'wrapper') {
-          const envelopeResult = this.parseWrapperEnvelope(rawStdout);
-          if (!envelopeResult.valid) {
-            results.push({
-              testcaseId: testcase.id,
-              input: testcase.input || '',
-              expectedOutput,
-              actualOutput: null,
-              isPassed: false,
-              executionTime: 0,
-              memoryUse: null,
-              error: this.buildFailureContext(envelopeResult.error, rawStdout, rawStderr),
-              stderr: rawStderr,
-            });
-            continue;
-          }
-
-          const actualOutput = JSON.stringify(envelopeResult.envelope.actual_output);
-          const ok =
-            result.exitCode === 0 &&
-            this.compareWrapperOutput(expectedOutput, envelopeResult.envelope.actual_output);
-
-          if (ok) {
-            passed++;
-          }
-
-          const failureReason =
-            result.exitCode !== 0 ? `Process exited with code ${result.exitCode}` : 'Wrong Answer';
-
+        const envelopeResult = this.parseWrapperEnvelope(rawStdout);
+        if (!envelopeResult.valid) {
           results.push({
             testcaseId: testcase.id,
             input: testcase.input || '',
             expectedOutput,
-            actualOutput,
-            isPassed: ok,
-            executionTime: envelopeResult.envelope.time_taken_ms,
+            actualOutput: null,
+            isPassed: false,
+            executionTime: 0,
             memoryUse: null,
-            error: ok ? null : this.buildFailureContext(failureReason, rawStdout, rawStderr),
+            error: this.buildFailureContext(envelopeResult.error, rawStdout, rawStderr),
             stderr: rawStderr,
           });
-
           continue;
         }
 
-        const actualOutput = this.trimOutput(rawStdout);
-        const ok = result.exitCode === 0 && this.compareLegacyOutput(expectedOutput, actualOutput);
+        const actualOutput = JSON.stringify(envelopeResult.envelope.actual_output);
+        const ok =
+          result.exitCode === 0 &&
+          this.compareWrapperOutput(expectedOutput, envelopeResult.envelope.actual_output);
 
         if (ok) {
           passed++;
@@ -363,7 +371,7 @@ export class SandboxService {
           expectedOutput,
           actualOutput,
           isPassed: ok,
-          executionTime: Date.now() - testStart,
+          executionTime: envelopeResult.envelope.time_taken_ms,
           memoryUse: null,
           error: ok ? null : this.buildFailureContext(failureReason, rawStdout, rawStderr),
           stderr: rawStderr,
@@ -372,10 +380,10 @@ export class SandboxService {
         results.push({
           testcaseId: testcase.id,
           input: testcase.input || '',
-          expectedOutput: testcase.output || '',
+          expectedOutput,
           actualOutput: null,
           isPassed: false,
-          executionTime: executionMode === 'wrapper' ? 0 : Date.now() - testStart,
+          executionTime: 0,
           memoryUse: null,
           error: this.buildFailureContext(error.message, '', ''),
           stderr: '',
@@ -391,6 +399,7 @@ export class SandboxService {
           config.testcases.length > 0
             ? ((passed / config.testcases.length) * 100).toFixed(2)
             : '0.00',
+        status: this.determineSummaryStatus(results, config.testcases.length),
       },
       results,
     };

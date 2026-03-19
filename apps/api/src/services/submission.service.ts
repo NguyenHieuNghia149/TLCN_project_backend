@@ -1,10 +1,10 @@
-﻿import {
+import {
   JudgeUtils,
   logger,
   buildFunctionInputDisplayValue,
   canonicalizeStructuredValue,
 } from '@backend/shared/utils';
-import { EProblemJudgeMode, ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
+import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
 import { queueService, QueueJob } from './queue.service';
 import crypto from 'crypto';
 import {
@@ -220,22 +220,15 @@ export class SubmissionService {
       problemId: submission.problemId,
       code: submission.sourceCode,
       language: submission.language,
-      judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
       functionSignature,
       executionMode: 'wrapper',
-      testcases: testcases.map((tc: any) => {
-        const inputJson = tc.inputJson as Record<string, unknown>;
-        return {
-          id: tc.id,
-          input: buildFunctionInputDisplayValue(functionSignature, inputJson),
-          output: canonicalizeStructuredValue(tc.outputJson),
-          executionInput: JSON.stringify(inputJson),
-          inputJson,
-          outputJson: tc.outputJson,
-          point: tc.point,
-          isPublic: tc.isPublic ?? false,
-        };
-      }),
+      testcases: testcases.map((tc: any) => ({
+        id: tc.id,
+        inputJson: tc.inputJson as Record<string, unknown>,
+        outputJson: tc.outputJson,
+        point: tc.point,
+        isPublic: tc.isPublic ?? false,
+      })),
       timeLimit: problem.timeLimit || 1000,
       memoryLimit: problem.memoryLimit || '128m',
       createdAt: new Date().toISOString(),
@@ -264,6 +257,19 @@ export class SubmissionService {
     return status !== ESubmissionStatus.PENDING && status !== ESubmissionStatus.RUNNING;
   }
 
+  private buildTestcaseDisplay(
+    signature: FunctionSignature,
+    testcase: {
+      inputJson: Record<string, unknown>;
+      outputJson: unknown;
+    }
+  ): { input: string; output: string } {
+    return {
+      input: buildFunctionInputDisplayValue(signature, testcase.inputJson),
+      output: canonicalizeStructuredValue(testcase.outputJson),
+    };
+  }
+
   private async buildSubmissionStatuses(
     submissions: (SubmissionDataResponse & { problemTitle?: string })[]
   ): Promise<SubmissionStatus[]> {
@@ -280,12 +286,15 @@ export class SubmissionService {
       new Set(completedSubmissions.map(submission => submission.problemId))
     );
 
-    const [resultSubmissions, testcases] = await Promise.all([
+    const [resultSubmissions, testcases, problems] = await Promise.all([
       submissionIds.length > 0
         ? this.resultSubmissionRepository.findBySubmissionIds(submissionIds)
         : Promise.resolve([]),
       problemIds.length > 0
         ? this.testcaseRepository.findByProblemIds(problemIds)
+        : Promise.resolve([]),
+      problemIds.length > 0
+        ? this.problemRepository.findByIds(problemIds)
         : Promise.resolve([]),
     ]);
 
@@ -307,11 +316,14 @@ export class SubmissionService {
       testcasesByProblemId.get(testcase.problemId)!.push(testcase);
     }
 
+    const problemsById = new Map(problems.map(problem => [problem.id, problem]));
+
     return submissions.map(submission =>
       this.mapSubmissionStatus(
         submission,
         resultsBySubmissionId.get(submission.id) || [],
-        testcasesByProblemId.get(submission.problemId) || []
+        testcasesByProblemId.get(submission.problemId) || [],
+        problemsById.get(submission.problemId) || null
       )
     );
   }
@@ -319,12 +331,26 @@ export class SubmissionService {
   private mapSubmissionStatus(
     submission: SubmissionDataResponse & { problemTitle?: string },
     resultSubmissions: any[],
-    testcases: any[]
+    testcases: any[],
+    problem: { functionSignature: FunctionSignature | null } | null
   ): SubmissionStatus {
     let result: SubmissionResult | undefined;
     let score: number | undefined;
 
     if (this.isCompletedStatus(submission.status)) {
+      if (!problem?.functionSignature) {
+        logger.error('Problem functionSignature missing while mapping submission status', {
+          problemId: submission.problemId,
+          submissionId: submission.id,
+        });
+        throw new BaseException(
+          'problem configuration invalid',
+          500,
+          'PROBLEM_CONFIGURATION_INVALID'
+        );
+      }
+
+      const functionSignature = problem.functionSignature;
       const testcasesById = new Map(testcases.map(testcase => [testcase.id, testcase]));
 
       result = {
@@ -332,10 +358,17 @@ export class SubmissionService {
         total: resultSubmissions.length,
         results: resultSubmissions.map((resultSubmission: any) => {
           const testcase = testcasesById.get(resultSubmission.testcaseId);
+          const display = testcase
+            ? this.buildTestcaseDisplay(functionSignature, {
+                inputJson: testcase.inputJson as Record<string, unknown>,
+                outputJson: testcase.outputJson,
+              })
+            : { input: '', output: '' };
+
           return {
             testcaseId: resultSubmission.testcaseId,
-            input: testcase?.input || '',
-            expectedOutput: testcase?.output || '',
+            input: display.input,
+            expectedOutput: display.output,
             actualOutput: resultSubmission.actualOutput,
             isPassed: resultSubmission.isPassed,
             executionTime: resultSubmission.executionTime,
@@ -669,6 +702,10 @@ export class SubmissionService {
 }
 
 export const submissionService = new SubmissionService();
+
+
+
+
 
 
 

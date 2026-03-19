@@ -1,4 +1,4 @@
-import { logger } from '@backend/shared/utils';
+﻿import { logger } from '@backend/shared/utils';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
@@ -28,7 +28,7 @@ export interface GrpcExecutionRequest {
   time_limit_ms: number;
   memory_limit_kb: number;
   test_cases: GrpcTestCase[];
-  execution_mode?: 'wrapper' | 'legacy';
+  execution_mode?: 'wrapper';
 }
 
 export interface GrpcTestCaseResult {

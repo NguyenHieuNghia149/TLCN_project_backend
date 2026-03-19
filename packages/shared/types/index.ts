@@ -1,4 +1,4 @@
-export * from './error-codes';
+﻿export * from './error-codes';
 export * from './examParticipationStatus.enum';
 export * from './notificationType.enum';
 export * from './problemVisibility.enum';
@@ -6,5 +6,4 @@ export * from './submissionStatus.enum';
 export * from './userGender.enum';
 export * from './userRole.enum';
 export * from './userStatus.enum';
-export * from './problemJudgeMode.enum';
 export * from './functionSignature';

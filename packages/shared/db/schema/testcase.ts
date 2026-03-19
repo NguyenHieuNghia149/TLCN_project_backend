@@ -9,8 +9,8 @@ export const testcases = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     input: text('input').notNull(),
     output: text('output').notNull(),
-    inputJson: jsonb('input_json').$type<Record<string, unknown> | null>(),
-    outputJson: jsonb('output_json').$type<unknown | null>(),
+    inputJson: jsonb('input_json').$type<Record<string, unknown>>().notNull(),
+    outputJson: jsonb('output_json').$type<unknown>().notNull(),
     isPublic: boolean('is_public').default(false).notNull(),
     point: integer('point').default(0).notNull(),
     problemId: uuid('problem_id')
@@ -28,11 +28,12 @@ export type TestcaseInsert = typeof testcases.$inferInsert;
 export const insertTestcaseSchema = createInsertSchema(testcases, {
   input: z.string().min(0),
   output: z.string().min(0),
-  inputJson: z.unknown().optional(),
-  outputJson: z.unknown().optional(),
+  inputJson: z.unknown(),
+  outputJson: z.unknown(),
   isPublic: z.boolean().optional(),
   point: z.number().int().optional(),
   problemId: z.string().uuid(),
 });
 
 export const selectTestcaseSchema = createSelectSchema(testcases);
+

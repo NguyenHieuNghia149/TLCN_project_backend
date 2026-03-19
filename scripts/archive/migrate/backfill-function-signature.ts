@@ -7,16 +7,15 @@ import { z } from 'zod';
 
 import { db, DatabaseService } from '@backend/shared/db/connection';
 import { problems, testcases } from '@backend/shared/db/schema';
-import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
+import { FunctionSignature } from '@backend/shared/types';
 import {
   buildFunctionInputDisplayValue,
   canonicalizeStructuredValue,
   logger,
-  normalizeRuntimeSignature,
-  NormalizerError,
   validateFunctionTestcaseInput,
   validateFunctionTestcaseOutput,
 } from '@backend/shared/utils';
+import { normalizeRuntimeSignature, NormalizerError } from './ast-normalizer';
 
 const manifestTestcaseSchema = z
   .object({
@@ -48,7 +47,7 @@ function resolveManifestPath(): string {
   const configured = process.env.FUNCTION_SIGNATURE_MANIFEST_PATH;
   return path.resolve(
     process.cwd(),
-    cliPath || configured || 'scripts/migrate/function-signature-manifest.json',
+    cliPath || configured || 'scripts/archive/migrate/function-signature-manifest.json'
   );
 }
 
@@ -83,7 +82,7 @@ function buildExpectedTestcaseMap(entry: ManifestProblem, signature: FunctionSig
           output: canonicalizeStructuredValue(testcase.outputJson),
         },
       ] as const;
-    }),
+    })
   );
 
   if (map.size !== entry.testcases.length) {
@@ -108,7 +107,6 @@ async function backfillProblem(entry: ManifestProblem): Promise<'updated' | 'ski
       .select({
         id: problems.id,
         title: problems.title,
-        judgeMode: problems.judgeMode,
         functionSignature: problems.functionSignature,
       })
       .from(problems)
@@ -131,14 +129,14 @@ async function backfillProblem(entry: ManifestProblem): Promise<'updated' | 'ski
 
     if (testcaseRows.length !== expectedTestcases.size) {
       throw new Error(
-        `Problem ${entry.problemId} testcase count mismatch. DB=${testcaseRows.length}, manifest=${expectedTestcases.size}`,
+        `Problem ${entry.problemId} testcase count mismatch. DB=${testcaseRows.length}, manifest=${expectedTestcases.size}`
       );
     }
 
     for (const testcaseRow of testcaseRows) {
       if (!expectedTestcases.has(testcaseRow.id)) {
         throw new Error(
-          `Problem ${entry.problemId} is missing manifest data for testcase ${testcaseRow.id}`,
+          `Problem ${entry.problemId} is missing manifest data for testcase ${testcaseRow.id}`
         );
       }
     }
@@ -162,11 +160,7 @@ async function backfillProblem(entry: ManifestProblem): Promise<'updated' | 'ski
       );
     });
 
-    if (
-      signatureAlreadyCanonical &&
-      testcaseAlreadyCanonical &&
-      problemRow.judgeMode === EProblemJudgeMode.FUNCTION_SIGNATURE
-    ) {
+    if (signatureAlreadyCanonical && testcaseAlreadyCanonical) {
       result = 'skipped';
       return;
     }
@@ -176,7 +170,6 @@ async function backfillProblem(entry: ManifestProblem): Promise<'updated' | 'ski
     await tx
       .update(problems)
       .set({
-        judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
         functionSignature: signature,
         updatedAt: now,
       })
@@ -206,7 +199,7 @@ async function backfillProblem(entry: ManifestProblem): Promise<'updated' | 'ski
 
 async function main(): Promise<void> {
   const manifestPath = resolveManifestPath();
-  logger.info('Starting function-signature backfill', { manifestPath });
+  logger.info('Starting archived function-signature backfill', { manifestPath });
 
   const manifest = await loadManifest(manifestPath);
   const existingProblemIds = await fetchAllProblemIds();

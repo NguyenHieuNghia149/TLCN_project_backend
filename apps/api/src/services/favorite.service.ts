@@ -21,7 +21,7 @@ import {
 } from '@backend/shared/validations/problem.validation';
 import { LessonEntity } from '@backend/shared/db/schema';
 import { buildStarterCodeByLanguage, logger } from '@backend/shared/utils';
-import { EProblemJudgeMode, FunctionSignature } from '@backend/shared/types';
+import { FunctionSignature } from '@backend/shared/types';
 
 export class FavoriteService {
   private readonly favoriteRepository: FavoriteRepository;
@@ -208,7 +208,6 @@ export class FavoriteService {
       topicId: string | null;
       createdAt: Date | string | null;
       updatedAt: Date | string | null;
-      judgeMode?: EProblemJudgeMode | string | null;
       functionSignature?: FunctionSignature | null;
     } | null,
     totalPoints: number,
@@ -262,9 +261,7 @@ export class FavoriteService {
       lessonId: string | null;
       topicId: string | null;
       createdAt: Date | string | null;
-      updatedAt: Date | string | null;
-      judgeMode?: EProblemJudgeMode | string | null;
-      functionSignature?: FunctionSignature | null;
+      updatedAt: Date | string | null;      functionSignature?: FunctionSignature | null;
     },
     totalPoints: number,
     options?: { isSolved?: boolean; isFavorite?: boolean }
@@ -275,10 +272,13 @@ export class FavoriteService {
       : 'easy';
 
     if (!problem.functionSignature) {
+      logger.error('Problem functionSignature missing while building favorite response', {
+        problemId: problem.id,
+      });
       throw new BaseException(
-        'Problem functionSignature is not configured',
+        'problem configuration invalid',
         500,
-        'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+        'PROBLEM_CONFIGURATION_INVALID'
       );
     }
 
@@ -297,7 +297,6 @@ export class FavoriteService {
       totalPoints,
       isSolved: options?.isSolved ?? false,
       isFavorite: options?.isFavorite ?? false,
-      judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
       functionSignature: problem.functionSignature,
       starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(problem.functionSignature),
       createdAt: this.formatDate(problem.createdAt),
@@ -450,5 +449,9 @@ export class FavoriteService {
     };
   }
 }
+
+
+
+
 
 

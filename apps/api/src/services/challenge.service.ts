@@ -1,13 +1,13 @@
 ﻿import { logger } from '@backend/shared/utils';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { ChallengeHasSubmissionsException } from '../exceptions/challenge.exceptions';
+import { BaseException } from '../exceptions/auth.exceptions';
 import { ProblemRepository } from '../repositories/problem.repository';
 import { SolutionRepository } from '../repositories/solution.repository';
 import { TestcaseRepository } from '../repositories/testcase.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
 import { buildStarterCodeByLanguage } from '@backend/shared/utils';
-import { EProblemJudgeMode } from '@backend/shared/types';
 import {
   ChallengeResponse,
   ProblemInput,
@@ -88,6 +88,12 @@ export class ChallengeService {
 
   private mapToChallengeResponse(result: any): ChallengeResponse {
     const { problem, testcases, solution } = result;
+    if (!problem.functionSignature) {
+      logger.error('Problem functionSignature missing while building challenge response', {
+        problemId: problem.id,
+      });
+      throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
+    }
     const totalPoints = (testcases || []).reduce((sum: number, tc: any) => {
       const point = typeof tc.point === 'number' ? tc.point : 0;
       return sum + point;
@@ -111,7 +117,6 @@ export class ChallengeService {
         totalPoints,
         isSolved,
         isFavorite,
-        judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
         functionSignature: problem.functionSignature,
         starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(problem.functionSignature),
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
@@ -119,10 +124,10 @@ export class ChallengeService {
       },
       testcases: testcases.map((tc: any) => ({
         id: tc.id,
+        inputJson: tc.inputJson,
+        outputJson: tc.outputJson,
         input: tc.input,
         output: tc.output,
-        inputJson: tc.inputJson ?? undefined,
-        outputJson: tc.outputJson ?? undefined,
         isPublic: tc.isPublic,
         point: tc.point,
         createdAt: tc.createdAt?.toISOString?.() ?? String(tc.createdAt),
@@ -442,7 +447,8 @@ export class ChallengeService {
         : existingProblem.functionSignature;
 
     if (!effectiveFunctionSignature) {
-      throw new NotFoundException('Challenge function signature is not configured.');
+      logger.error('Problem functionSignature missing while updating challenge', { problemId: challengeId });
+      throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
     }
 
     // Convert updateData to match database schema
@@ -452,7 +458,6 @@ export class ChallengeService {
       topicId: updateData.topicId,
       lessonId: updateData.lessonId,
       difficult: updateData.difficulty,
-      judgeMode: EProblemJudgeMode.FUNCTION_SIGNATURE,
       functionSignature: effectiveFunctionSignature,
     };
 
@@ -522,5 +527,8 @@ export class ChallengeService {
     }
   }
 }
+
+
+
 
 
