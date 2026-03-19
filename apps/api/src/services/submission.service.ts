@@ -1,6 +1,7 @@
-﻿import { JudgeUtils, logger, buildTestcaseDisplay } from '@backend/shared/utils';
+import { JudgeUtils, logger, buildTestcaseDisplay } from '@backend/shared/utils';
 import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
-import { judgeQueueService, QueueJob } from '@backend/shared/runtime/judge-queue';
+import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
+import type { QueueJob } from '@backend/shared/runtime/judge-queue';
 import crypto from 'crypto';
 import {
   CreateSubmissionInput,
@@ -44,6 +45,10 @@ export class SubmissionService {
     this.userRepository = new UserRepository();
     this.examParticipationRepository = new ExamParticipationRepository();
     this.examRepository = new ExamRepository();
+  }
+
+  private getQueueService() {
+    return getJudgeQueueService();
   }
 
   async submitCode(input: CreateSubmissionInput & { userId: string }): Promise<{
@@ -109,7 +114,7 @@ export class SubmissionService {
       'RUN_CODE'
     );
 
-    await judgeQueueService.addJob(job);
+    await this.getQueueService().addJob(job);
 
     return {
       submissionId,
@@ -232,7 +237,7 @@ export class SubmissionService {
 
   private async getQueueLengthSafely(): Promise<number> {
     try {
-      return await judgeQueueService.getQueueLength();
+      return await this.getQueueService().getQueueLength();
     } catch (err) {
       return 0;
     }
@@ -240,7 +245,7 @@ export class SubmissionService {
 
   private async addJobToQueueSafely(job: QueueJob): Promise<boolean> {
     try {
-      await judgeQueueService.addJob(job);
+      await this.getQueueService().addJob(job);
       return true;
     } catch (err) {
       return false;
@@ -442,7 +447,7 @@ export class SubmissionService {
     const { problem, testcases } = await this.validateProblemAndTestcases(submission.problemId);
     const job = this.prepareQueueJob(submission, problem, testcases, 'SUBMISSION');
 
-    await judgeQueueService.addJob(job);
+    await this.getQueueService().addJob(job);
 
     return true;
   }
@@ -637,7 +642,7 @@ export class SubmissionService {
     queueLength: number;
     isHealthy: boolean;
   }> {
-    const status = await judgeQueueService.getQueueStatus();
+    const status = await this.getQueueService().getQueueStatus();
     return {
       queueLength: status.length,
       isHealthy: status.isHealthy,
@@ -683,6 +688,7 @@ export class SubmissionService {
 }
 
 export const submissionService = new SubmissionService();
+
 
 
 

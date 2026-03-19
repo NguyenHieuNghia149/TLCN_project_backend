@@ -1,14 +1,20 @@
-﻿jest.mock('@backend/shared/runtime', () => ({
-  judgeQueueService: {
-    addJob: jest.fn(),
-    getQueueLength: jest.fn(),
-    getQueueStatus: jest.fn(),
-    publish: jest.fn(),
-  },
+const mockAddJob = jest.fn();
+const mockGetQueueLength = jest.fn();
+const mockGetQueueStatus = jest.fn();
+const mockPublish = jest.fn();
+const mockGetJudgeQueueService = jest.fn(() => ({
+  addJob: mockAddJob,
+  getQueueLength: mockGetQueueLength,
+  getQueueStatus: mockGetQueueStatus,
+  publish: mockPublish,
+}));
+
+jest.mock('@backend/shared/runtime/judge-queue', () => ({
+  getJudgeQueueService: mockGetJudgeQueueService,
 }));
 
 import { SubmissionService } from '../../../apps/api/src/services/submission.service';
-import { QueueJob } from '@backend/shared/runtime/judge-queue';
+import type { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { FunctionSignature } from '@backend/shared/types';
 
 describe('SubmissionService JSON-first queue payload', () => {
@@ -20,6 +26,10 @@ describe('SubmissionService JSON-first queue payload', () => {
     ],
     returnType: { type: 'array', items: 'integer' },
   };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('omits cached text fields from queue jobs', () => {
     const service = new SubmissionService();
@@ -104,6 +114,16 @@ describe('SubmissionService JSON-first queue payload', () => {
       ok: true,
     });
   });
+
+  it('uses the lazy queue accessor instead of a module-level singleton', () => {
+    const service = new SubmissionService();
+
+    expect((service as any).getQueueService()).toEqual({
+      addJob: mockAddJob,
+      getQueueLength: mockGetQueueLength,
+      getQueueStatus: mockGetQueueStatus,
+      publish: mockPublish,
+    });
+    expect(mockGetJudgeQueueService).toHaveBeenCalledTimes(1);
+  });
 });
-
-

@@ -1,7 +1,13 @@
-﻿jest.mock('@backend/shared/runtime', () => ({
-  judgeQueueService: {
-    publish: jest.fn(),
-  },
+const mockPublish = jest.fn();
+const mockGetJudgeQueueService = jest.fn(() => ({
+  publish: mockPublish,
+}));
+
+jest.mock('@backend/shared/runtime/judge-queue', () => ({
+  getJudgeQueueService: mockGetJudgeQueueService,
+}));
+
+jest.mock('@backend/shared/runtime/submission-finalization', () => ({
   finalizeSubmissionResult: jest.fn(),
 }));
 
@@ -18,13 +24,10 @@ jest.mock('../../../apps/worker/src/grpc/circuit-breaker', () => ({
   })),
 }));
 
-import { WorkerService } from '../../../apps/worker/src/worker.service';
-import { QueueJob } from '@backend/shared/runtime/judge-queue';
+import { WorkerService } from '../../../apps/worker/src/services/worker.service';
+import type { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { sandboxGrpcClient } from '../../../apps/worker/src/grpc/client';
-import {
-  buildFunctionInputDisplayValue,
-  canonicalizeStructuredValue,
-} from '@backend/shared/utils';
+import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 import { FunctionSignature } from '@backend/shared/types';
 
 describe('WorkerService JSON-first execution payload', () => {
@@ -101,9 +104,7 @@ describe('WorkerService JSON-first execution payload', () => {
     expect(remapped.results[0].input).toBe(
       buildFunctionInputDisplayValue(signature, testcaseInput)
     );
-    expect(remapped.results[0].expectedOutput).toBe(
-      canonicalizeStructuredValue(testcaseOutput)
-    );
+    expect(remapped.results[0].expectedOutput).toBe(canonicalizeStructuredValue(testcaseOutput));
   });
 
   it('omits execution_mode in worker health probe requests', async () => {
@@ -122,5 +123,11 @@ describe('WorkerService JSON-first execution payload', () => {
     const request = (sandboxGrpcClient.executeCode as jest.Mock).mock.calls[0][0];
     expect(request.execution_mode).toBeUndefined();
   });
-});
 
+  it('uses the lazy queue accessor instead of a module-level singleton', () => {
+    const service = new WorkerService();
+
+    expect((service as any).getQueueService()).toEqual({ publish: mockPublish });
+    expect(mockGetJudgeQueueService).toHaveBeenCalledTimes(1);
+  });
+});

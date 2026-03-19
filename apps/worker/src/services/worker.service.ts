@@ -1,4 +1,4 @@
-﻿import {
+import {
   JudgeUtils,
   buildTestcaseDisplay,
   canonicalizeStructuredValue,
@@ -6,16 +6,14 @@
 } from '@backend/shared/utils';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { SubmissionResult } from '@backend/shared/validations/submission.validation';
-import {
-  finalizeSubmissionResult,
-  judgeQueueService,
-  QueueJob,
-} from '@backend/shared/runtime';
-import { Worker, Job } from 'bullmq';
+import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
+import type { QueueJob } from '@backend/shared/runtime/judge-queue';
+import { finalizeSubmissionResult } from '@backend/shared/runtime/submission-finalization';
+import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { sandboxGrpcClient, GrpcExecutionRequest } from './grpc/client';
-import { createSandboxBreaker, SandboxBreaker } from './grpc/circuit-breaker';
-import { generateWrapper } from './services/wrapperGenerator';
+import { sandboxGrpcClient, GrpcExecutionRequest } from '../grpc/client';
+import { createSandboxBreaker, SandboxBreaker } from '../grpc/circuit-breaker';
+import { generateWrapper } from '../services/wrapperGenerator';
 
 type PreparedExecutionPayload = {
   sourceCode: string;
@@ -33,13 +31,19 @@ export class WorkerService {
     this.workerId = `worker-${Date.now()}`;
   }
 
+  private getQueueService() {
+    return getJudgeQueueService();
+  }
+
   async start(): Promise<void> {
     logger.info(`Starting Code Execution Worker: ${this.workerId}`);
 
     try {
       const sandboxAvailable = await this.testSandboxService();
       if (!sandboxAvailable) {
-        logger.warn('Sandbox service is not yet available. Worker will retry when processing jobs.');
+        logger.warn(
+          'Sandbox service is not yet available. Worker will retry when processing jobs.'
+        );
         logger.warn(`Sandbox gRPC URL: ${process.env.SANDBOX_GRPC_URL || 'localhost:50051'}`);
       }
 
@@ -83,9 +87,7 @@ export class WorkerService {
         const maxAttempts = job.opts.attempts || 3;
 
         if (job.attemptsMade >= maxAttempts) {
-          logger.error(
-            `Job ${job.id} exhausted all attempts. Setting submission to SYSTEM_ERROR.`
-          );
+          logger.error(`Job ${job.id} exhausted all attempts. Setting submission to SYSTEM_ERROR.`);
 
           try {
             if (queueJob.jobType !== 'RUN_CODE') {
@@ -99,7 +101,7 @@ export class WorkerService {
               });
             }
 
-            await judgeQueueService.publish(
+            await this.getQueueService().publish(
               'submission_updates',
               JSON.stringify({
                 submissionId: queueJob.submissionId,
@@ -221,7 +223,7 @@ export class WorkerService {
     const isRunOnly = jobType === 'RUN_CODE';
     const executionPayload = this.prepareExecutionPayload(job);
 
-    await judgeQueueService.publish(
+    await this.getQueueService().publish(
       'submission_updates',
       JSON.stringify({
         submissionId,
@@ -258,7 +260,7 @@ export class WorkerService {
       });
     }
 
-    await judgeQueueService.publish(
+    await this.getQueueService().publish(
       'submission_updates',
       JSON.stringify({
         submissionId,
@@ -418,4 +420,3 @@ export class WorkerService {
 }
 
 export const workerService = new WorkerService();
-

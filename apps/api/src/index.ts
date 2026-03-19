@@ -1,28 +1,27 @@
-﻿import { logger } from '@backend/shared/utils';
-import express, { Request, Response, NextFunction } from 'express';
-import path from 'path';
-import cors from 'cors';
-import cookieParser from 'cookie-parser';
-import helmet from 'helmet';
-import { config } from 'dotenv';
-import compression from 'compression';
-import { createServer } from 'http';
 import { DatabaseService } from '@backend/shared/db/connection';
-import route from './routes';
-import adminRouter from './routes/admin';
-import { initializeWebSocket } from './services/websocket.service';
-import { judgeQueueService } from '@backend/shared/runtime/judge-queue';
-import { examAutoSubmitService } from './services/exam-auto-submit.service';
-import { responseMiddleware } from './middlewares/response.middleware';
-import { errorMiddleware } from './middlewares/error.middleware';
+import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
+import { logger } from '@backend/shared/utils';
+import compression from 'compression';
+import cookieParser from 'cookie-parser';
+import cors from 'cors';
+import { config } from 'dotenv';
+import express, { NextFunction, Request, Response } from 'express';
+import helmet from 'helmet';
+import { createServer } from 'http';
+import path from 'path';
 import { initializeWatchdogCron } from './cron/watchdog';
+import { errorMiddleware } from './middlewares/error.middleware';
+import { responseMiddleware } from './middlewares/response.middleware';
+import { createAdminRouter } from './routes/admin';
+import route from './routes';
+import { examAutoSubmitService } from './services/exam-auto-submit.service';
+import { initializeWebSocket } from './services/websocket.service';
 
 const app = express();
 const server = createServer(app);
 
 config();
 
-// Security headers
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -37,7 +36,6 @@ app.use(
   })
 );
 
-// Production compression
 app.use(
   compression({
     level: 6,
@@ -61,7 +59,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests without origin (like mobile apps or curl requests)
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -75,14 +72,12 @@ app.use(
   })
 );
 
-// Middleware to explicitly define CORS for preflight requests
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,PATCH,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.header('Access-Control-Allow-Credentials', 'true');
 
-  // Handle preflight requests (OPTIONS)
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
     return;
@@ -94,31 +89,21 @@ app.set('trust proxy', 1);
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Apply response middleware to standardize API responses
 app.use(responseMiddleware);
-
-// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Initialize application
 async function startServer() {
   try {
-    // Connect to database
     logger.info('Connecting to database...');
     await DatabaseService.connect();
 
-    // Run migrations
     logger.info('Running migrations...');
     await DatabaseService.runMigrations();
 
-    // Initialize WebSocket
     initializeWebSocket(server);
-
-    // Start exam auto-submit service
     await examAutoSubmitService.start();
 
-    // Connect to Redis (optional)
+    const judgeQueueService = getJudgeQueueService();
     judgeQueueService
       .connect()
       .then(() => logger.info('Connected to Redis'))
@@ -128,11 +113,9 @@ async function startServer() {
 
     initializeWatchdogCron();
 
-    // Routes
-    app.use('/admin/queues', adminRouter);
+    app.use('/admin/queues', createAdminRouter());
     route(app);
 
-    // 404 handler
     app.use((req: Request, res: Response) => {
       res.status(404).json({
         success: false,
@@ -141,7 +124,6 @@ async function startServer() {
       });
     });
 
-    // Global error handler - must be last
     app.use(errorMiddleware);
 
     const PORT = process.env.PORT || 3001;
@@ -156,5 +138,3 @@ async function startServer() {
 }
 
 startServer();
-
-

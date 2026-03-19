@@ -1,9 +1,9 @@
-﻿import '../utils/load-env';
+import '../utils/load-env';
 
-import { logger } from '../utils';
-import { FunctionSignature } from '../types';
-import { Queue } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { FunctionSignature } from '../types';
+import { logger } from '../utils';
 
 export interface QueueJobTestcase {
   id: string;
@@ -38,10 +38,15 @@ export class JudgeQueueError extends Error {
 }
 
 export class JudgeQueueService {
-  public queue: Queue;
-  private publisher: Redis;
+  private queue?: Queue;
+  private publisher?: Redis;
+  private initialized = false;
 
-  constructor() {
+  private initializeIfNeeded(): void {
+    if (this.initialized) {
+      return;
+    }
+
     const queueRedisUrl =
       process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
     const queueConnection = new Redis(queueRedisUrl, {
@@ -57,29 +62,49 @@ export class JudgeQueueService {
     this.publisher.on('error', (err: Error) => {
       logger.error('[JudgeQueueService Publisher] Redis error:', err.message);
     });
+
+    this.initialized = true;
   }
 
   async connect(): Promise<void> {
-    // ioredis connects automatically
+    this.initializeIfNeeded();
   }
 
   async disconnect(): Promise<void> {
-    await this.queue.close();
-    await this.publisher.quit();
+    const queue = this.queue;
+    const publisher = this.publisher;
+
+    this.queue = undefined;
+    this.publisher = undefined;
+    this.initialized = false;
+
+    if (queue) {
+      await queue.close();
+    }
+
+    if (publisher) {
+      try {
+        await publisher.quit();
+      } catch {
+        publisher.disconnect();
+      }
+    }
   }
 
   async isHealthy(): Promise<boolean> {
     try {
-      await this.publisher.ping();
+      this.initializeIfNeeded();
+      await this.publisher!.ping();
       return true;
     } catch {
       return false;
     }
   }
 
-  async addJob(job: QueueJob): Promise<void> {
+  async addJob(job: QueueJob): Promise<Job> {
     try {
-      await this.queue.add(job.jobType || 'SUBMISSION', job, {
+      this.initializeIfNeeded();
+      return await this.queue!.add(job.jobType || 'SUBMISSION', job, {
         jobId: job.submissionId,
         removeOnComplete: true,
         removeOnFail: false,
@@ -94,20 +119,28 @@ export class JudgeQueueService {
     }
   }
 
-  async getJob(): Promise<QueueJob | null> {
-    return null;
+  async getJobById(id: string): Promise<Job | null> {
+    try {
+      this.initializeIfNeeded();
+      const job = await this.queue!.getJob(id);
+      return job ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async getQueueLength(): Promise<number> {
     try {
-      return await this.queue.count();
+      this.initializeIfNeeded();
+      return await this.queue!.count();
     } catch {
       return 0;
     }
   }
 
   async clearQueue(): Promise<void> {
-    await this.queue.obliterate({ force: true });
+    this.initializeIfNeeded();
+    await this.queue!.obliterate({ force: true });
   }
 
   async getQueueStatus(): Promise<{ length: number; isHealthy: boolean }> {
@@ -122,11 +155,32 @@ export class JudgeQueueService {
 
   async publish(channel: string, message: string): Promise<void> {
     try {
-      await this.publisher.publish(channel, message);
+      this.initializeIfNeeded();
+      await this.publisher!.publish(channel, message);
     } catch (error) {
       logger.error(`[JudgeQueueService] Failed to publish message: ${error}`);
     }
   }
+
+  getQueue(): Queue {
+    this.initializeIfNeeded();
+    return this.queue!;
+  }
 }
 
-export const judgeQueueService = new JudgeQueueService();
+let judgeQueueServiceInstance: JudgeQueueService | null = null;
+
+export function getJudgeQueueService(): JudgeQueueService {
+  if (!judgeQueueServiceInstance) {
+    judgeQueueServiceInstance = new JudgeQueueService();
+  }
+
+  return judgeQueueServiceInstance;
+}
+
+export async function resetJudgeQueueServiceForTesting(): Promise<void> {
+  if (judgeQueueServiceInstance) {
+    await judgeQueueServiceInstance.disconnect();
+    judgeQueueServiceInstance = null;
+  }
+}

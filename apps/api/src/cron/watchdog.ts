@@ -1,11 +1,11 @@
-﻿import { db } from '@backend/shared/db/connection';
+import { db } from '@backend/shared/db/connection';
 import { submissions } from '@backend/shared/db/schema';
+import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { logger } from '@backend/shared/utils';
 import { and, eq, lt } from 'drizzle-orm';
 import cron from 'node-cron';
 import { submissionService } from '../services/submission.service';
-import { judgeQueueService } from '@backend/shared/runtime/judge-queue';
 
 const WATCHDOG_SCHEDULE = '*/5 * * * *';
 const WATCHDOG_THRESHOLD_MS = 5 * 60 * 1000;
@@ -37,7 +37,7 @@ async function reconcileOrphanedSubmissions(): Promise<void> {
 
     for (const submission of orphanedSubmissions) {
       try {
-        const existingJob = await judgeQueueService.queue.getJob(submission.id);
+        const existingJob = await getJudgeQueueService().getJobById(submission.id);
 
         if (existingJob) {
           continue;
@@ -75,5 +75,3 @@ export function initializeWatchdogCron(): void {
   isWatchdogInitialized = true;
   logger.info(`Watchdog cron initialized on schedule ${WATCHDOG_SCHEDULE}`);
 }
-
-

@@ -1,14 +1,14 @@
-﻿import { Request, Response, NextFunction } from 'express';
-import { monitoringService } from '@backend/shared/runtime/code-monitoring';
-import { securityService } from '@backend/shared/runtime/code-security';
 import { AppException } from '@backend/api/exceptions/base.exception';
+import { getMonitoringService } from '@backend/shared/runtime/code-monitoring';
+import { getSecurityService } from '@backend/shared/runtime/code-security';
+import { NextFunction, Request, Response } from 'express';
 
 export class SecurityController {
   /**
    * Get security statistics
    */
   async getSecurityStats(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const stats = monitoringService.getSecurityStats();
+    const stats = getMonitoringService().getSecurityStats();
 
     res.status(200).json({
       ...stats,
@@ -21,7 +21,7 @@ export class SecurityController {
    */
   async exportSecurityEvents(req: Request, res: Response, next: NextFunction): Promise<void> {
     const { filename } = req.query;
-    const exportFile = monitoringService.exportSecurityEvents(filename as string);
+    const exportFile = getMonitoringService().exportSecurityEvents(filename as string);
 
     res.status(200).json({
       message: 'Security events exported successfully',
@@ -34,7 +34,7 @@ export class SecurityController {
    * Get security profile information
    */
   async getSecurityProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const profile = securityService.getSecurityProfile();
+    const profile = getSecurityService().getSecurityProfile();
 
     res.status(200).json({
       profile,
@@ -47,7 +47,7 @@ export class SecurityController {
    */
   async cleanupLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
     const { maxAge } = req.body;
-    monitoringService.cleanupLogs(maxAge);
+    getMonitoringService().cleanupLogs(maxAge);
 
     res.status(200).json({
       message: 'Security logs cleaned up successfully',
@@ -65,8 +65,7 @@ export class SecurityController {
       throw new AppException('Code and language are required', 400, 'MISSING_FIELDS');
     }
 
-    // Test malicious code detection
-    const maliciousEvents = monitoringService.detectMaliciousCode(code, language);
+    const maliciousEvents = getMonitoringService().detectMaliciousCode(code, language);
 
     res.status(200).json({
       maliciousEvents,
@@ -75,5 +74,3 @@ export class SecurityController {
     });
   }
 }
-
-

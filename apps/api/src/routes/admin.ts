@@ -1,20 +1,10 @@
-﻿import { createBullBoard } from '@bull-board/api';
+import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
+import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
 import { logger } from '@backend/shared/utils';
 import crypto from 'crypto';
 import { NextFunction, Request, Response, Router } from 'express';
-import { judgeQueueService } from '@backend/shared/runtime/judge-queue';
-
-const adminRouter = Router();
-const serverAdapter = new ExpressAdapter();
-
-serverAdapter.setBasePath('/admin/queues');
-
-createBullBoard({
-  queues: [new BullMQAdapter(judgeQueueService.queue)],
-  serverAdapter,
-});
 
 function safeEqual(value: string, expected: string): boolean {
   const valueBuffer = Buffer.from(value);
@@ -73,8 +63,18 @@ function bullBoardBasicAuth(req: Request, res: Response, next: NextFunction): Re
   next();
 }
 
-adminRouter.use(bullBoardBasicAuth, serverAdapter.getRouter());
+export function createAdminRouter(): Router {
+  const adminRouter = Router();
+  const serverAdapter = new ExpressAdapter();
 
-export default adminRouter;
+  serverAdapter.setBasePath('/admin/queues');
 
+  createBullBoard({
+    queues: [new BullMQAdapter(getJudgeQueueService().getQueue())],
+    serverAdapter,
+  });
 
+  adminRouter.use(bullBoardBasicAuth, serverAdapter.getRouter());
+
+  return adminRouter;
+}

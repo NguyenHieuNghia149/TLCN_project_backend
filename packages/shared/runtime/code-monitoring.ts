@@ -1,4 +1,4 @@
-﻿import '../utils/load-env';
+import '../utils/load-env';
 
 import { spawn } from 'child_process';
 import * as fs from 'fs';
@@ -46,7 +46,7 @@ export class CodeMonitoringService {
         cpu: this.parseCpuUsage(stats.cpu),
         duration: stats.duration,
         processes: stats.processes,
-        files: stats.files
+        files: stats.files,
       };
     } catch {
       return {
@@ -54,7 +54,7 @@ export class CodeMonitoringService {
         cpu: 0,
         duration: 0,
         processes: 0,
-        files: 0
+        files: 0,
       };
     }
   }
@@ -128,7 +128,7 @@ export class CodeMonitoringService {
       message: event.message,
       submissionId: event.submissionId,
       userId: event.userId,
-      details: event.details
+      details: event.details,
     };
 
     fs.appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
@@ -150,7 +150,7 @@ export class CodeMonitoringService {
         type: 'RESOURCE_LIMIT',
         severity: 'HIGH',
         message: `Memory usage exceeded limit: ${usage.memory}MB > ${limits.maxMemory}MB`,
-        details: { usage, limits }
+        details: { usage, limits },
       });
     }
 
@@ -160,7 +160,7 @@ export class CodeMonitoringService {
         type: 'RESOURCE_LIMIT',
         severity: 'MEDIUM',
         message: `CPU usage exceeded limit: ${usage.cpu}% > ${limits.maxCpu}%`,
-        details: { usage, limits }
+        details: { usage, limits },
       });
     }
 
@@ -170,7 +170,7 @@ export class CodeMonitoringService {
         type: 'RESOURCE_LIMIT',
         severity: 'HIGH',
         message: `Execution time exceeded limit: ${usage.duration}ms > ${limits.maxDuration}ms`,
-        details: { usage, limits }
+        details: { usage, limits },
       });
     }
 
@@ -184,98 +184,98 @@ export class CodeMonitoringService {
         pattern: /fork\s*\(\s*\)/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Fork bomb detected'
+        message: 'Fork bomb detected',
       },
       {
         pattern: /while\s*\(\s*true\s*\)\s*{[\s\S]*fork\s*\(\s*\)/gi,
         type: 'MALICIOUS_CODE',
         severity: 'CRITICAL',
-        message: 'Fork bomb with infinite loop detected'
+        message: 'Fork bomb with infinite loop detected',
       },
       {
         pattern: /rm\s+-rf\s+\//gi,
         type: 'MALICIOUS_CODE',
         severity: 'CRITICAL',
-        message: 'Attempt to delete root directory detected'
+        message: 'Attempt to delete root directory detected',
       },
       {
         pattern: /:\(\)\s*{[\s\S]*:\s*}/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Bash fork bomb detected'
+        message: 'Bash fork bomb detected',
       },
       {
         pattern: /system\s*\(\s*['"]rm\s+-rf/gi,
         type: 'MALICIOUS_CODE',
         severity: 'CRITICAL',
-        message: 'System call to delete files detected'
+        message: 'System call to delete files detected',
       },
       {
         pattern: /import\s+os/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'OS module import detected'
+        message: 'OS module import detected',
       },
       {
         pattern: /import\s+socket/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Socket module import detected'
+        message: 'Socket module import detected',
       },
       {
         pattern: /import\s+subprocess/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Subprocess module import detected'
+        message: 'Subprocess module import detected',
       },
       {
         pattern: /open\s*\(\s*['"]\/etc/gi,
         type: 'MALICIOUS_CODE',
         severity: 'CRITICAL',
-        message: 'Attempt to access system files detected'
+        message: 'Attempt to access system files detected',
       },
       {
         pattern: /socket\.socket/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Socket creation detected'
+        message: 'Socket creation detected',
       },
       {
         pattern: /subprocess\.run/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Subprocess execution detected'
+        message: 'Subprocess execution detected',
       },
       {
         pattern: /require\s*\(\s*['"]fs['"]\s*\)/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'File system module import detected'
+        message: 'File system module import detected',
       },
       {
         pattern: /require\s*\(\s*['"]child_process['"]\s*\)/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Child process module import detected'
+        message: 'Child process module import detected',
       },
       {
         pattern: /require\s*\(\s*['"]os['"]\s*\)/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'OS module import detected'
+        message: 'OS module import detected',
       },
       {
         pattern: /Runtime\.getRuntime/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Runtime execution detected'
+        message: 'Runtime execution detected',
       },
       {
         pattern: /ProcessBuilder/gi,
         type: 'MALICIOUS_CODE',
         severity: 'HIGH',
-        message: 'Process builder detected'
-      }
+        message: 'Process builder detected',
+      },
     ];
 
     for (const { pattern, type, severity, message } of maliciousPatterns) {
@@ -285,7 +285,7 @@ export class CodeMonitoringService {
           type: type as SecurityEvent['type'],
           severity: severity as SecurityEvent['severity'],
           message,
-          details: { pattern: pattern.source, language }
+          details: { pattern: pattern.source, language },
         });
       }
     }
@@ -311,7 +311,7 @@ export class CodeMonitoringService {
       totalEvents: this.securityEvents.length,
       eventsByType,
       eventsBySeverity,
-      recentEvents: this.securityEvents.slice(-10)
+      recentEvents: this.securityEvents.slice(-10),
     };
   }
 
@@ -338,7 +338,7 @@ export class CodeMonitoringService {
     const data = {
       exportedAt: new Date().toISOString(),
       totalEvents: this.securityEvents.length,
-      events: this.securityEvents
+      events: this.securityEvents,
     };
 
     fs.writeFileSync(exportFile, JSON.stringify(data, null, 2));
@@ -346,4 +346,12 @@ export class CodeMonitoringService {
   }
 }
 
-export const monitoringService = new CodeMonitoringService();
+let monitoringServiceInstance: CodeMonitoringService | null = null;
+
+export function getMonitoringService(): CodeMonitoringService {
+  if (!monitoringServiceInstance) {
+    monitoringServiceInstance = new CodeMonitoringService();
+  }
+
+  return monitoringServiceInstance;
+}

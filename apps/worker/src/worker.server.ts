@@ -3,7 +3,7 @@
 import { logger } from '@backend/shared/utils';
 import { config } from 'dotenv';
 
-import { workerService } from './worker.service';
+import { workerService } from './services/worker.service';
 
 config();
 

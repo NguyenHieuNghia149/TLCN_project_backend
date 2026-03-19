@@ -1,4 +1,4 @@
-﻿import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
+import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
 import { isDeepStrictEqual } from 'node:util';
 import { spawn } from 'child_process';
 import * as path from 'path';
@@ -6,8 +6,8 @@ import * as yaml from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
 import { SandboxConfig as GlobalSandboxConfig } from '../../../config/sandbox.config';
 import { ExecutionResult, ExecutionConfig } from '@backend/shared/validations/submission.validation';
-import { monitoringService } from '@backend/shared/runtime/code-monitoring';
-import { securityService } from '@backend/shared/runtime/code-security';
+import { getMonitoringService } from '@backend/shared/runtime/code-monitoring';
+import { getSecurityService } from '@backend/shared/runtime/code-security';
 
 export interface SandboxConfig {
   host: string;
@@ -135,7 +135,8 @@ export class SandboxService {
   }
 
   private validateCodeSecurity(code: string, language: string): void {
-    securityService.validateCodeSecurity(code, language);
+    getSecurityService().validateCodeSecurity(code, language);
+    const monitoringService = getMonitoringService();
     const maliciousEvents = monitoringService.detectMaliciousCode(code, language);
     if (maliciousEvents.length > 0) {
       maliciousEvents.forEach(event => monitoringService.logSecurityEvent(event));
@@ -571,5 +572,8 @@ export class SandboxService {
 }
 
 export const sandboxService = new SandboxService();
+
+
+
 
 

@@ -1,4 +1,4 @@
-﻿import '../utils/load-env';
+import '../utils/load-env';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -398,8 +398,8 @@ export class CodeSecurityService {
         nproc: 64,
         nofile: 1024,
         fsize: 1048576,
-        cpu: 30
-      }
+        cpu: 30,
+      },
     };
   }
 
@@ -413,7 +413,7 @@ export class CodeSecurityService {
       /strcat\s*\(/gi,
       /sprintf\s*\(/gi,
       /gets\s*\(/gi,
-      /scanf\s*\(/gi
+      /scanf\s*\(/gi,
     ];
 
     for (const pattern of bufferOverflowPatterns) {
@@ -427,7 +427,7 @@ export class CodeSecurityService {
     const infiniteLoopPatterns = [
       /while\s*\(\s*true\s*\)/gi,
       /for\s*\(\s*;\s*;\s*\)/gi,
-      /while\s*\(\s*1\s*\)/gi
+      /while\s*\(\s*1\s*\)/gi,
     ];
 
     for (const pattern of infiniteLoopPatterns) {
@@ -438,7 +438,7 @@ export class CodeSecurityService {
 
     const recursionPatterns = [
       /function\s+\w+\s*\([^)]*\)\s*{[^}]*\w+\s*\([^}]*\)/gi,
-      /def\s+\w+\s*\([^)]*\):[^:]*\w+\s*\([^)]*\)/gi
+      /def\s+\w+\s*\([^)]*\):[^:]*\w+\s*\([^)]*\)/gi,
     ];
 
     for (const pattern of recursionPatterns) {
@@ -492,7 +492,7 @@ export class CodeSecurityService {
       `${timeLimit}s`,
       'bash',
       '-c',
-      command
+      command,
     ];
   }
 
@@ -504,7 +504,7 @@ export class CodeSecurityService {
     return {
       memory: 0,
       cpu: 0,
-      duration: 0
+      duration: 0,
     };
   }
 
@@ -519,4 +519,12 @@ export class CodeSecurityService {
   }
 }
 
-export const securityService = new CodeSecurityService();
+let securityServiceInstance: CodeSecurityService | null = null;
+
+export function getSecurityService(): CodeSecurityService {
+  if (!securityServiceInstance) {
+    securityServiceInstance = new CodeSecurityService();
+  }
+
+  return securityServiceInstance;
+}
