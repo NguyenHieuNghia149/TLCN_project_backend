@@ -48,7 +48,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "coverage"
+    "coverage",
+    "scripts/archive/**/*"
   ],
   "ts-node": {
     "require": ["tsconfig-paths/register"]

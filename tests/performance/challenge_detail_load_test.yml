@@ -1,0 +1,17 @@
+config:
+  target: 'http://localhost/api/challenges'
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: Warm up
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 30
+      name: Challenge detail load
+  variables:
+    challengeId: 'REPLACE_WITH_50_TO_100_TESTCASE_CHALLENGE_ID'
+scenarios:
+  - name: 'Challenge Detail Load'
+    flow:
+      - get:
+          url: '/{{ challengeId }}'

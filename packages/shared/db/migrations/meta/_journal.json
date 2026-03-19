@@ -49,6 +49,13 @@
       "when": 1773925730606,
       "tag": "20260319130850_daily_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773932167938,
+      "tag": "20260319145607_graceful_ricochet",
+      "breakpoints": true
     }
   ]
 }

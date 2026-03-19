@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, uuid, text, boolean, integer, timestamp } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, uuid, boolean, integer, timestamp } from 'drizzle-orm/pg-core';
 import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
@@ -7,8 +7,6 @@ export const testcases = pgTable(
   'testcases',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    input: text('input').notNull(),
-    output: text('output').notNull(),
     inputJson: jsonb('input_json').$type<Record<string, unknown>>().notNull(),
     outputJson: jsonb('output_json').$type<unknown>().notNull(),
     isPublic: boolean('is_public').default(false).notNull(),
@@ -26,8 +24,6 @@ export type TestcaseEntity = typeof testcases.$inferSelect;
 export type TestcaseInsert = typeof testcases.$inferInsert;
 
 export const insertTestcaseSchema = createInsertSchema(testcases, {
-  input: z.string().min(0),
-  output: z.string().min(0),
   inputJson: z.unknown(),
   outputJson: z.unknown(),
   isPublic: z.boolean().optional(),
@@ -36,4 +32,3 @@ export const insertTestcaseSchema = createInsertSchema(testcases, {
 });
 
 export const selectTestcaseSchema = createSelectSchema(testcases);
-

@@ -1,8 +1,6 @@
 import { TestcaseEntity, TestcaseInsert, testcases } from '@backend/shared/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.repository';
-import { FunctionSignature } from '@backend/shared/types';
-import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
 export class TestcaseRepository extends BaseRepository<
   typeof testcases,
@@ -65,14 +63,9 @@ export class TestcaseRepository extends BaseRepository<
     return map;
   }
 
-  private normalizeTestcaseRecord(problemId: string, testcase: any, functionSignature: FunctionSignature) {
+  private normalizeTestcaseRecord(problemId: string, testcase: any) {
     return {
       problemId,
-      input: buildFunctionInputDisplayValue(
-        functionSignature,
-        testcase.inputJson as Record<string, unknown>
-      ),
-      output: canonicalizeStructuredValue(testcase.outputJson),
       inputJson: testcase.inputJson as Record<string, unknown>,
       outputJson: testcase.outputJson,
       isPublic: testcase.isPublic ?? false,
@@ -80,24 +73,15 @@ export class TestcaseRepository extends BaseRepository<
     };
   }
 
-  async updateTestcasesTransactional(
-    problemId: string,
-    testcasesData: any[],
-    functionSignature: FunctionSignature
-  ): Promise<void> {
+  async updateTestcasesTransactional(problemId: string, testcasesData: any[]): Promise<void> {
     await this.db.transaction(async (tx: any) => {
       await tx.delete(this.table).where(eq(this.table.problemId, problemId));
 
       if (testcasesData && testcasesData.length > 0) {
         await tx.insert(this.table).values(
-          testcasesData.map(testcase =>
-            this.normalizeTestcaseRecord(problemId, testcase, functionSignature)
-          ) as any
+          testcasesData.map(testcase => this.normalizeTestcaseRecord(problemId, testcase)) as any
         );
       }
     });
   }
 }
-
-
-

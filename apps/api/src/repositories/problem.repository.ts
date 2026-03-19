@@ -13,7 +13,6 @@ import { SolutionApproachEntity, solutionApproaches } from '@backend/shared/db/s
 import { and, desc, eq, gt, ilike, lt, or, inArray, sql, count } from 'drizzle-orm';
 import { ProblemVisibility } from '@backend/shared/types';
 import { topics } from '@backend/shared/db/schema';
-import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
 export type ChallengeCreationResult = {
   problem: ProblemEntity;
@@ -60,11 +59,6 @@ export class ProblemRepository extends BaseRepository<
         .insert(testcases)
         .values(
           testcaseInputs.map(tc => ({
-            input: buildFunctionInputDisplayValue(
-              problemData.functionSignature,
-              tc.inputJson as Record<string, unknown>
-            ),
-            output: canonicalizeStructuredValue(tc.outputJson),
             inputJson: tc.inputJson as Record<string, unknown>,
             outputJson: tc.outputJson,
             isPublic: tc.isPublic ?? false,

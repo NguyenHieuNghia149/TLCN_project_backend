@@ -488,11 +488,7 @@ export class ChallengeService {
     // Handle testcases update if provided
     if (updateData.testcases) {
       logger.info('Updating testcases:', updateData.testcases.length);
-      await this.testcaseRepository.updateTestcasesTransactional(
-        challengeId,
-        updateData.testcases,
-        effectiveFunctionSignature as any
-      );
+      await this.testcaseRepository.updateTestcasesTransactional(challengeId, updateData.testcases);
     } else {
       logger.info('No testcases provided in updateData');
     }

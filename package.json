@@ -36,7 +36,10 @@
     "prepare": "husky install",
     "db:push": "drizzle-kit push",
     "audit:post-migration": "ts-node scripts/migrate/audit-post-migration.ts",
-    "audit:display-drift": "ts-node scripts/migrate/audit-display-drift.ts"
+    "audit:post-drop": "ts-node scripts/migrate/audit-post-drop.ts",
+    "check:no-testcase-text-cache-refs": "ts-node scripts/check-no-testcase-text-cache-refs.ts",
+    "perf:challenge-detail:baseline": "artillery run tests/performance/challenge_detail_baseline.yml",
+    "perf:challenge-detail:load": "artillery run tests/performance/challenge_detail_load_test.yml"
   },
   "keywords": [],
   "author": "",
@@ -115,8 +118,3 @@
     "tsconfig-paths": "^4.2.0"
   }
 }
-
-
-
-
-
