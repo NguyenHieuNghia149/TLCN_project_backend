@@ -59,4 +59,48 @@ describe('SubmissionService JSON-first queue payload', () => {
     expect('input' in job.testcases[0]).toBe(false);
     expect('output' in job.testcases[0]).toBe(false);
   });
+
+  it('derives submission result display from JSON even when cached text is stale', () => {
+    const service = new SubmissionService();
+    const status = (service as any).mapSubmissionStatus(
+      {
+        id: 'submission-1',
+        userId: 'user-1',
+        problemId: 'problem-1',
+        language: 'python',
+        sourceCode: 'class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]',
+        status: 'ACCEPTED',
+        submittedAt: new Date(),
+      },
+      [
+        {
+          testcaseId: 'testcase-1',
+          actualOutput: '[0,1]',
+          isPassed: true,
+          executionTime: 12,
+          memoryUse: 128,
+          error: null,
+        },
+      ],
+      [
+        {
+          id: 'testcase-1',
+          input: '',
+          output: '',
+          inputJson: { nums: [2, 7, 11, 15], target: 9 },
+          outputJson: [0, 1],
+          isPublic: true,
+          point: 10,
+        },
+      ],
+      { functionSignature: signature }
+    );
+
+    expect(status.result?.results[0]).toMatchObject({
+      input: 'nums: [2, 7, 11, 15]\ntarget: 9',
+      expected: '[0,1]',
+      actual: '[0,1]',
+      ok: true,
+    });
+  });
 });

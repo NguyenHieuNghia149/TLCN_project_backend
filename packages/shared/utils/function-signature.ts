@@ -1,4 +1,4 @@
-﻿import {
+import {
   FunctionSignature,
   FunctionStarterCodeByLanguage,
   FunctionTypeNode,
@@ -105,6 +105,16 @@ export function buildFunctionInputDisplayValue(
   return signature.args
     .map(argument => `${argument.name}: ${formatDisplayValue(input[argument.name])}`)
     .join('\n');
+}
+
+export function buildTestcaseDisplay(
+  signature: FunctionSignature,
+  testcase: { inputJson: Record<string, unknown>; outputJson: unknown }
+): { input: string; output: string } {
+  return {
+    input: buildFunctionInputDisplayValue(signature, testcase.inputJson),
+    output: canonicalizeStructuredValue(testcase.outputJson),
+  };
 }
 
 function toCppScalarType(typeName: FunctionScalarType): string {

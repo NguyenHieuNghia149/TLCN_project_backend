@@ -1,5 +1,6 @@
 import {
   buildFunctionInputDisplayValue,
+  buildTestcaseDisplay,
   canonicalizeStructuredValue,
 } from '@backend/shared/utils';
 import { FunctionSignature } from '@backend/shared/types';
@@ -26,5 +27,17 @@ describe('function-signature display helpers', () => {
   it('canonicalizes structured output as JSON text', () => {
     expect(canonicalizeStructuredValue([0, 1])).toBe('[0,1]');
     expect(canonicalizeStructuredValue(true)).toBe('true');
+  });
+
+  it('builds testcase display from structured input and output', () => {
+    expect(
+      buildTestcaseDisplay(signature, {
+        inputJson: { nums: [1, 2, 3], target: 5 },
+        outputJson: [0, 2],
+      })
+    ).toEqual({
+      input: 'nums: [1, 2, 3]\ntarget: 5',
+      output: '[0,2]',
+    });
   });
 });

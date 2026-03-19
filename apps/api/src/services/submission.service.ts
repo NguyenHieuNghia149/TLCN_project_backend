@@ -1,9 +1,4 @@
-import {
-  JudgeUtils,
-  logger,
-  buildFunctionInputDisplayValue,
-  canonicalizeStructuredValue,
-} from '@backend/shared/utils';
+import { JudgeUtils, logger, buildTestcaseDisplay } from '@backend/shared/utils';
 import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
 import { queueService, QueueJob } from './queue.service';
 import crypto from 'crypto';
@@ -257,19 +252,6 @@ export class SubmissionService {
     return status !== ESubmissionStatus.PENDING && status !== ESubmissionStatus.RUNNING;
   }
 
-  private buildTestcaseDisplay(
-    signature: FunctionSignature,
-    testcase: {
-      inputJson: Record<string, unknown>;
-      outputJson: unknown;
-    }
-  ): { input: string; output: string } {
-    return {
-      input: buildFunctionInputDisplayValue(signature, testcase.inputJson),
-      output: canonicalizeStructuredValue(testcase.outputJson),
-    };
-  }
-
   private async buildSubmissionStatuses(
     submissions: (SubmissionDataResponse & { problemTitle?: string })[]
   ): Promise<SubmissionStatus[]> {
@@ -359,7 +341,7 @@ export class SubmissionService {
         results: resultSubmissions.map((resultSubmission: any) => {
           const testcase = testcasesById.get(resultSubmission.testcaseId);
           const display = testcase
-            ? this.buildTestcaseDisplay(functionSignature, {
+            ? buildTestcaseDisplay(functionSignature, {
                 inputJson: testcase.inputJson as Record<string, unknown>,
                 outputJson: testcase.outputJson,
               })

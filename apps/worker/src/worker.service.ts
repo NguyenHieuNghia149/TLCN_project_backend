@@ -1,9 +1,4 @@
-﻿import {
-  JudgeUtils,
-  buildFunctionInputDisplayValue,
-  canonicalizeStructuredValue,
-  logger,
-} from '@backend/shared/utils';
+import { JudgeUtils, buildTestcaseDisplay, canonicalizeStructuredValue, logger } from '@backend/shared/utils';
 import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { queueService, QueueJob } from '@backend/api/services/queue.service';
@@ -149,17 +144,6 @@ export class WorkerService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  private buildTestcaseDisplay(job: QueueJob, testcase: QueueJob['testcases'][number]): {
-    input: string;
-    output: string;
-    isPublic: boolean;
-  } {
-    return {
-      input: buildFunctionInputDisplayValue(job.functionSignature, testcase.inputJson),
-      output: canonicalizeStructuredValue(testcase.outputJson),
-      isPublic: testcase.isPublic ?? false,
-    };
-  }
 
   private prepareExecutionPayload(job: QueueJob): PreparedExecutionPayload {
     if (job.executionMode !== 'wrapper') {
@@ -194,7 +178,13 @@ export class WorkerService {
 
   private remapExecutionResults(job: QueueJob, executionResult: any): any {
     const testcaseMeta = new Map(
-      job.testcases.map(testcase => [testcase.id, this.buildTestcaseDisplay(job, testcase)])
+      job.testcases.map(testcase => [
+        testcase.id,
+        {
+          ...buildTestcaseDisplay(job.functionSignature, testcase),
+          isPublic: testcase.isPublic ?? false,
+        },
+      ])
     );
 
     if (executionResult.results && Array.isArray(executionResult.results)) {

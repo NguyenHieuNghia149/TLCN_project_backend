@@ -1,4 +1,4 @@
-﻿import { logger } from '@backend/shared/utils';
+import { logger } from '@backend/shared/utils';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { ChallengeHasSubmissionsException } from '../exceptions/challenge.exceptions';
 import { BaseException } from '../exceptions/auth.exceptions';
@@ -7,7 +7,7 @@ import { SolutionRepository } from '../repositories/solution.repository';
 import { TestcaseRepository } from '../repositories/testcase.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
-import { buildStarterCodeByLanguage } from '@backend/shared/utils';
+import { buildStarterCodeByLanguage, buildTestcaseDisplay } from '@backend/shared/utils';
 import {
   ChallengeResponse,
   ProblemInput,
@@ -122,17 +122,24 @@ export class ChallengeService {
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
-      testcases: testcases.map((tc: any) => ({
-        id: tc.id,
-        inputJson: tc.inputJson,
-        outputJson: tc.outputJson,
-        input: tc.input,
-        output: tc.output,
-        isPublic: tc.isPublic,
-        point: tc.point,
-        createdAt: tc.createdAt?.toISOString?.() ?? String(tc.createdAt),
-        updatedAt: tc.updatedAt?.toISOString?.() ?? String(tc.updatedAt),
-      })),
+      testcases: testcases.map((tc: any) => {
+        const display = buildTestcaseDisplay(problem.functionSignature, {
+          inputJson: tc.inputJson as Record<string, unknown>,
+          outputJson: tc.outputJson,
+        });
+
+        return {
+          id: tc.id,
+          inputJson: tc.inputJson,
+          outputJson: tc.outputJson,
+          input: display.input,
+          output: display.output,
+          isPublic: tc.isPublic,
+          point: tc.point,
+          createdAt: tc.createdAt?.toISOString?.() ?? String(tc.createdAt),
+          updatedAt: tc.updatedAt?.toISOString?.() ?? String(tc.updatedAt),
+        };
+      }),
       solution: solution ? this.mapSolutionToResponse(solution) : this.getEmptySolution(),
     };
   }

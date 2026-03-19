@@ -35,7 +35,8 @@
     "db:studio": "drizzle-kit studio",
     "prepare": "husky install",
     "db:push": "drizzle-kit push",
-    "audit:post-migration": "ts-node scripts/migrate/audit-post-migration.ts"
+    "audit:post-migration": "ts-node scripts/migrate/audit-post-migration.ts",
+    "audit:display-drift": "ts-node scripts/migrate/audit-display-drift.ts"
   },
   "keywords": [],
   "author": "",
