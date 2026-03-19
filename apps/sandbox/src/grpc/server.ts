@@ -1,4 +1,4 @@
-﻿import { logger } from '@backend/shared/utils';
+import { logger } from '@backend/shared/utils';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
@@ -15,6 +15,14 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 });
 
 const judgeProto = grpc.loadPackageDefinition(packageDefinition) as any;
+
+export function validateWrapperExecutionMode(value: unknown): string | null {
+  if (value === undefined || value === '' || value === 'wrapper') {
+    return null;
+  }
+
+  return `execution_mode must be 'wrapper' or unset; got: ${String(value)}`;
+}
 
 function inferTestCaseStatus(result: any): string {
   if (result.isPassed) {
@@ -85,10 +93,15 @@ async function executeCode(
 
   logger.info(`[gRPC] ExecuteCode received - submission_id: ${req.submission_id}`);
 
-  if (req.execution_mode !== 'wrapper') {
+  const executionModeError = validateWrapperExecutionMode(req.execution_mode);
+  if (executionModeError) {
+    logger.error('[gRPC] Invalid execution_mode received', {
+      submissionId: req.submission_id,
+      executionMode: req.execution_mode,
+    });
     callback({
       code: grpc.status.INVALID_ARGUMENT,
-      message: `Unsupported execution_mode: ${req.execution_mode ?? '<missing>'}`,
+      message: executionModeError,
     });
     return;
   }
@@ -106,7 +119,6 @@ async function executeCode(
       language: req.language,
       timeLimit: req.time_limit_ms,
       memoryLimit: `${Math.floor(req.memory_limit_kb / 1024)}m`,
-      executionMode: 'wrapper',
       testcases,
     });
 

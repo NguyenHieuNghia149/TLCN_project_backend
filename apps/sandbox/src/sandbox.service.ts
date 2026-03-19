@@ -1,4 +1,4 @@
-﻿import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
+import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
 import { isDeepStrictEqual } from 'node:util';
 import { spawn } from 'child_process';
 import * as path from 'path';
@@ -100,7 +100,6 @@ export class SandboxService {
         throw new Error('Sandbox is at maximum capacity');
       }
 
-      this.assertWrapperExecutionMode(config.executionMode);
 
       this.activeJobs.set(executionId, {
         startTime,
@@ -146,11 +145,6 @@ export class SandboxService {
     }
   }
 
-  private assertWrapperExecutionMode(mode: string | undefined): void {
-    if (mode !== 'wrapper') {
-      throw new Error(`Unsupported execution mode: ${mode ?? '<missing>'}`);
-    }
-  }
 
   private getLastNonEmptyLine(stdout: string): string {
     const lines = stdout

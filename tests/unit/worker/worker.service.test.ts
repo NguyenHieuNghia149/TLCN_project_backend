@@ -31,6 +31,7 @@ jest.mock('../../../apps/worker/src/grpc/circuit-breaker', () => ({
 
 import { WorkerService } from '../../../apps/worker/src/worker.service';
 import { QueueJob } from '../../../apps/api/src/services/queue.service';
+import { sandboxGrpcClient } from '../../../apps/worker/src/grpc/client';
 import {
   buildFunctionInputDisplayValue,
   canonicalizeStructuredValue,
@@ -57,7 +58,6 @@ describe('WorkerService JSON-first execution payload', () => {
     code: 'class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]',
     language: 'python',
     functionSignature: signature,
-    executionMode: 'wrapper',
     testcases: [
       {
         id: 'testcase-1',
@@ -71,6 +71,10 @@ describe('WorkerService JSON-first execution payload', () => {
     memoryLimit: '128m',
     createdAt: new Date().toISOString(),
   };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('builds sandbox stdin and expected output directly from structured JSON', () => {
     const service = new WorkerService();
@@ -111,5 +115,22 @@ describe('WorkerService JSON-first execution payload', () => {
     expect(remapped.results[0].expectedOutput).toBe(
       canonicalizeStructuredValue(testcaseOutput)
     );
+  });
+
+  it('omits execution_mode in worker health probe requests', async () => {
+    (sandboxGrpcClient.executeCode as jest.Mock).mockResolvedValue({
+      submission_id: 'health-probe',
+      overall_status: 'ACCEPTED',
+      compile_error: '',
+      results: [],
+    });
+
+    const service = new WorkerService();
+    const ok = await (service as any).testSandboxService();
+
+    expect(ok).toBe(true);
+    expect(sandboxGrpcClient.executeCode).toHaveBeenCalledTimes(1);
+    const request = (sandboxGrpcClient.executeCode as jest.Mock).mock.calls[0][0];
+    expect(request.execution_mode).toBeUndefined();
   });
 });

@@ -47,8 +47,7 @@ describe('SubmissionService JSON-first queue payload', () => {
         },
       ]
     );
-
-    expect(job.executionMode).toBe('wrapper');
+    expect('executionMode' in job).toBe(false);
     expect(job.testcases[0]).toEqual({
       id: 'testcase-1',
       inputJson: { nums: [2, 7, 11, 15], target: 9 },

@@ -216,7 +216,6 @@ export class SubmissionService {
       code: submission.sourceCode,
       language: submission.language,
       functionSignature,
-      executionMode: 'wrapper',
       testcases: testcases.map((tc: any) => ({
         id: tc.id,
         inputJson: tc.inputJson as Record<string, unknown>,

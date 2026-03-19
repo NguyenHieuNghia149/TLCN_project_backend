@@ -4,12 +4,12 @@
 
 Backend now judges problems in one mode only: `function_signature`.
 
-Users do not write full stdin/stdout programs anymore for supported problems. They implement the problem logic inside a language-specific `Solution` template, and the server generates the execution harness that:
+Users implement logic inside the language-specific `Solution` template, and the server generates the full execution wrapper that:
 
 - parses structured testcase JSON
 - calls the target function on `Solution`
 - measures only the user function runtime
-- prints a wrapper envelope in JSON
+- prints the wrapper envelope as JSON
 
 Supported submission languages are:
 
@@ -20,8 +20,6 @@ Supported submission languages are:
 ## Function Signature AST
 
 Each problem stores a required `functionSignature` JSON AST in `problems.function_signature`.
-
-Shape:
 
 ```json
 {
@@ -41,81 +39,40 @@ Supported types:
 
 ## Canonical Testcase Storage
 
-Execution source of truth lives in structured JSON columns:
+Structured JSON is the only testcase source of truth:
 
 - `testcases.input_json`
 - `testcases.output_json`
 
-Text fields remain stored only as cached display values:
-
-- `input`: one argument per line, format `argName: value`
-- `output`: `JSON.stringify(outputJson)`
-
-Example:
-
-```text
-nums: [1, 2, 3]
-target: 5
-```
+The legacy text cache columns are no longer stored in the database.
 
 ## JSON-First Read Model
 
-Challenge and testcase read models are JSON-first. Responses keep both the structured values and the cached text fields:
+Challenge and submission responses still expose `input` and `output`, but those fields are always derived on the fly from JSON.
 
 ```ts
 {
-  inputJson: Record<string, unknown>; // source of truth
-  outputJson: unknown;                // source of truth
-  input: string;                      // cached display only
-  output: string;                     // cached display only
+  inputJson: Record<string, unknown>;
+  outputJson: unknown;
+  input: string;
+  output: string;
 }
 ```
 
 Important rules:
 
-- execution never reads `input` or `output`
-- repositories rebuild cached text from JSON when writing
-- service and worker code must use shared helpers instead of inline formatting
-- cached text may be stale historically, but it cannot affect judging
-
-The shared helpers are:
-
-- `buildFunctionInputDisplayValue(functionSignature, inputJson)`
-- `canonicalizeStructuredValue(outputJson)`
-
-## Read Model
-
-Problem and challenge detail responses expose:
-
-```ts
-{
-  functionSignature: AST;
-  starterCodeByLanguage: {
-    cpp: string;
-    java: string;
-    python: string;
-  };
-}
-```
-
-Starter code is generated on the fly from the AST. It is not stored in the database.
-
-If a problem row is missing `functionSignature`, the API logs the `problemId` and returns `500` with the generic message:
-
-```text
-problem configuration invalid
-```
+- execution never depends on text display fields
+- `buildTestcaseDisplay(...)` is the shared formatter for read-time display
+- `buildFunctionInputDisplayValue(...)` and `canonicalizeStructuredValue(...)` remain the underlying formatting helpers
+- if `functionSignature` is missing at read-time, the API logs the `problemId` and returns `500` with `problem configuration invalid`
 
 ## Queue And Execution Pipeline
 
-New jobs are wrapper-only.
-
-Queue payload contract:
+Internal jobs are wrapper-only and no longer carry an explicit execution mode.
 
 ```ts
 {
   functionSignature: AST;
-  executionMode: "wrapper";
   testcases: Array<{
     inputJson: Record<string, unknown>;
     outputJson: unknown;
@@ -127,13 +84,15 @@ Worker behavior:
 
 - generates full executable source with `wrapperGenerator.ts`
 - sends `JSON.stringify(inputJson)` to sandbox stdin
-- sends `JSON.stringify(outputJson)` as expected output
-- derives any display text from JSON via shared helpers
-- always sets `execution_mode = "wrapper"` on gRPC
+- sends canonical JSON output as expected output
+- derives display text from JSON via shared helpers when needed
+- does not send `execution_mode` on new gRPC requests
 
 Sandbox behavior:
 
-- accepts only `execution_mode = "wrapper"`
+- wrapper is the only runtime behavior
+- during the compatibility phase, the gRPC boundary accepts `execution_mode = "wrapper"`, an omitted field, or `""`
+- any other `execution_mode` is rejected with `INVALID_ARGUMENT`
 - reads the last non-empty stdout line as the wrapper envelope
 - requires this exact contract:
 
@@ -141,37 +100,40 @@ Sandbox behavior:
 {"actual_output": <json-value>, "time_taken_ms": <non-negative number>}
 ```
 
-- compares semantic output with JSON parsing + deep equality
+- compares outputs with JSON parsing + deep equality
 - treats malformed or missing envelopes as testcase failure
 - does not fall back to legacy raw stdout mode
 
-## Migration State
+## Active Verification
 
-This repository state is the final function-signature-only state.
-
-Operational migration history is kept under:
-
-- `scripts/archive/migrate/`
-
-The active post-cutover verification command is:
+The active storage audit after text-cache removal is:
 
 ```bash
-npm run audit:post-migration
+npm run audit:post-drop
 ```
 
-It checks:
+It confirms that `testcases.input` and `testcases.output` no longer exist.
 
-- `problems.function_signature IS NOT NULL`
-- `testcases.input_json IS NOT NULL`
-- `testcases.output_json IS NOT NULL`
-- `problems.judge_mode` no longer exists
+The legacy pre-drop audit script is archived under:
+
+- `scripts/archive/migrate/audit-post-migration.ts`
+
+The text-cache reference guard remains active:
+
+```bash
+npm run check:no-testcase-text-cache-refs
+```
+
+## Performance Harness
+
+The `challenge_detail_*` Artillery scripts under `tests/performance/` are staging measurement tools for challenge-detail response time. They are operational verification tools, not CI blockers.
 
 ## Rollout Notes
 
-For deployments that still need the historical migration story:
+For slice 5 mixed deploy safety:
 
-1. verify pre-cutover backfill on the archived scripts
-2. deploy code before dropping `judge_mode`
-3. run the irreversible DB migration
-4. run `npm run audit:post-migration`
-5. run smoke and E2E for `cpp`, `java`, and `python`
+1. deploy sandbox first so it accepts `execution_mode = "wrapper"` and unset or empty values
+2. smoke test sandbox-new + worker-old on `cpp`, `java`, and `python`
+3. deploy worker and API after the smoke test passes
+4. monitor for `INVALID_ARGUMENT` errors related to `execution_mode`
+5. remove the wire field entirely in the next cleanup slice

@@ -1,4 +1,4 @@
-﻿import { logger } from '@backend/shared/utils';
+import { logger } from '@backend/shared/utils';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import path from 'path';
@@ -22,7 +22,6 @@ export interface QueueJob {
   code: string;
   language: string;
   functionSignature: FunctionSignature;
-  executionMode: 'wrapper';
   testcases: QueueJobTestcase[];
   timeLimit: number;
   memoryLimit: string;

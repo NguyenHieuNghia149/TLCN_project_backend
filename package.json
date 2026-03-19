@@ -35,7 +35,6 @@
     "db:studio": "drizzle-kit studio",
     "prepare": "husky install",
     "db:push": "drizzle-kit push",
-    "audit:post-migration": "ts-node scripts/migrate/audit-post-migration.ts",
     "audit:post-drop": "ts-node scripts/migrate/audit-post-drop.ts",
     "check:no-testcase-text-cache-refs": "ts-node scripts/check-no-testcase-text-cache-refs.ts",
     "perf:challenge-detail:baseline": "artillery run tests/performance/challenge_detail_baseline.yml",

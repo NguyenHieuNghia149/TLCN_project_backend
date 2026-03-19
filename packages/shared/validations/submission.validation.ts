@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export interface ExecutionResult {
   stdout: string;
@@ -20,7 +20,6 @@ export interface ExecutionConfig {
   testcases: Testcase[];
   timeLimit: number;
   memoryLimit: string;
-  executionMode?: 'wrapper';
 }
 
 const supportedLanguages = ['cpp', 'python', 'java'] as const;

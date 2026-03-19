@@ -146,12 +146,6 @@ export class WorkerService {
 
 
   private prepareExecutionPayload(job: QueueJob): PreparedExecutionPayload {
-    if (job.executionMode !== 'wrapper') {
-      throw new Error(
-        `Unsupported queue executionMode for submission ${job.submissionId}: ${String(job.executionMode)}`
-      );
-    }
-
     const missingStructuredInput = job.testcases.find(testcase => !this.isStructuredInput(testcase.inputJson));
     if (missingStructuredInput) {
       throw new Error(
@@ -277,7 +271,6 @@ export class WorkerService {
         language: 'python',
         time_limit_ms: 5000,
         memory_limit_kb: 65536,
-        execution_mode: 'wrapper',
         test_cases: [{ id: 'probe', input: '{}', expected_output: '1' }],
       };
       await sandboxGrpcClient.executeCode(probe);
@@ -294,7 +287,6 @@ export class WorkerService {
       language: config.language,
       time_limit_ms: config.timeLimit || 5000,
       memory_limit_kb: config.memoryLimit ? parseInt(config.memoryLimit) * 1024 : 262144,
-      execution_mode: 'wrapper',
       test_cases: (config.testcases || []).map((tc: any) => ({
         id: tc.id,
         input: tc.input || '',
