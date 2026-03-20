@@ -11,7 +11,7 @@ import type { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { finalizeSubmissionResult } from '@backend/shared/runtime/submission-finalization';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { sandboxGrpcClient, GrpcExecutionRequest } from '../grpc/client';
+import { GrpcExecutionRequest, ISandboxGrpcClient } from '../grpc/client';
 import { createSandboxBreaker, SandboxBreaker } from '../grpc/circuit-breaker';
 import { generateWrapper } from '../services/wrapperGenerator';
 
@@ -20,15 +20,32 @@ type PreparedExecutionPayload = {
   testcases: Array<{ id: string; input: string; output: string; point: number }>;
 };
 
-export class WorkerService {
+export interface IWorkerService {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+type WorkerBreakerFactory = (
+  bullWorker: Worker,
+  sandboxClient: ISandboxGrpcClient
+) => SandboxBreaker;
+
+export class WorkerService implements IWorkerService {
   private workerId: string;
   private totalProcessed: number = 0;
   private totalErrors: number = 0;
   private worker: Worker | null = null;
   private breaker: SandboxBreaker | null = null;
+  private readonly sandboxClient: ISandboxGrpcClient;
+  private readonly createBreaker: WorkerBreakerFactory;
 
-  constructor() {
+  constructor(
+    sandboxClient: ISandboxGrpcClient,
+    createBreaker: WorkerBreakerFactory = createSandboxBreaker
+  ) {
     this.workerId = `worker-${Date.now()}`;
+    this.sandboxClient = sandboxClient;
+    this.createBreaker = createBreaker;
   }
 
   private getQueueService() {
@@ -64,7 +81,7 @@ export class WorkerService {
         }
       );
 
-      this.breaker = createSandboxBreaker(this.worker);
+      this.breaker = this.createBreaker(this.worker, this.sandboxClient);
 
       this.worker.on('completed', (job: Job) => {
         logger.info(`Job ${job.id} completed successfully`);
@@ -121,7 +138,7 @@ export class WorkerService {
       logger.info(`Worker ${this.workerId} started seamlessly`);
     } catch (error) {
       logger.error('Failed to start worker:', error);
-      process.exit(1);
+      throw error;
     }
   }
 
@@ -129,8 +146,10 @@ export class WorkerService {
     logger.info(`Stopping worker ${this.workerId}...`);
     if (this.worker) {
       await this.worker.close();
+      this.worker = null;
       logger.info('Worker closed gracefully.');
     }
+    this.sandboxClient.close();
   }
 
   private isStructuredInput(value: unknown): value is Record<string, unknown> {
@@ -288,7 +307,7 @@ export class WorkerService {
         memory_limit_kb: 65536,
         test_cases: [{ id: 'probe', input: '{}', expected_output: '1' }],
       };
-      await sandboxGrpcClient.executeCode(probe);
+      await this.sandboxClient.executeCode(probe);
       return true;
     } catch {
       return false;
@@ -310,7 +329,7 @@ export class WorkerService {
     };
 
     if (!this.breaker) {
-      const grpcResponse = await sandboxGrpcClient.executeCode(request);
+      const grpcResponse = await this.sandboxClient.executeCode(request);
       return this.mapGrpcResponseToLegacy(grpcResponse);
     }
 
@@ -419,4 +438,12 @@ export class WorkerService {
   }
 }
 
-export const workerService = new WorkerService();
+/**
+ * Creates the worker service with the default sandbox circuit breaker unless tests provide one.
+ */
+export function createWorkerService(deps: {
+  sandboxClient: ISandboxGrpcClient;
+  createBreaker?: WorkerBreakerFactory;
+}): IWorkerService {
+  return new WorkerService(deps.sandboxClient, deps.createBreaker ?? createSandboxBreaker);
+}

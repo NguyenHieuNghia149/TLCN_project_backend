@@ -39,12 +39,13 @@
                     "check:no-testcase-text-cache-refs":  "ts-node scripts/check-no-testcase-text-cache-refs.ts",
                     "check:no-execution-mode-refs":  "ts-node scripts/check-no-execution-mode-refs.ts",
                     "check:no-cross-app-imports":  "ts-node scripts/check-no-cross-app-imports.ts",
-                    "check:refactor-guards":  "npm run check:no-testcase-text-cache-refs \u0026\u0026 npm run check:no-execution-mode-refs \u0026\u0026 npm run check:no-cross-app-imports \u0026\u0026 npm run check:no-runtime-barrel-imports \u0026\u0026 npm run check:no-sandbox-singleton-imports",
+                    "check:refactor-guards":  "npm run check:no-testcase-text-cache-refs \u0026\u0026 npm run check:no-execution-mode-refs \u0026\u0026 npm run check:no-cross-app-imports \u0026\u0026 npm run check:no-runtime-barrel-imports \u0026\u0026 npm run check:no-sandbox-singleton-imports \u0026\u0026 npm run check:no-worker-singleton-imports",
                     "perf:challenge-detail:baseline":  "artillery run tests/performance/challenge_detail_baseline.yml",
                     "perf:challenge-detail:load":  "artillery run tests/performance/challenge_detail_load_test.yml",
                     "check:no-runtime-barrel-imports":  "ts-node scripts/check-no-runtime-barrel-imports.ts",
-                    "test:runtime-open-handles":  "jest --runInBand --detectOpenHandles --runTestsByPath tests/unit/services/submission.service.test.ts tests/unit/worker/worker.service.test.ts tests/unit/sandbox/grpc.server.test.ts tests/unit/sandbox/sandbox.server.test.ts apps/api/tests/integration/sandbox-route-boundary.test.ts tests/unit/http/rate-limit.test.ts tests/unit/runtime/judge-queue.test.ts tests/unit/runtime/code-services.test.ts",
-                    "check:no-sandbox-singleton-imports":  "ts-node scripts/check-no-sandbox-singleton-imports.ts"
+                    "test:runtime-open-handles":  "jest --runInBand --detectOpenHandles --runTestsByPath tests/unit/services/submission.service.test.ts tests/unit/worker/worker.service.test.ts tests/unit/worker/worker.server.test.ts tests/unit/worker/grpc.client.test.ts tests/unit/sandbox/grpc.server.test.ts tests/unit/sandbox/sandbox.server.test.ts apps/api/tests/integration/sandbox-route-boundary.test.ts tests/unit/http/rate-limit.test.ts tests/unit/runtime/judge-queue.test.ts tests/unit/runtime/code-services.test.ts",
+                    "check:no-sandbox-singleton-imports":  "ts-node scripts/check-no-sandbox-singleton-imports.ts",
+                    "check:no-worker-singleton-imports":  "ts-node scripts/check-no-worker-singleton-imports.ts"
                 },
     "keywords":  [
 
@@ -125,4 +126,3 @@
                             "tsconfig-paths":  "^4.2.0"
                         }
 }
-

@@ -4,16 +4,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
 
 const PROTO_PATH = path.resolve(__dirname, '../../../../packages/shared/proto/sandbox.proto');
-
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
-
-const judgeProto = grpc.loadPackageDefinition(packageDefinition) as any;
+let judgeProtoCache: any | null = null;
 
 export interface GrpcTestCase {
   id: string;
@@ -46,12 +37,35 @@ export interface GrpcExecutionResponse {
   results: GrpcTestCaseResult[];
 }
 
-export class SandboxGrpcClient {
+export interface ISandboxGrpcClient {
+  executeCode(request: GrpcExecutionRequest): Promise<GrpcExecutionResponse>;
+  close(): void;
+}
+
+function getJudgeProto(): any {
+  if (judgeProtoCache) {
+    return judgeProtoCache;
+  }
+
+  const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  });
+
+  judgeProtoCache = grpc.loadPackageDefinition(packageDefinition) as any;
+  return judgeProtoCache;
+}
+
+export class SandboxGrpcClient implements ISandboxGrpcClient {
   private stub: any;
   private readonly sandboxAddress: string;
 
   constructor() {
     this.sandboxAddress = process.env.SANDBOX_GRPC_URL || 'localhost:50051';
+    const judgeProto = getJudgeProto();
     this.stub = new judgeProto.judge.SandboxService(
       this.sandboxAddress,
       grpc.credentials.createInsecure()
@@ -79,4 +93,6 @@ export class SandboxGrpcClient {
   }
 }
 
-export const sandboxGrpcClient = new SandboxGrpcClient();
+export function createSandboxGrpcClient(): ISandboxGrpcClient {
+  return new SandboxGrpcClient();
+}

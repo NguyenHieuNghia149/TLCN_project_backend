@@ -1,50 +1,62 @@
-﻿#!/usr/bin/env ts-node
+#!/usr/bin/env ts-node
 
 import { logger } from '@backend/shared/utils';
 import { config } from 'dotenv';
 
-import { workerService } from './services/worker.service';
+import { createSandboxBreaker } from './grpc/circuit-breaker';
+import { createSandboxGrpcClient } from './grpc/client';
+import { createWorkerService, IWorkerService } from './services/worker.service';
 
-config();
+type ShutdownSignal = 'SIGINT' | 'SIGTERM' | 'uncaughtException';
 
-async function startWorker(): Promise<void> {
-  logger.info('Starting Code Execution Worker...');
+function registerProcessHandlers(workerService: IWorkerService): void {
+  const shutdown = async (signal: ShutdownSignal) => {
+    logger.info('Stopping worker...', { signal });
 
-  try {
-    await workerService.start();
-  } catch (error) {
-    logger.error('Failed to start worker', { error });
-    process.exit(1);
-  }
+    try {
+      await workerService.stop();
+      logger.info('Worker stopped');
+      process.exit(signal === 'uncaughtException' ? 1 : 0);
+    } catch (error) {
+      logger.error('Error during shutdown', { error });
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
+  process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+
+  process.on('uncaughtException', error => {
+    logger.error('Uncaught Exception', { error });
+    void shutdown('uncaughtException');
+  });
+
+  process.on('unhandledRejection', reason => {
+    logger.error('Unhandled Rejection', { reason });
+  });
 }
 
-const shutdown = async (signal: string) => {
-  logger.info('Stopping worker...', { signal });
+export async function startWorkerProcess(): Promise<void> {
+  config();
+  logger.info('Starting Code Execution Worker...');
 
-  try {
-    await workerService.stop();
-    logger.info('Worker stopped');
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during shutdown', { error });
+  const sandboxClient = createSandboxGrpcClient();
+  const workerService = createWorkerService({
+    sandboxClient,
+    createBreaker: createSandboxBreaker,
+  });
+
+  registerProcessHandlers(workerService);
+  await workerService.start();
+}
+
+if (require.main === module) {
+  void startWorkerProcess().catch(error => {
+    logger.error('Failed to start worker', { error });
     process.exit(1);
-  }
-};
-
-process.on('SIGINT', () => {
-  void shutdown('SIGINT');
-});
-process.on('SIGTERM', () => {
-  void shutdown('SIGTERM');
-});
-
-process.on('uncaughtException', error => {
-  logger.error('Uncaught Exception', { error });
-  void shutdown('uncaughtException');
-});
-
-process.on('unhandledRejection', reason => {
-  logger.error('Unhandled Rejection', { reason });
-});
-
-void startWorker();
+  });
+}
