@@ -1,20 +1,21 @@
 import { NotificationRepository } from '../repositories/notification.repository';
 import { UserRepository } from '../repositories/user.repository';
-import { websocketService } from './websocket.service';
 import { ENotificationType } from '@backend/shared/types';
 import {
   CreateNotificationInput,
-  CreateNotificationSchema,
   NotificationMetadataSchemas,
 } from '@backend/shared/validations/notification.validation';
 import { ValidationException } from '../exceptions/auth.exceptions';
 import { NotificationNotFoundException } from '../exceptions/notification.exception';
+import { getWebSocketService, IWebSocketNotifier } from './websocket.service';
 
 export class NotificationService {
   private notificationRepository: NotificationRepository;
   private userRepository: UserRepository;
 
-  constructor() {
+  constructor(
+    private readonly getSocketService: () => IWebSocketNotifier | null = getWebSocketService
+  ) {
     this.notificationRepository = new NotificationRepository();
     this.userRepository = new UserRepository();
   }
@@ -44,11 +45,9 @@ export class NotificationService {
     message: string,
     metadata?: any
   ) {
-    // Validate Input
     const typeEnum = type as ENotificationType;
     this.validateMetadata(typeEnum, metadata);
 
-    // 1. Save to DB
     const newNotification: CreateNotificationInput = {
       userId,
       type: typeEnum,
@@ -57,14 +56,11 @@ export class NotificationService {
       metadata,
     };
 
-    // Validate entire object (optional, since we constructed it)
-    // CreateNotificationSchema.parse(newNotification);
-
     const created = await this.notificationRepository.create(newNotification as any);
 
-    // 2. Emit Socket
-    if (websocketService) {
-      websocketService.emitToUser(userId, 'notification_new', created);
+    const socketService = this.getSocketService();
+    if (socketService) {
+      socketService.emitToUser(userId, 'notification_new', created);
     }
 
     return created;
@@ -79,18 +75,15 @@ export class NotificationService {
     message: string,
     metadata?: any
   ) {
-    // Validate Metadata
     const typeEnum = type as ENotificationType;
     this.validateMetadata(typeEnum, metadata);
 
-    // 1. Get all users
     const userIds = await this.userRepository.findAllIds();
 
     if (userIds.length === 0) {
       return;
     }
 
-    // 2. Prepare DB inserts
     const notificationsToInsert: CreateNotificationInput[] = userIds.map((userId: any) => ({
       userId,
       type: typeEnum,
@@ -107,11 +100,10 @@ export class NotificationService {
       }
     }
 
-    // 3. Emit Socket events
-    if (websocketService) {
-      // Emit generic event for frontend to handle "refresh" or display
-      websocketService.getIO().emit('notification_new', {
-        id: 'global-temp-id', // Frontend might need an ID
+    const socketService = this.getSocketService();
+    if (socketService) {
+      socketService.getIO().emit('notification_new', {
+        id: 'global-temp-id',
         userId: 'global',
         type,
         title,
@@ -145,4 +137,9 @@ export class NotificationService {
   }
 }
 
-export const notificationService = new NotificationService();
+/** Creates a NotificationService instance with an optional websocket provider override. */
+export function createNotificationService(
+  getSocketService: () => IWebSocketNotifier | null = getWebSocketService
+): NotificationService {
+  return new NotificationService(getSocketService);
+}

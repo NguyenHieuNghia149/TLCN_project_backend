@@ -1,7 +1,12 @@
-import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 
-export class WebSocketService {
+export interface IWebSocketNotifier {
+  emitToUser(userId: string, event: string, data: unknown): void;
+  getIO(): { emit(event: string, data: unknown): boolean };
+}
+
+export class WebSocketService implements IWebSocketNotifier {
   private io: SocketIOServer;
   private connectedClients: Map<string, Set<string>> = new Map();
 
@@ -44,7 +49,7 @@ export class WebSocketService {
     });
   }
 
-  emitToUser(userId: string, event: string, data: any): void {
+  emitToUser(userId: string, event: string, data: unknown): void {
     this.io.to(`user_${userId}`).emit(event, data);
   }
 
@@ -81,10 +86,19 @@ export class WebSocketService {
   }
 }
 
-export let websocketService: WebSocketService;
+let websocketService: WebSocketService | null = null;
 
 export const initializeWebSocket = (server: HTTPServer): WebSocketService => {
   websocketService = new WebSocketService(server);
   return websocketService;
 };
 
+/** Returns the active websocket service when it has been initialized, otherwise null. */
+export function getWebSocketService(): IWebSocketNotifier | null {
+  return websocketService;
+}
+
+/** Resets stored websocket state so tests can start from a clean module instance. */
+export function resetWebSocketServiceForTesting(): void {
+  websocketService = null;
+}

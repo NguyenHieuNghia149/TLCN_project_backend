@@ -13,7 +13,10 @@ jest.mock('@backend/shared/runtime/judge-queue', () => ({
   getJudgeQueueService: mockGetJudgeQueueService,
 }));
 
-import { SubmissionService } from '../../../apps/api/src/services/submission.service';
+import {
+  createSubmissionService,
+  SubmissionService,
+} from '../../../apps/api/src/services/submission.service';
 import type { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { FunctionSignature } from '@backend/shared/types';
 
@@ -29,6 +32,10 @@ describe('SubmissionService JSON-first queue payload', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('creates a submission service without a module-level singleton export', () => {
+    expect(createSubmissionService()).toBeInstanceOf(SubmissionService);
   });
 
   it('omits cached text fields from queue jobs', () => {

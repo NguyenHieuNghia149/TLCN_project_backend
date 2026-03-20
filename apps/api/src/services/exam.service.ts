@@ -33,6 +33,11 @@ import {
 } from '../exceptions/exam.exceptions';
 import { ESubmissionStatus } from '@backend/shared/types';
 import { ChallengeService } from './challenge.service';
+import { createNotificationService } from './notification.service';
+
+export interface INotificationPublisher {
+  notifyAllUsers(type: string, title: string, message: string, metadata?: unknown): Promise<void>;
+}
 
 export class ExamService {
   private examRepository: ExamRepository;
@@ -44,7 +49,10 @@ export class ExamService {
   private resultSubmissionRepository: ResultSubmissionRepository;
   private challengeService: ChallengeService;
 
-  constructor() {
+  constructor(
+    private readonly getNotificationPublisher: () => INotificationPublisher = () =>
+      createNotificationService()
+  ) {
     this.examRepository = new ExamRepository();
     this.examToProblemsRepository = new ExamToProblemsRepository();
     this.examParticipationRepository = new ExamParticipationRepository();
@@ -282,8 +290,8 @@ export class ExamService {
     if (newExam.isVisible) {
       setImmediate(async () => {
         try {
-          const { notificationService } = await import('./notification.service');
-          await notificationService.notifyAllUsers(
+          const notificationPublisher = this.getNotificationPublisher();
+          await notificationPublisher.notifyAllUsers(
             'NEW_EXAM',
             `New Exam: ${newExam.title}`,
             `A new exam has been created. Start: ${new Date(newExam.startDate).toLocaleString()}`,
@@ -1199,3 +1207,4 @@ export class ExamService {
 
   // Problem creation and related DB operations were moved to ProblemRepository.
 }
+

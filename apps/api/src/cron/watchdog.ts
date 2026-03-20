@@ -5,16 +5,20 @@ import { ESubmissionStatus } from '@backend/shared/types';
 import { logger } from '@backend/shared/utils';
 import { and, eq, lt } from 'drizzle-orm';
 import cron from 'node-cron';
-import { submissionService } from '../services/submission.service';
+
+export interface ISubmissionRecoveryService {
+  requeuePendingSubmission(submissionId: string): Promise<boolean>;
+}
 
 const WATCHDOG_SCHEDULE = '*/5 * * * *';
 const WATCHDOG_THRESHOLD_MS = 5 * 60 * 1000;
 
 let isWatchdogRunning = false;
 let isWatchdogInitialized = false;
+let submissionRecoveryService: ISubmissionRecoveryService | null = null;
 
 async function reconcileOrphanedSubmissions(): Promise<void> {
-  if (isWatchdogRunning) {
+  if (isWatchdogRunning || !submissionRecoveryService) {
     return;
   }
 
@@ -43,7 +47,7 @@ async function reconcileOrphanedSubmissions(): Promise<void> {
           continue;
         }
 
-        const recovered = await submissionService.requeuePendingSubmission(submission.id);
+        const recovered = await submissionRecoveryService.requeuePendingSubmission(submission.id);
 
         if (recovered) {
           recoveredCount += 1;
@@ -63,10 +67,15 @@ async function reconcileOrphanedSubmissions(): Promise<void> {
   }
 }
 
-export function initializeWatchdogCron(): void {
+/** Initializes the watchdog cron with an injected submission recovery dependency. */
+export function initializeWatchdogCron(
+  injectedSubmissionRecoveryService: ISubmissionRecoveryService
+): void {
   if (isWatchdogInitialized) {
     return;
   }
+
+  submissionRecoveryService = injectedSubmissionRecoveryService;
 
   cron.schedule(WATCHDOG_SCHEDULE, () => {
     void reconcileOrphanedSubmissions();

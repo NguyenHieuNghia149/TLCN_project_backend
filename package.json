@@ -39,15 +39,16 @@
                     "check:no-testcase-text-cache-refs":  "ts-node scripts/check-no-testcase-text-cache-refs.ts",
                     "check:no-execution-mode-refs":  "ts-node scripts/check-no-execution-mode-refs.ts",
                     "check:no-cross-app-imports":  "ts-node scripts/check-no-cross-app-imports.ts",
-                    "check:refactor-guards":  "npm run check:no-testcase-text-cache-refs && npm run check:no-execution-mode-refs && npm run check:no-cross-app-imports && npm run check:no-runtime-barrel-imports && npm run check:no-sandbox-singleton-imports && npm run check:no-worker-singleton-imports && npm run check:no-api-bootstrap-side-effects && npm run check:no-api-route-side-effects",
+                    "check:refactor-guards":  "npm run check:no-testcase-text-cache-refs && npm run check:no-execution-mode-refs && npm run check:no-cross-app-imports && npm run check:no-runtime-barrel-imports && npm run check:no-sandbox-singleton-imports && npm run check:no-worker-singleton-imports && npm run check:no-api-bootstrap-side-effects && npm run check:no-api-route-side-effects && npm run check:no-api-service-singletons",
                     "perf:challenge-detail:baseline":  "artillery run tests/performance/challenge_detail_baseline.yml",
                     "perf:challenge-detail:load":  "artillery run tests/performance/challenge_detail_load_test.yml",
                     "check:no-runtime-barrel-imports":  "ts-node scripts/check-no-runtime-barrel-imports.ts",
-                    "test:runtime-open-handles":  "jest --runInBand --detectOpenHandles --runTestsByPath tests/unit/services/submission.service.test.ts tests/unit/worker/worker.service.test.ts tests/unit/worker/worker.server.test.ts tests/unit/worker/grpc.client.test.ts tests/unit/sandbox/grpc.server.test.ts tests/unit/sandbox/sandbox.server.test.ts tests/unit/api/api.server.test.ts tests/unit/api/api-route-factories.test.ts tests/unit/api/api-route-smoke.test.ts tests/unit/api/sse.service.test.ts tests/unit/api/submission.controller.test.ts apps/api/tests/integration/sandbox-route-boundary.test.ts tests/unit/http/rate-limit.test.ts tests/unit/runtime/judge-queue.test.ts tests/unit/runtime/code-services.test.ts",
+                    "test:runtime-open-handles":  "jest --runInBand --detectOpenHandles --runTestsByPath tests/unit/services/submission.service.test.ts tests/unit/worker/worker.service.test.ts tests/unit/worker/worker.server.test.ts tests/unit/worker/grpc.client.test.ts tests/unit/sandbox/grpc.server.test.ts tests/unit/sandbox/sandbox.server.test.ts tests/unit/api/api.server.test.ts tests/unit/api/notification.service.test.ts tests/unit/api/watchdog.test.ts tests/unit/api/exam.service.test.ts tests/unit/api/api-route-factories.test.ts tests/unit/api/api-route-smoke.test.ts tests/unit/api/sse.service.test.ts tests/unit/api/submission.controller.test.ts apps/api/tests/integration/sandbox-route-boundary.test.ts tests/unit/http/rate-limit.test.ts tests/unit/runtime/judge-queue.test.ts tests/unit/runtime/code-services.test.ts",
                     "check:no-sandbox-singleton-imports":  "ts-node scripts/check-no-sandbox-singleton-imports.ts",
                     "check:no-worker-singleton-imports":  "ts-node scripts/check-no-worker-singleton-imports.ts",
                     "check:no-api-bootstrap-side-effects":  "ts-node scripts/check-no-api-bootstrap-side-effects.ts",
-                    "check:no-api-route-side-effects":  "ts-node scripts/check-no-api-route-side-effects.ts"
+                    "check:no-api-route-side-effects":  "ts-node scripts/check-no-api-route-side-effects.ts",
+                    "check:no-api-service-singletons":  "ts-node scripts/check-no-api-service-singletons.ts"
                 },
     "keywords":  [
 
@@ -128,6 +129,9 @@
                             "tsconfig-paths":  "^4.2.0"
                         }
 }
+
+
+
 
 
 

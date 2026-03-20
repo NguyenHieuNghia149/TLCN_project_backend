@@ -4,7 +4,7 @@ import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { validate } from '@backend/api/middlewares/validate.middleware';
 import { getSseService } from '@backend/api/services/sse.service';
-import { SubmissionService } from '@backend/api/services/submission.service';
+import { createSubmissionService } from '@backend/api/services/submission.service';
 import {
   CreateSubmissionSchema,
   GetSubmissionsQuerySchema,
@@ -13,7 +13,7 @@ import {
 /** Creates the submission router without touching Redis-backed SSE services at import time. */
 export function createSubmissionRouter(): Router {
   const router = Router();
-  const submissionService = new SubmissionService();
+  const submissionService = createSubmissionService();
   const submissionController = new SubmissionController(submissionService, getSseService);
 
   const submissionRateLimit = rateLimitMiddleware({
@@ -103,3 +103,4 @@ export function createSubmissionRouter(): Router {
 
   return router;
 }
+

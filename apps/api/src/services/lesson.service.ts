@@ -181,4 +181,4 @@ export class LessonService {
   }
 }
 
-export default new LessonService();
+

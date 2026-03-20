@@ -15,6 +15,9 @@ describe('api server bootstrap factories', () => {
     const getJudgeQueueService = jest.fn(() => ({ connect: queueConnect }));
     const initializeWebSocket = jest.fn();
     const examAutoSubmitService = { start: jest.fn() };
+    const createExamAutoSubmitService = jest.fn(() => examAutoSubmitService);
+    const submissionRecoveryService = { requeuePendingSubmission: jest.fn() };
+    const createSubmissionService = jest.fn(() => submissionRecoveryService);
     const initializeWatchdogCron = jest.fn();
     const createAdminRouter = jest.fn();
     const registerRoutes = jest.fn();
@@ -36,7 +39,10 @@ describe('api server bootstrap factories', () => {
     jest.doMock('../../../apps/api/src/routes/admin', () => ({ createAdminRouter }));
     jest.doMock('../../../apps/api/src/cron/watchdog', () => ({ initializeWatchdogCron }));
     jest.doMock('../../../apps/api/src/services/exam-auto-submit.service', () => ({
-      examAutoSubmitService,
+      createExamAutoSubmitService,
+    }));
+    jest.doMock('../../../apps/api/src/services/submission.service', () => ({
+      createSubmissionService,
     }));
     jest.doMock('../../../apps/api/src/services/websocket.service', () => ({
       initializeWebSocket,
@@ -53,7 +59,9 @@ describe('api server bootstrap factories', () => {
     expect(getJudgeQueueService).not.toHaveBeenCalled();
     expect(queueConnect).not.toHaveBeenCalled();
     expect(initializeWebSocket).not.toHaveBeenCalled();
+    expect(createExamAutoSubmitService).not.toHaveBeenCalled();
     expect(examAutoSubmitService.start).not.toHaveBeenCalled();
+    expect(createSubmissionService).not.toHaveBeenCalled();
     expect(initializeWatchdogCron).not.toHaveBeenCalled();
     expect(createAdminRouter).not.toHaveBeenCalled();
     expect(registerRoutes).not.toHaveBeenCalled();
@@ -111,7 +119,11 @@ describe('api server bootstrap factories', () => {
         calls.push('exam');
       }),
     };
-    const initializeWatchdogCron = jest.fn(() => {
+    const createExamAutoSubmitService = jest.fn(() => examAutoSubmitService);
+    const submissionRecoveryService = { requeuePendingSubmission: jest.fn() };
+    const createSubmissionService = jest.fn(() => submissionRecoveryService);
+    const initializeWatchdogCron = jest.fn(receivedSubmissionRecoveryService => {
+      expect(receivedSubmissionRecoveryService).toBe(submissionRecoveryService);
       calls.push('watchdog');
     });
     const adminRouter = ((req: unknown, res: unknown, next: () => void) => next()) as any;
@@ -149,7 +161,10 @@ describe('api server bootstrap factories', () => {
     jest.doMock('../../../apps/api/src/routes/admin', () => ({ createAdminRouter }));
     jest.doMock('../../../apps/api/src/cron/watchdog', () => ({ initializeWatchdogCron }));
     jest.doMock('../../../apps/api/src/services/exam-auto-submit.service', () => ({
-      examAutoSubmitService,
+      createExamAutoSubmitService,
+    }));
+    jest.doMock('../../../apps/api/src/services/submission.service', () => ({
+      createSubmissionService,
     }));
     jest.doMock('../../../apps/api/src/services/websocket.service', () => ({
       initializeWebSocket,
@@ -168,9 +183,11 @@ describe('api server bootstrap factories', () => {
     expect(connect).toHaveBeenCalledTimes(1);
     expect(runMigrations).toHaveBeenCalledTimes(1);
     expect(initializeWebSocket).toHaveBeenCalledTimes(1);
+    expect(createExamAutoSubmitService).toHaveBeenCalledTimes(1);
     expect(examAutoSubmitService.start).toHaveBeenCalledTimes(1);
     expect(getJudgeQueueService).toHaveBeenCalledTimes(1);
     expect(queueConnect).toHaveBeenCalledTimes(1);
+    expect(createSubmissionService).toHaveBeenCalledTimes(1);
     expect(initializeWatchdogCron).toHaveBeenCalledTimes(1);
     expect(createAdminRouter).toHaveBeenCalledTimes(1);
     expect(server.listen).toHaveBeenCalledTimes(1);

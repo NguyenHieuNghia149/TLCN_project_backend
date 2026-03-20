@@ -2,12 +2,12 @@ import { Router } from 'express';
 import { NotificationController } from '@backend/api/controllers/notification.controller';
 import { authenticationToken as authenticate } from '@backend/api/middlewares/auth.middleware';
 import { strictLimiter } from '@backend/api/middlewares/ratelimit.middleware';
-import { NotificationService } from '@backend/api/services/notification.service';
+import { createNotificationService } from '@backend/api/services/notification.service';
 
 /** Creates the notification router without instantiating services at import time. */
 export function createNotificationRouter(): Router {
   const router = Router();
-  const notificationService = new NotificationService();
+  const notificationService = createNotificationService();
   const notificationController = new NotificationController(notificationService);
   const notificationRateLimit = strictLimiter;
 
@@ -31,3 +31,4 @@ export function createNotificationRouter(): Router {
 
   return router;
 }
+

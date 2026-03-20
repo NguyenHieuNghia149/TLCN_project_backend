@@ -152,7 +152,8 @@ export async function startApiServer(): Promise<{
   const { initializeWebSocket } = require('./services/websocket.service') as typeof import('./services/websocket.service');
   initializeWebSocket(server);
 
-  const { examAutoSubmitService } = require('./services/exam-auto-submit.service') as typeof import('./services/exam-auto-submit.service');
+  const { createExamAutoSubmitService } = require('./services/exam-auto-submit.service') as typeof import('./services/exam-auto-submit.service');
+  const examAutoSubmitService = createExamAutoSubmitService();
   await examAutoSubmitService.start();
 
   getJudgeQueueService()
@@ -162,8 +163,9 @@ export async function startApiServer(): Promise<{
       logger.error('Redis connection failed (continuing without it):', error.message)
     );
 
+  const { createSubmissionService } = require('./services/submission.service') as typeof import('./services/submission.service');
   const { initializeWatchdogCron } = require('./cron/watchdog') as typeof import('./cron/watchdog');
-  initializeWatchdogCron();
+  initializeWatchdogCron(createSubmissionService());
 
   const { createAdminRouter } = require('./routes/admin') as typeof import('./routes/admin');
   attachAdminQueueRouter(app, createAdminRouter());
@@ -192,3 +194,5 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+

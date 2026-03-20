@@ -687,14 +687,8 @@ export class SubmissionService {
   }
 }
 
-export const submissionService = new SubmissionService();
-
-
-
-
-
-
-
-
-
+/** Creates a SubmissionService instance without keeping a module-level singleton. */
+export function createSubmissionService(): SubmissionService {
+  return new SubmissionService();
+}
 

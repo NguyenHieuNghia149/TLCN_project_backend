@@ -3,10 +3,19 @@ import { ExamParticipationRepository } from '../repositories/examParticipation.r
 import { ExamRepository } from '../repositories/exam.repository';
 import { ExamService } from './exam.service';
 
+export interface IExamAutoSubmitService {
+  start(checkIntervalMs?: number): Promise<void>;
+  stop(): Promise<void>;
+  getStatus(): {
+    isRunning: boolean;
+    checkInterval: number | null;
+  };
+}
+
 /**
  * Service to handle automatic exam submission for expired exams
  */
-export class ExamAutoSubmitService {
+export class ExamAutoSubmitService implements IExamAutoSubmitService {
   private examParticipationRepository: ExamParticipationRepository;
   private examRepository: ExamRepository;
   private examService: ExamService;
@@ -30,10 +39,8 @@ export class ExamAutoSubmitService {
 
     this.isRunning = true;
 
-    // Run initial check
     await this.checkAndAutoSubmitExpiredExams();
 
-    // Set up periodic checks
     this.checkInterval = setInterval(async () => {
       try {
         await this.checkAndAutoSubmitExpiredExams();
@@ -59,10 +66,7 @@ export class ExamAutoSubmitService {
    */
   private async checkAndAutoSubmitExpiredExams(): Promise<void> {
     try {
-      // Delegate to central finalizer which computes effective end time per participation
-      // This ensures we catch participations that expired by start+duration even when exam.endDate
-      // hasn't passed yet (previous implementation only checked exam.endDate).
-      const finalized = await this.examService.finalizeExpiredParticipations();
+      await this.examService.finalizeExpiredParticipations();
     } catch (error) {
       logger.error('Error finalizing expired participations:', error);
     }
@@ -79,5 +83,7 @@ export class ExamAutoSubmitService {
   }
 }
 
-// Singleton instance
-export const examAutoSubmitService = new ExamAutoSubmitService();
+/** Creates an exam auto-submit service instance for startup code without a module singleton. */
+export function createExamAutoSubmitService(): IExamAutoSubmitService {
+  return new ExamAutoSubmitService();
+}
