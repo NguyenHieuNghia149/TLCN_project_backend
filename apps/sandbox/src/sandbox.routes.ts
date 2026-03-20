@@ -1,27 +1,22 @@
+import { rateLimitMiddleware } from '@backend/shared/http/rate-limit';
 import { Router } from 'express';
 import { SandboxController } from './sandbox.controller';
-import { rateLimitMiddleware } from '@backend/shared/http/rate-limit';
+import { ISandboxService } from './sandbox.service';
 
-const router = Router();
-const sandboxController = new SandboxController();
+export function createSandboxRouter(sandboxService: ISandboxService): Router {
+  const router = Router();
+  const sandboxController = new SandboxController(sandboxService);
 
-// Rate limiting for sandbox endpoints
-const sandboxRateLimit = rateLimitMiddleware({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 100 requests per windowMs
-  message: 'Too many sandbox requests from this IP, please try again later.',
-});
+  const sandboxRateLimit = rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000,
+    max: 1000,
+    message: 'Too many sandbox requests from this IP, please try again later.',
+  });
 
-// Sandbox execution endpoint
-router.post('/execute', sandboxRateLimit, sandboxController.executeCode.bind(sandboxController));
+  router.post('/execute', sandboxRateLimit, sandboxController.executeCode.bind(sandboxController));
+  router.get('/status', sandboxRateLimit, sandboxController.getStatus.bind(sandboxController));
+  router.get('/health', sandboxRateLimit, sandboxController.healthCheck.bind(sandboxController));
+  router.get('/test', sandboxRateLimit, sandboxController.testSandbox.bind(sandboxController));
 
-// Sandbox status endpoint
-router.get('/status', sandboxRateLimit, sandboxController.getStatus.bind(sandboxController));
-
-// Health check endpoint
-router.get('/health', sandboxRateLimit, sandboxController.healthCheck.bind(sandboxController));
-
-// Test sandbox endpoint
-router.get('/test', sandboxRateLimit, sandboxController.testSandbox.bind(sandboxController));
-
-export default router;
+  return router;
+}

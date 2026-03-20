@@ -1,19 +1,19 @@
-jest.mock('../../../apps/sandbox/src/sandbox.service', () => ({
-  sandboxService: {
-    executeCode: jest.fn(),
-  },
-}));
-
-import { executeCode } from '../../../apps/sandbox/src/grpc/server';
-import { sandboxService } from '../../../apps/sandbox/src/sandbox.service';
+import { createExecuteCodeHandler } from '../../../apps/sandbox/src/grpc/server';
+import { ISandboxService } from '../../../apps/sandbox/src/sandbox.service';
 
 describe('sandbox gRPC ExecuteCode handler', () => {
+  const sandboxService: jest.Mocked<ISandboxService> = {
+    executeCode: jest.fn(),
+    getStatus: jest.fn(),
+    healthCheck: jest.fn(),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('processes requests without execution_mode and forwards wrapper payload to sandboxService', async () => {
-    (sandboxService.executeCode as jest.Mock).mockResolvedValue({
+    sandboxService.executeCode.mockResolvedValue({
       success: true,
       result: {
         summary: {
@@ -25,6 +25,7 @@ describe('sandbox gRPC ExecuteCode handler', () => {
         results: [
           {
             testcaseId: 'tc-1',
+            input: '{}',
             isPassed: true,
             executionTime: 7,
             actualOutput: '[0,1]',
@@ -32,10 +33,13 @@ describe('sandbox gRPC ExecuteCode handler', () => {
             stderr: '',
           },
         ],
+        processingTime: 1,
       },
     });
 
     const callback = jest.fn();
+    const executeCode = createExecuteCodeHandler(sandboxService);
+
     await executeCode(
       {
         request: {

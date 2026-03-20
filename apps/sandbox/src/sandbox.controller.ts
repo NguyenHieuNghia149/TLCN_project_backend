@@ -1,17 +1,14 @@
-import { logger } from '@backend/shared/utils';
-import { Request, Response, NextFunction } from 'express';
-import { sandboxService } from './sandbox.service';
+import { NextFunction, Request, Response } from 'express';
 import { ExecutionConfig } from '@backend/shared/validations';
+import { ISandboxService } from './sandbox.service';
 
 export class SandboxController {
-  /**
-   * Execute code in sandbox
-   */
+  constructor(private readonly sandboxService: ISandboxService) {}
+
   async executeCode(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const config: ExecutionConfig = req.body;
 
-      // Validate required fields
       if (!config.code || !config.language || !config.testcases) {
         res.status(400).json({
           success: false,
@@ -20,8 +17,7 @@ export class SandboxController {
         return;
       }
 
-      // Execute code in sandbox
-      const result = await sandboxService.executeCode(config);
+      const result = await this.sandboxService.executeCode(config);
 
       if (result.success) {
         res.status(200).json({
@@ -41,12 +37,9 @@ export class SandboxController {
     }
   }
 
-  /**
-   * Get sandbox status
-   */
   async getStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const status = sandboxService.getStatus();
+      const status = this.sandboxService.getStatus();
 
       res.status(200).json({
         success: true,
@@ -58,12 +51,9 @@ export class SandboxController {
     }
   }
 
-  /**
-   * Health check
-   */
   async healthCheck(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const isHealthy = await sandboxService.healthCheck();
+      const isHealthy = await this.sandboxService.healthCheck();
 
       res.status(isHealthy ? 200 : 503).json({
         success: isHealthy,
@@ -77,9 +67,6 @@ export class SandboxController {
     }
   }
 
-  /**
-   * Test sandbox with sample code
-   */
   async testSandbox(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { language } = req.query;
@@ -92,7 +79,6 @@ export class SandboxController {
         return;
       }
 
-      // Sample test cases based on language
       const sampleConfigs = {
         cpp: {
           code: `#include <iostream>
@@ -149,7 +135,7 @@ const rl = readline.createInterface({
 
 rl.on('line', (line) => {
     const [a, b] = line.split(' ').map(Number);
-    logger.info(a + b);
+    console.log(a + b);
     rl.close();
 });`,
           language: 'javascript',
@@ -171,7 +157,7 @@ rl.on('line', (line) => {
         return;
       }
 
-      const result = await sandboxService.executeCode(config);
+      const result = await this.sandboxService.executeCode(config as ExecutionConfig);
 
       res.status(200).json({
         success: true,

@@ -49,6 +49,19 @@ type WrapperEnvelope = {
   time_taken_ms: number;
 };
 
+export interface SandboxStatus {
+  activeJobs: number;
+  maxConcurrent: number;
+  isHealthy: boolean;
+  uptime: number;
+}
+
+export interface ISandboxService {
+  executeCode(config: ExecutionConfig): Promise<SandboxResponse>;
+  getStatus(): SandboxStatus;
+  healthCheck(): Promise<boolean>;
+}
+
 export class SandboxService {
   private config: SandboxConfig;
   private workspaceDir: string;
@@ -571,7 +584,11 @@ export class SandboxService {
   }
 }
 
-export const sandboxService = new SandboxService();
+export function createSandboxService(): SandboxService {
+  return new SandboxService();
+}
+
+
 
 
 
