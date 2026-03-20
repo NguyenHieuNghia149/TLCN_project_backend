@@ -23,16 +23,15 @@ const patterns: Pattern[] = [
   { name: 'top-level-http-server', regex: /^const\s+server\s*=\s*createServer\(/ },
   { name: 'top-level-start-server', regex: /^startServer\(/ },
   { name: 'top-level-start-api-server', regex: /^void\s+startApiServer\(/, allowInRequireMainGuard: true },
-  { name: 'top-level-routes-import', regex: /^import\s+.*from\s+['"]\.\/routes['"]/ },
   { name: 'top-level-admin-routes-import', regex: /^import\s+.*from\s+['"]\.\/routes\/admin['"]/ },
   { name: 'top-level-watchdog-import', regex: /^import\s+.*from\s+['"]\.\/cron\/watchdog['"]/ },
   {
     name: 'top-level-exam-auto-submit-import',
-    regex: /^import\s+.*from\s+['"]\.\/services\/exam-auto-submit\.service['"]/,
+    regex: /^import\s+.*from\s+['"]\.\/services\/exam-auto-submit\.service['"]/, 
   },
   {
     name: 'top-level-websocket-import',
-    regex: /^import\s+.*from\s+['"]\.\/services\/websocket\.service['"]/,
+    regex: /^import\s+.*from\s+['"]\.\/services\/websocket\.service['"]/, 
   },
 ];
 
@@ -95,4 +94,3 @@ function main(): void {
 }
 
 main();
-

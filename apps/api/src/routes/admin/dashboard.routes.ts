@@ -1,14 +1,12 @@
 import { Router } from 'express';
 import { DashboardController } from '@backend/api/controllers/admin/dashboard.controller';
 
-const router = Router();
-const controller = new DashboardController();
+/** Creates the admin dashboard router without constructing controllers at import time. */
+export function createDashboardRouter(): Router {
+  const router = Router();
+  const controller = new DashboardController();
 
-/**
- * @route GET /api/admin/dashboard/stats
- * @desc Get dashboard statistics and charts data
- * @access Private (Admin only)
- */
-router.get('/stats', controller.getStats);
+  router.get('/stats', controller.getStats);
 
-export default router;
+  return router;
+}

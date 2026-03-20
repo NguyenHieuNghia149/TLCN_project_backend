@@ -3,57 +3,49 @@ import { LearningProcessController } from '@backend/api/controllers/learningproc
 import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
-const router = Router();
-const learningProcessController = new LearningProcessController();
+/** Creates the learning-process router without constructing controllers at import time. */
+export function createLearningProcessRouter(): Router {
+  const router = Router();
+  const learningProcessController = new LearningProcessController();
 
-const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
+  const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
 
-// Get user's complete learning progress
-router.get(
-  '/user/progress',
-  authenticationToken,
-  generalLimit,
-  learningProcessController.getUserProgress.bind(learningProcessController)
-);
+  router.get(
+    '/user/progress',
+    authenticationToken,
+    generalLimit,
+    learningProcessController.getUserProgress.bind(learningProcessController)
+  );
+  router.get(
+    '/topic/:topicId',
+    authenticationToken,
+    generalLimit,
+    learningProcessController.getTopicProgress.bind(learningProcessController)
+  );
+  router.get(
+    '/user/recent',
+    authenticationToken,
+    generalLimit,
+    learningProcessController.getRecentTopic.bind(learningProcessController)
+  );
+  router.get(
+    '/lessons/user/progress',
+    authenticationToken,
+    generalLimit,
+    learningProcessController.getUserLessonProgress.bind(learningProcessController)
+  );
+  router.get(
+    '/lessons/:lessonId',
+    authenticationToken,
+    generalLimit,
+    learningProcessController.getLessonProgress.bind(learningProcessController)
+  );
+  router.get(
+    '/lessons/user/recent',
+    authenticationToken,
+    generalLimit,
+    learningProcessController.getRecentLesson.bind(learningProcessController)
+  );
 
-// Get progress for a specific topic
-router.get(
-  '/topic/:topicId',
-  authenticationToken,
-  generalLimit,
-  learningProcessController.getTopicProgress.bind(learningProcessController)
-);
-
-// Get the most recent topic with submissions
-router.get(
-  '/user/recent',
-  authenticationToken,
-  generalLimit,
-  learningProcessController.getRecentTopic.bind(learningProcessController)
-);
-
-// Get user's complete lesson progress
-router.get(
-  '/lessons/user/progress',
-  authenticationToken,
-  generalLimit,
-  learningProcessController.getUserLessonProgress.bind(learningProcessController)
-);
-
-// Get progress for a specific lesson
-router.get(
-  '/lessons/:lessonId',
-  authenticationToken,
-  generalLimit,
-  learningProcessController.getLessonProgress.bind(learningProcessController)
-);
-
-// Get the most recent lesson completed
-router.get(
-  '/lessons/user/recent',
-  authenticationToken,
-  generalLimit,
-  learningProcessController.getRecentLesson.bind(learningProcessController)
-);
-
-export default router;
+  return router;
+}

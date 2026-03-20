@@ -11,10 +11,13 @@ import {
   GetSubmissionsQuery,
 } from '@backend/shared/validations/submission.validation';
 import { SubmissionService } from '@backend/api/services/submission.service';
-import { sseService } from '@backend/api/services/sse.service';
+import { ISubmissionEventStream } from '@backend/api/services/sse.service';
 
 export class SubmissionController {
-  constructor(private readonly submissionService: SubmissionService) {}
+  constructor(
+    private readonly submissionService: SubmissionService,
+    private readonly getSubmissionEventStream: () => ISubmissionEventStream
+  ) {}
 
   async createSubmission(
     req: Request,
@@ -65,10 +68,11 @@ export class SubmissionController {
     const heartbeat = setInterval(() => {
       res.write(':\n\n');
     }, 15000);
+    const submissionEventStream = this.getSubmissionEventStream();
 
     const cleanup = () => {
       clearInterval(heartbeat);
-      sseService.removeListener(`submission_${submissionId}`, onUpdate);
+      submissionEventStream.removeListener(`submission_${submissionId}`, onUpdate);
     };
 
     const onUpdate = (data: any) => {
@@ -110,7 +114,7 @@ export class SubmissionController {
         res.end();
       }
     };
-    sseService.on(`submission_${submissionId}`, onUpdate);
+    submissionEventStream.on(`submission_${submissionId}`, onUpdate);
 
     req.on('close', () => {
       cleanup();

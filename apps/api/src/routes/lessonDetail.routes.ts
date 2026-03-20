@@ -4,44 +4,42 @@ import { validate } from '@backend/api/middlewares/validate.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { z } from 'zod';
 
-const router = Router();
-const lessonDetailController = new LessonDetailController();
+/** Creates the lesson-detail router without constructing controllers at import time. */
+export function createLessonDetailRouter(): Router {
+  const router = Router();
+  const lessonDetailController = new LessonDetailController();
 
-// Rate limiting
-const lessonDetailReadLimit = rateLimitMiddleware({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500,
-  message: 'Too many lesson requests, please try again later.',
-});
+  const lessonDetailReadLimit = rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: 'Too many lesson requests, please try again later.',
+  });
 
-// Validation schemas
-const getLessonByIdSchema = {
-  params: z.object({
-    id: z.string().uuid('Invalid lesson ID format'),
-  }),
-};
+  const getLessonByIdSchema = {
+    params: z.object({
+      id: z.string().uuid('Invalid lesson ID format'),
+    }),
+  };
 
-const getLessonsByTopicIdSchema = {
-  params: z.object({
-    topicId: z.string().uuid('Invalid topic ID format'),
-  }),
-};
+  const getLessonsByTopicIdSchema = {
+    params: z.object({
+      topicId: z.string().uuid('Invalid topic ID format'),
+    }),
+  };
 
-// Routes
-router.get(
-  '/:id',
-  lessonDetailReadLimit,
-  validate(getLessonByIdSchema.params, 'params'),
-  lessonDetailController.getLessonById
-);
+  router.get(
+    '/:id',
+    lessonDetailReadLimit,
+    validate(getLessonByIdSchema.params, 'params'),
+    lessonDetailController.getLessonById
+  );
+  router.get(
+    '/topic/:topicId',
+    lessonDetailReadLimit,
+    validate(getLessonsByTopicIdSchema.params, 'params'),
+    lessonDetailController.getLessonsByTopicId
+  );
+  router.get('/', lessonDetailReadLimit, lessonDetailController.getAllLessons);
 
-router.get(
-  '/topic/:topicId',
-  lessonDetailReadLimit,
-  validate(getLessonsByTopicIdSchema.params, 'params'),
-  lessonDetailController.getLessonsByTopicId
-);
-
-router.get('/', lessonDetailReadLimit, lessonDetailController.getAllLessons);
-
-export default router;
+  return router;
+}

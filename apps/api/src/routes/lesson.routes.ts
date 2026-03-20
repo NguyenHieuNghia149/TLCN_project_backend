@@ -9,41 +9,40 @@ import {
   UpdateLessonSchema,
 } from '@backend/shared/validations/lesson.validation';
 
-const router = Router();
-const lessonService = new LessonService();
-const lessonController = new LessonController(lessonService);
+/** Creates the lesson router without instantiating services at import time. */
+export function createLessonRouter(): Router {
+  const router = Router();
+  const lessonService = new LessonService();
+  const lessonController = new LessonController(lessonService);
 
-const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
-const mutateLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 200 });
+  const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
+  const mutateLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 200 });
 
-router.get('/', optionalAuth, generalLimit, lessonController.list.bind(lessonController));
+  router.get('/', optionalAuth, generalLimit, lessonController.list.bind(lessonController));
+  router.get('/:lessonId', generalLimit, lessonController.getById.bind(lessonController));
+  router.post(
+    '/',
+    authenticationToken,
+    requireTeacher,
+    mutateLimit,
+    validate(CreateLessonSchema),
+    lessonController.create.bind(lessonController)
+  );
+  router.put(
+    '/:lessonId',
+    authenticationToken,
+    requireTeacher,
+    mutateLimit,
+    validate(UpdateLessonSchema),
+    lessonController.update.bind(lessonController)
+  );
+  router.delete(
+    '/:lessonId',
+    authenticationToken,
+    requireTeacher,
+    mutateLimit,
+    lessonController.delete.bind(lessonController)
+  );
 
-router.get('/:lessonId', generalLimit, lessonController.getById.bind(lessonController));
-
-router.post(
-  '/',
-  authenticationToken,
-  requireTeacher,
-  mutateLimit,
-  validate(CreateLessonSchema),
-  lessonController.create.bind(lessonController)
-);
-
-router.put(
-  '/:lessonId',
-  authenticationToken,
-  requireTeacher,
-  mutateLimit,
-  validate(UpdateLessonSchema),
-  lessonController.update.bind(lessonController)
-);
-
-router.delete(
-  '/:lessonId',
-  authenticationToken,
-  requireTeacher,
-  mutateLimit,
-  lessonController.delete.bind(lessonController)
-);
-
-export default router;
+  return router;
+}

@@ -4,26 +4,30 @@ import { authenticationToken as authenticate } from '@backend/api/middlewares/au
 import { strictLimiter } from '@backend/api/middlewares/ratelimit.middleware';
 import { NotificationService } from '@backend/api/services/notification.service';
 
-const router = Router();
-const notificationService = new NotificationService();
-const notificationController = new NotificationController(notificationService);
-const notificationRateLimit = strictLimiter;
-router.use(authenticate);
+/** Creates the notification router without instantiating services at import time. */
+export function createNotificationRouter(): Router {
+  const router = Router();
+  const notificationService = new NotificationService();
+  const notificationController = new NotificationController(notificationService);
+  const notificationRateLimit = strictLimiter;
 
-router.get(
-  '/',
-  notificationRateLimit,
-  notificationController.getMyNotifications.bind(notificationController)
-);
-router.patch(
-  '/:id/read',
-  notificationRateLimit,
-  notificationController.markAsRead.bind(notificationController)
-);
-router.patch(
-  '/read-all',
-  notificationRateLimit,
-  notificationController.markAllAsRead.bind(notificationController)
-);
+  router.use(authenticate);
 
-export default router;
+  router.get(
+    '/',
+    notificationRateLimit,
+    notificationController.getMyNotifications.bind(notificationController)
+  );
+  router.patch(
+    '/:id/read',
+    notificationRateLimit,
+    notificationController.markAsRead.bind(notificationController)
+  );
+  router.patch(
+    '/read-all',
+    notificationRateLimit,
+    notificationController.markAllAsRead.bind(notificationController)
+  );
+
+  return router;
+}

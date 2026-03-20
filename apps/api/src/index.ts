@@ -12,6 +12,7 @@ import path from 'path';
 
 import { errorMiddleware } from './middlewares/error.middleware';
 import { responseMiddleware } from './middlewares/response.middleware';
+import { registerRoutes } from './routes';
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -117,8 +118,6 @@ export function createApiApp(): Express {
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
   registerAdminQueueMount(app);
-
-  const { default: registerRoutes } = require('./routes') as typeof import('./routes');
   registerRoutes(app);
 
   app.use((req: Request, res: Response) => {

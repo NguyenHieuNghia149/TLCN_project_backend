@@ -32,7 +32,7 @@ describe('api server bootstrap factories', () => {
       DatabaseService: { connect, runMigrations },
     }));
     jest.doMock('@backend/shared/runtime/judge-queue', () => ({ getJudgeQueueService }));
-    jest.doMock('../../../apps/api/src/routes', () => ({ __esModule: true, default: registerRoutes }));
+    jest.doMock('../../../apps/api/src/routes', () => ({ registerRoutes }));
     jest.doMock('../../../apps/api/src/routes/admin', () => ({ createAdminRouter }));
     jest.doMock('../../../apps/api/src/cron/watchdog', () => ({ initializeWatchdogCron }));
     jest.doMock('../../../apps/api/src/services/exam-auto-submit.service', () => ({
@@ -68,7 +68,7 @@ describe('api server bootstrap factories', () => {
     jest.doMock('@backend/shared/utils', () => ({
       logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
     }));
-    jest.doMock('../../../apps/api/src/routes', () => ({ __esModule: true, default: registerRoutes }));
+    jest.doMock('../../../apps/api/src/routes', () => ({ registerRoutes }));
     jest.doMock('../../../apps/api/src/routes/admin', () => ({ createAdminRouter }));
 
     let createApiApp!: typeof import('../../../apps/api/src/index').createApiApp;
@@ -145,7 +145,7 @@ describe('api server bootstrap factories', () => {
       DatabaseService: { connect, runMigrations },
     }));
     jest.doMock('@backend/shared/runtime/judge-queue', () => ({ getJudgeQueueService }));
-    jest.doMock('../../../apps/api/src/routes', () => ({ __esModule: true, default: registerRoutes }));
+    jest.doMock('../../../apps/api/src/routes', () => ({ registerRoutes }));
     jest.doMock('../../../apps/api/src/routes/admin', () => ({ createAdminRouter }));
     jest.doMock('../../../apps/api/src/cron/watchdog', () => ({ initializeWatchdogCron }));
     jest.doMock('../../../apps/api/src/services/exam-auto-submit.service', () => ({
@@ -174,7 +174,8 @@ describe('api server bootstrap factories', () => {
     expect(initializeWatchdogCron).toHaveBeenCalledTimes(1);
     expect(createAdminRouter).toHaveBeenCalledTimes(1);
     expect(server.listen).toHaveBeenCalledTimes(1);
-    expect(calls).toEqual([      'routes',
+    expect(calls).toEqual([
+      'routes',
       'connect',
       'migrate',
       'websocket',
@@ -186,6 +187,3 @@ describe('api server bootstrap factories', () => {
     ]);
   });
 });
-
-
-

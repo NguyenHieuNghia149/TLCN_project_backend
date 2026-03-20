@@ -1,51 +1,49 @@
 import { Application } from 'express';
-import { Request, Response, NextFunction } from 'express';
 import { DatabaseUtils } from '@backend/shared/db/utils';
-import authRoutes from './auth.routes';
-import challengeRoutes from './challenge.routes';
-import topicRoutes from './topic.routes';
-import submissionRoutes from './submission.routes';
-import securityRoutes from './security.routes';
-import lessonRoutes from './lesson.routes';
-import lessonDetailRoutes from './lessonDetail.routes';
-import adminUserRoutes from './admin/adminUser.routes';
-import adminTeacherRoutes from './admin/adminTeacher.routes';
-import adminLessonRoutes from './admin/adminLesson.routes';
-import adminTopicRoutes from './admin/adminTopic.routes';
-import dashboardRoutes from './admin/dashboard.routes';
-import favoriteRoutes from './favorite.routes';
-import commentRoutes from './comment.routes';
-import learningProcessRoutes from './learningprocess.routes';
-import learnedLessonRoutes from './learned-lesson.routes';
 import { generalLimiter } from '../middlewares/ratelimit.middleware';
-import leaderboardRoutes from './leaderboard.routes';
-import examRoutes from './exam.routes';
-import notificationRoutes from './notification.routes';
+import { createAuthRouter } from './auth.routes';
+import { createChallengeRouter } from './challenge.routes';
+import { createTopicRouter } from './topic.routes';
+import { createSubmissionRouter } from './submission.routes';
+import { createSecurityRouter } from './security.routes';
+import { createLessonRouter } from './lesson.routes';
+import { createLessonDetailRouter } from './lessonDetail.routes';
+import { createAdminUserRouter } from './admin/adminUser.routes';
+import { createAdminTeacherRouter } from './admin/adminTeacher.routes';
+import { createAdminLessonRouter } from './admin/adminLesson.routes';
+import { createAdminTopicRouter } from './admin/adminTopic.routes';
+import { createDashboardRouter } from './admin/dashboard.routes';
+import { createFavoriteRouter } from './favorite.routes';
+import { createCommentRouter } from './comment.routes';
+import { createLearningProcessRouter } from './learningprocess.routes';
+import { createLearnedLessonRouter } from './learned-lesson.routes';
+import { createLeaderboardRouter } from './leaderboard.routes';
+import { createExamRouter } from './exam.routes';
+import { createNotificationRouter } from './notification.routes';
 
-function route(app: Application): void {
+/** Mounts all API routes in the existing middleware order. */
+export function registerRoutes(app: Application): void {
   app.use('/api', generalLimiter);
 
-  app.use('/api/auth', authRoutes);
-  app.use('/api/challenges', challengeRoutes);
-  app.use('/api/favorites', favoriteRoutes);
-  app.use('/api/topics', topicRoutes);
-  app.use('/api/submissions', submissionRoutes);
-  app.use('/api/security', securityRoutes);
-  app.use('/api/lessons', lessonRoutes);
-  app.use('/api/lesson-details', lessonDetailRoutes);
-  app.use('/api/admin/users', adminUserRoutes);
-  app.use('/api/admin/teachers', adminTeacherRoutes);
-  app.use('/api/admin/lessons', adminLessonRoutes);
-  app.use('/api/admin/topics', adminTopicRoutes);
-  app.use('/api/admin/dashboard', dashboardRoutes);
-  app.use('/api/comments', commentRoutes);
-  app.use('/api/learningprocess', learningProcessRoutes);
-  app.use('/api/learned-lessons', learnedLessonRoutes);
-  app.use('/api/exams', examRoutes);
-  app.use('/api/leaderboard', leaderboardRoutes);
-  app.use('/api/notifications', notificationRoutes);
-
-  // Health check route
+  app.use('/api/auth', createAuthRouter());
+  app.use('/api/challenges', createChallengeRouter());
+  app.use('/api/favorites', createFavoriteRouter());
+  app.use('/api/topics', createTopicRouter());
+  app.use('/api/submissions', createSubmissionRouter());
+  app.use('/api/security', createSecurityRouter());
+  app.use('/api/lessons', createLessonRouter());
+  app.use('/api/lesson-details', createLessonDetailRouter());
+  app.use('/api/admin/users', createAdminUserRouter());
+  app.use('/api/admin/teachers', createAdminTeacherRouter());
+  app.use('/api/admin/lessons', createAdminLessonRouter());
+  app.use('/api/admin/topics', createAdminTopicRouter());
+  app.use('/api/admin/dashboard', createDashboardRouter());
+  app.use('/api/comments', createCommentRouter());
+  app.use('/api/learningprocess', createLearningProcessRouter());
+  app.use('/api/learned-lessons', createLearnedLessonRouter());
+  app.use('/api/exams', createExamRouter());
+  app.use('/api/leaderboard', createLeaderboardRouter());
+  app.use('/api/notifications', createNotificationRouter());
 
   app.use('/api/health', async (req, res) => {
     const dbHealth = await DatabaseUtils.getHealthInfo();
@@ -59,5 +57,3 @@ function route(app: Application): void {
     });
   });
 }
-
-export default route;
