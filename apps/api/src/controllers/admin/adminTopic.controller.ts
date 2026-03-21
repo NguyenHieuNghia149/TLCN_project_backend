@@ -4,11 +4,7 @@ import { CreateTopicSchema, UpdateTopicSchema } from '@backend/shared/validation
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class AdminTopicController {
-  private service: AdminTopicService;
-
-  constructor() {
-    this.service = new AdminTopicService();
-  }
+  constructor(private readonly service: AdminTopicService) {}
 
   list = async (req: Request, res: Response): Promise<void> => {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);

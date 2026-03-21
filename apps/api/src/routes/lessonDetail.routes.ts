@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { LessonDetailController } from '@backend/api/controllers/lessonDetail.controller';
 import { validate } from '@backend/api/middlewares/validate.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { LessonDetailService } from '@backend/api/services/lessonDetail.service';
 import { z } from 'zod';
 
 /** Creates the lesson-detail router without constructing controllers at import time. */
 export function createLessonDetailRouter(): Router {
   const router = Router();
-  const lessonDetailController = new LessonDetailController();
+  const lessonDetailService = new LessonDetailService();
+  const lessonDetailController = new LessonDetailController(lessonDetailService);
 
   const lessonDetailReadLimit = rateLimitMiddleware({
     windowMs: 15 * 60 * 1000,

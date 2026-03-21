@@ -4,11 +4,7 @@ import { LearningProcessService } from '@backend/api/services/learningprocess.se
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LearningProcessController {
-  private learningProcessService: LearningProcessService;
-
-  constructor() {
-    this.learningProcessService = new LearningProcessService();
-  }
+  constructor(private readonly learningProcessService: LearningProcessService) {}
 
   /**
    * Get user's complete learning progress

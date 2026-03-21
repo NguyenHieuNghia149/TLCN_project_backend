@@ -2,11 +2,7 @@ import { Request, Response } from 'express';
 import { DashboardService } from '@backend/api/services/admin/dashboard.service';
 
 export class DashboardController {
-  private service: DashboardService;
-
-  constructor() {
-    this.service = new DashboardService();
-  }
+  constructor(private readonly service: DashboardService) {}
 
   getStats = async (req: Request, res: Response): Promise<void> => {
     try {

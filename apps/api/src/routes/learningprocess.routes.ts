@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { LearningProcessController } from '@backend/api/controllers/learningprocess.controller';
 import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { LearningProcessService } from '@backend/api/services/learningprocess.service';
 
 /** Creates the learning-process router without constructing controllers at import time. */
 export function createLearningProcessRouter(): Router {
   const router = Router();
-  const learningProcessController = new LearningProcessController();
+  const learningProcessService = new LearningProcessService();
+  const learningProcessController = new LearningProcessController(learningProcessService);
 
   const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
 

@@ -4,12 +4,14 @@ import { validate } from '@backend/api/middlewares/validate.middleware';
 import { authenticationToken, requireTeacherOrOwner } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { AdminTopicController } from '@backend/api/controllers/admin/adminTopic.controller';
+import { AdminTopicService } from '@backend/api/services/admin/adminTopic.service';
 import { CreateTopicSchema, UpdateTopicSchema } from '@backend/shared/validations/topic.validation';
 
 /** Creates the admin-topic router without constructing controllers at import time. */
 export function createAdminTopicRouter(): Router {
   const router = Router();
-  const controller = new AdminTopicController();
+  const adminTopicService = new AdminTopicService();
+  const controller = new AdminTopicController(adminTopicService);
 
   const adminReadLimit = rateLimitMiddleware({
     windowMs: 15 * 60 * 1000,

@@ -4,11 +4,7 @@ import { insertUserSchema, updateUserSchema } from '@backend/shared/db/schema';
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class AdminTeacherController {
-  private service: AdminUserService;
-
-  constructor() {
-    this.service = new AdminUserService();
-  }
+  constructor(private readonly service: AdminUserService) {}
 
   list = async (req: Request, res: Response): Promise<void> => {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);

@@ -3,11 +3,7 @@ import { LessonDetailService } from '@backend/api/services/lessonDetail.service'
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LessonDetailController {
-  private lessonDetailService: LessonDetailService;
-
-  constructor() {
-    this.lessonDetailService = new LessonDetailService();
-  }
+  constructor(private readonly lessonDetailService: LessonDetailService) {}
 
   getLessonById = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;

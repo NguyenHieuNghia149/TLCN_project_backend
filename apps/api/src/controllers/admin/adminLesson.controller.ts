@@ -4,11 +4,7 @@ import { CreateLessonSchema, UpdateLessonSchema } from '@backend/shared/validati
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class AdminLessonController {
-  private service: AdminLessonService;
-
-  constructor() {
-    this.service = new AdminLessonService();
-  }
+  constructor(private readonly service: AdminLessonService) {}
 
   list = async (req: Request, res: Response): Promise<void> => {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);

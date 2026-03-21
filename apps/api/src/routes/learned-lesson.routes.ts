@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { LearnedLessonController } from '@backend/api/controllers/learned-lesson.controller';
 import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
+import { LearnedLessonService } from '@backend/api/services/learned-lesson.service';
 
 /** Creates the learned-lesson router without constructing controllers at import time. */
 export function createLearnedLessonRouter(): Router {
   const router = Router();
-  const learnedLessonController = new LearnedLessonController();
+  const learnedLessonService = new LearnedLessonService();
+  const learnedLessonController = new LearnedLessonController(learnedLessonService);
 
   const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
   const mutateLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 300 });

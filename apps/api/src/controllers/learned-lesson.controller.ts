@@ -3,11 +3,7 @@ import { LearnedLessonService } from '@backend/api/services/learned-lesson.servi
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class LearnedLessonController {
-  private learnedLessonService: LearnedLessonService;
-
-  constructor() {
-    this.learnedLessonService = new LearnedLessonService();
-  }
+  constructor(private readonly learnedLessonService: LearnedLessonService) {}
 
   /**
    * Check if user has completed a lesson

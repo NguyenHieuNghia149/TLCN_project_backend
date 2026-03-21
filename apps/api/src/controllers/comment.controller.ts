@@ -5,11 +5,7 @@ import { createCommentSchema } from '@backend/shared/validations/comment.validat
 import { AppException } from '@backend/api/exceptions/base.exception';
 
 export class CommentController {
-  private commentService: CommentService;
-
-  constructor() {
-    this.commentService = new CommentService();
-  }
+  constructor(private readonly commentService: CommentService) {}
 
   createComment = async (
     req: AuthenticatedRequest,
