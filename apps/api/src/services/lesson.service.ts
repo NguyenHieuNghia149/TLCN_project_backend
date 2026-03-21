@@ -10,20 +10,25 @@ import { NotFoundException } from '../exceptions/solution.exception';
 import { BaseException } from '../exceptions/auth.exceptions';
 import { FavoriteRepository } from '../repositories/favorite.repository';
 
+type LessonServiceDependencies = {
+  lessonRepository: LessonRepository;
+  topicRepository: TopicRepository;
+  favoriteRepository: FavoriteRepository;
+};
+
 export class LessonService {
   private lessonRepository: LessonRepository;
   private topicRepository: TopicRepository;
   private favoriteRepository: FavoriteRepository;
 
-  constructor() {
-    this.lessonRepository = new LessonRepository();
-    this.topicRepository = new TopicRepository();
-    this.favoriteRepository = new FavoriteRepository();
+  constructor({ lessonRepository, topicRepository, favoriteRepository }: LessonServiceDependencies) {
+    this.lessonRepository = lessonRepository;
+    this.topicRepository = topicRepository;
+    this.favoriteRepository = favoriteRepository;
   }
 
   async createLesson(lessonData: CreateLessonInput): Promise<LessonResponse> {
     try {
-      // Verify topic exists
       const topic = await this.topicRepository.findById(lessonData.topicId);
       if (!topic) {
         throw new NotFoundException(`Topic with ID ${lessonData.topicId} not found.`);
@@ -40,7 +45,6 @@ export class LessonService {
         throw new BaseException('Failed to create lesson', 500, 'FAILED_TO_CREATE_LESSON');
       }
 
-      // Get topic name for the response
       const topicForName = await this.topicRepository.findById(lesson.topicId);
       return {
         id: lesson.id,
@@ -64,7 +68,6 @@ export class LessonService {
       throw new NotFoundException(`Lesson with ID ${id} not found.`);
     }
 
-    // Get topic name for the response
     const topicForName = await this.topicRepository.findById(lesson.topicId);
     return {
       id: lesson.id,
@@ -85,14 +88,12 @@ export class LessonService {
   ): Promise<(LessonResponse & { isFavorite: boolean })[]> {
     let lessons = await this.lessonRepository.getAllLessons();
 
-    // Filter by topicId if provided
     if (topicId) {
       lessons = lessons.filter(lesson => lesson.topicId === topicId);
     }
 
-    // If userId provided, fetch favorite status for each lesson
     if (userId) {
-      const lessonIds = lessons.map(l => l.id);
+      const lessonIds = lessons.map(lesson => lesson.id);
       const favoriteSet = await this.favoriteRepository.getFavoriteLessonIds(userId, lessonIds);
 
       return lessons.map(lesson => ({
@@ -101,7 +102,6 @@ export class LessonService {
       }));
     }
 
-    // If no userId, return all lessons with isFavorite as false
     return lessons.map(lesson => ({
       ...lesson,
       isFavorite: false,
@@ -109,7 +109,6 @@ export class LessonService {
   }
 
   async updateLesson(id: string, lessonData: UpdateLessonInput): Promise<LessonResponse> {
-    // If topicId is being updated, verify the new topic exists
     if (lessonData.topicId) {
       const topic = await this.topicRepository.findById(lessonData.topicId);
       if (!topic) {
@@ -117,14 +116,12 @@ export class LessonService {
       }
     }
 
-    // Build update object, only include fields that are explicitly set
     const updateData: Record<string, any> = {};
 
     if (lessonData.title !== undefined) updateData.title = lessonData.title;
     if (lessonData.content !== undefined) updateData.content = lessonData.content;
     if (lessonData.topicId !== undefined) updateData.topicId = lessonData.topicId;
 
-    // Handle videoUrl - remove if empty, null, or undefined
     if (
       lessonData.videoUrl === undefined ||
       lessonData.videoUrl === '' ||
@@ -135,7 +132,6 @@ export class LessonService {
       updateData.videoUrl = lessonData.videoUrl;
     }
 
-    // Only proceed with update if there are fields to update
     let lesson;
     if (Object.keys(updateData).length > 0) {
       logger.info('Updating with data:', updateData);
@@ -148,7 +144,6 @@ export class LessonService {
     if (!lesson) {
       throw new NotFoundException(`Lesson with ID ${id} not found.`);
     }
-    // Get topic name for the response
     const topicForName = await this.topicRepository.findById(lesson.topicId);
     return {
       id: lesson.id,
@@ -181,4 +176,11 @@ export class LessonService {
   }
 }
 
-
+/** Creates a LessonService with concrete repository dependencies. */
+export function createLessonService(): LessonService {
+  return new LessonService({
+    lessonRepository: new LessonRepository(),
+    topicRepository: new TopicRepository(),
+    favoriteRepository: new FavoriteRepository(),
+  });
+}

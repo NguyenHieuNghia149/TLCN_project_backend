@@ -29,6 +29,7 @@ function mockRouteMiddlewareModules(): void {
   }));
   jest.doMock('@backend/api/middlewares/ratelimit.middleware', () => ({
     rateLimitMiddleware: jest.fn(() => passThroughMiddleware),
+    strictLimiter: passThroughMiddleware,
   }));
 }
 
@@ -75,6 +76,84 @@ describe('API controller route composition', () => {
 
     expect(createCommentService).toHaveBeenCalledTimes(1);
     expect(CommentController).toHaveBeenCalledWith(serviceInstance);
+    expect(typeof (router as Router).use).toBe('function');
+  });
+
+  it('wires the topic route factory with createTopicService', () => {
+    mockRouteMiddlewareModules();
+    const serviceInstance = {};
+    const controllerInstance = createControllerDouble(['list', 'getById', 'create', 'update', 'delete']);
+    const createTopicService = jest.fn(() => serviceInstance);
+    const TopicController = jest.fn(() => controllerInstance);
+
+    jest.doMock('@backend/api/services/topic.service', () => ({ createTopicService }));
+    jest.doMock('@backend/api/controllers/topic.controller', () => ({ TopicController }));
+
+    let createTopicRouter!: typeof import('@backend/api/routes/topic.routes').createTopicRouter;
+    jest.isolateModules(() => {
+      ({ createTopicRouter } = require('@backend/api/routes/topic.routes'));
+    });
+
+    const router = createTopicRouter();
+
+    expect(createTopicService).toHaveBeenCalledTimes(1);
+    expect(TopicController).toHaveBeenCalledWith(serviceInstance);
+    expect(typeof (router as Router).use).toBe('function');
+  });
+
+  it('wires the lesson route factory with createLessonService', () => {
+    mockRouteMiddlewareModules();
+    const serviceInstance = {};
+    const controllerInstance = createControllerDouble(['list', 'getById', 'create', 'update', 'delete']);
+    const createLessonService = jest.fn(() => serviceInstance);
+    const LessonController = jest.fn(() => controllerInstance);
+
+    jest.doMock('@backend/api/services/lesson.service', () => ({ createLessonService }));
+    jest.doMock('@backend/api/controllers/lesson.controller', () => ({
+      LessonController,
+      __esModule: true,
+      default: LessonController,
+    }));
+
+    let createLessonRouter!: typeof import('@backend/api/routes/lesson.routes').createLessonRouter;
+    jest.isolateModules(() => {
+      ({ createLessonRouter } = require('@backend/api/routes/lesson.routes'));
+    });
+
+    const router = createLessonRouter();
+
+    expect(createLessonService).toHaveBeenCalledTimes(1);
+    expect(LessonController).toHaveBeenCalledWith(serviceInstance);
+    expect(typeof (router as Router).use).toBe('function');
+  });
+
+  it('wires the notification route factory with createNotificationService', () => {
+    mockRouteMiddlewareModules();
+    const serviceInstance = {};
+    const controllerInstance = createControllerDouble([
+      'getMyNotifications',
+      'markAsRead',
+      'markAllAsRead',
+    ]);
+    const createNotificationService = jest.fn(() => serviceInstance);
+    const NotificationController = jest.fn(() => controllerInstance);
+
+    jest.doMock('@backend/api/services/notification.service', () => ({
+      createNotificationService,
+    }));
+    jest.doMock('@backend/api/controllers/notification.controller', () => ({
+      NotificationController,
+    }));
+
+    let createNotificationRouter!: typeof import('@backend/api/routes/notification.routes').createNotificationRouter;
+    jest.isolateModules(() => {
+      ({ createNotificationRouter } = require('@backend/api/routes/notification.routes'));
+    });
+
+    const router = createNotificationRouter();
+
+    expect(createNotificationService).toHaveBeenCalledTimes(1);
+    expect(NotificationController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
@@ -337,6 +416,7 @@ describe('API controller route composition', () => {
     expect(ExamController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
+
   it('keeps the admin-lesson parse-content path wired through LessonUploadController', async () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
@@ -387,6 +467,3 @@ describe('API controller route composition', () => {
     expect(response.body).toEqual({ html: '<p>Hello</p>' });
   });
 });
-
-
-

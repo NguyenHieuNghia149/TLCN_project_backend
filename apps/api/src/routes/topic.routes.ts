@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TopicController } from '@backend/api/controllers/topic.controller';
-import { TopicService } from '@backend/api/services/topic.service';
+import { createTopicService } from '@backend/api/services/topic.service';
 import { authenticationToken, requireTeacher } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { validate } from '@backend/api/middlewares/validate.middleware';
@@ -9,7 +9,7 @@ import { CreateTopicSchema, UpdateTopicSchema } from '@backend/shared/validation
 /** Creates the topic router without instantiating services at import time. */
 export function createTopicRouter(): Router {
   const router = Router();
-  const topicService = new TopicService();
+  const topicService = createTopicService();
   const topicController = new TopicController(topicService);
 
   const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });

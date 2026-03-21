@@ -9,15 +9,25 @@ import { ValidationException } from '../exceptions/auth.exceptions';
 import { NotificationNotFoundException } from '../exceptions/notification.exception';
 import { getWebSocketService, IWebSocketNotifier } from './websocket.service';
 
+type NotificationServiceDependencies = {
+  notificationRepository: NotificationRepository;
+  userRepository: UserRepository;
+  getSocketService?: () => IWebSocketNotifier | null;
+};
+
 export class NotificationService {
   private notificationRepository: NotificationRepository;
   private userRepository: UserRepository;
+  private readonly getSocketService: () => IWebSocketNotifier | null;
 
-  constructor(
-    private readonly getSocketService: () => IWebSocketNotifier | null = getWebSocketService
-  ) {
-    this.notificationRepository = new NotificationRepository();
-    this.userRepository = new UserRepository();
+  constructor({
+    notificationRepository,
+    userRepository,
+    getSocketService = getWebSocketService,
+  }: NotificationServiceDependencies) {
+    this.notificationRepository = notificationRepository;
+    this.userRepository = userRepository;
+    this.getSocketService = getSocketService;
   }
 
   /**
@@ -141,5 +151,9 @@ export class NotificationService {
 export function createNotificationService(
   getSocketService: () => IWebSocketNotifier | null = getWebSocketService
 ): NotificationService {
-  return new NotificationService(getSocketService);
+  return new NotificationService({
+    notificationRepository: new NotificationRepository(),
+    userRepository: new UserRepository(),
+    getSocketService,
+  });
 }

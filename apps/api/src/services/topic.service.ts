@@ -7,11 +7,15 @@ import {
 } from '@backend/shared/validations/topic.validation';
 import { BaseException } from '../exceptions/auth.exceptions';
 
+type TopicServiceDependencies = {
+  topicRepository: TopicRepository;
+};
+
 export class TopicService {
   private topicRepository: TopicRepository;
 
-  constructor() {
-    this.topicRepository = new TopicRepository();
+  constructor({ topicRepository }: TopicServiceDependencies) {
+    this.topicRepository = topicRepository;
   }
 
   async getTopicByName(topicName: string): Promise<TopicResponse | null> {
@@ -83,4 +87,11 @@ export class TopicService {
     }
     await this.topicRepository.deleteTopicWithCascade(id);
   }
+}
+
+/** Creates a TopicService with concrete repository dependencies. */
+export function createTopicService(): TopicService {
+  return new TopicService({
+    topicRepository: new TopicRepository(),
+  });
 }

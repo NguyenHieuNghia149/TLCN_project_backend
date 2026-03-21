@@ -18,6 +18,7 @@ Included slices:
 - Slice 16: API Simple Service Dependency Injection And Service Factories
 - Slice 17: Judge-Facing API Service DI And Factory Completion
 - Slice 18: Exam Service DI And Auto-Submit Finalizer Cleanup
+- Slice 19: Content And Notification Service DI Completion
 
 Notes:
 

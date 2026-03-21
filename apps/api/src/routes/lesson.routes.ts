@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { LessonController } from '../controllers/lesson.controller';
-import { LessonService } from '../services/lesson.service';
+import { createLessonService } from '../services/lesson.service';
 import { authenticationToken, requireTeacher, optionalAuth } from '../middlewares/auth.middleware';
 import { rateLimitMiddleware } from '../middlewares/ratelimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
@@ -12,7 +12,7 @@ import {
 /** Creates the lesson router without instantiating services at import time. */
 export function createLessonRouter(): Router {
   const router = Router();
-  const lessonService = new LessonService();
+  const lessonService = createLessonService();
   const lessonController = new LessonController(lessonService);
 
   const generalLimit = rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 1000 });
