@@ -12,8 +12,8 @@ import { BaseException } from '@backend/api/exceptions/auth.exceptions';
 export class AdminLessonService {
   private repository: AdminLessonRepository;
 
-  constructor() {
-    this.repository = new AdminLessonRepository();
+  constructor(deps: { adminLessonRepository: AdminLessonRepository }) {
+    this.repository = deps.adminLessonRepository;
   }
 
   async listLessons(
@@ -53,13 +53,11 @@ export class AdminLessonService {
     lessonData: Partial<Omit<LessonInsert, 'id' | 'createdAt' | 'updatedAt'>>
   ): Promise<LessonWithTopic> {
     try {
-      // Verify lesson exists
       const lesson = await this.repository.findById(id);
       if (!lesson) {
         throw new NotFoundException(`Lesson with ID ${id} not found`);
       }
 
-      // Verify topic exists if being updated
       if (lessonData.topicId) {
         const topicExists = await this.repository.verifyTopicExists(lessonData.topicId);
         if (!topicExists) {
@@ -67,7 +65,6 @@ export class AdminLessonService {
         }
       }
 
-      // Handle videoUrl - remove if empty, null, or undefined
       const updateData = { ...lessonData };
       if (
         lessonData.videoUrl === undefined ||
@@ -86,7 +83,6 @@ export class AdminLessonService {
 
   async deleteLesson(id: string): Promise<void> {
     try {
-      // Verify lesson exists
       const lesson = await this.repository.findById(id);
       if (!lesson) {
         throw new NotFoundException(`Lesson with ID ${id} not found`);
@@ -97,4 +93,11 @@ export class AdminLessonService {
       throw error;
     }
   }
+}
+
+/** Creates an AdminLessonService with concrete repository dependencies. */
+export function createAdminLessonService(): AdminLessonService {
+  return new AdminLessonService({
+    adminLessonRepository: new AdminLessonRepository(),
+  });
 }

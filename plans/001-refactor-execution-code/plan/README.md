@@ -3,6 +3,7 @@
 This folder stores the slice-by-slice markdown record for the judge system refactor that was executed after the original plan/task files.
 
 Included slices:
+
 - Slice 05: Remove executionMode from the internal contract
 - Slice 06: Remove execution_mode from the gRPC wire contract
 - Slice 07: Eliminate remaining cross-app imports
@@ -12,7 +13,11 @@ Included slices:
 - Slice 11: Worker bootstrap factories and injected gRPC client
 - Slice 12: API bootstrap factories and import-safe startup
 - Slice 13: API route factories and lazy SSE service
+- silce 14: API Service Factories And Singleton Cleanup
+- slice 15: API Controller Injection And Composition Root Cleanup
+- Slice 16: API Simple Service Dependency Injection And Service Factories
 
 Notes:
+
 - These files are a compact engineering record, not a replacement for the original `plan.md` and `task.md`.
 - Slices 01-04 remain represented by the legacy execution refactor docs and task tracker.

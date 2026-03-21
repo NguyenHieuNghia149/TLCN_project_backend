@@ -48,7 +48,7 @@ describe('API controller route composition', () => {
     jest.restoreAllMocks();
   });
 
-  it('wires the comment route factory with an injected comment service', () => {
+  it('wires the comment route factory with createCommentService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
@@ -59,10 +59,10 @@ describe('API controller route composition', () => {
       'updateComment',
       'deleteComment',
     ]);
-    const CommentService = jest.fn(() => serviceInstance);
+    const createCommentService = jest.fn(() => serviceInstance);
     const CommentController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/comment.service', () => ({ CommentService }));
+    jest.doMock('@backend/api/services/comment.service', () => ({ createCommentService }));
     jest.doMock('@backend/api/controllers/comment.controller', () => ({ CommentController }));
 
     let createCommentRouter!: typeof import('@backend/api/routes/comment.routes').createCommentRouter;
@@ -72,12 +72,12 @@ describe('API controller route composition', () => {
 
     const router = createCommentRouter();
 
-    expect(CommentService).toHaveBeenCalledTimes(1);
+    expect(createCommentService).toHaveBeenCalledTimes(1);
     expect(CommentController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the learning-process route factory with an injected service', () => {
+  it('wires the learning-process route factory with createLearningProcessService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
@@ -88,10 +88,12 @@ describe('API controller route composition', () => {
       'getLessonProgress',
       'getRecentLesson',
     ]);
-    const LearningProcessService = jest.fn(() => serviceInstance);
+    const createLearningProcessService = jest.fn(() => serviceInstance);
     const LearningProcessController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/learningprocess.service', () => ({ LearningProcessService }));
+    jest.doMock('@backend/api/services/learningprocess.service', () => ({
+      createLearningProcessService,
+    }));
     jest.doMock('@backend/api/controllers/learningprocess.controller', () => ({
       LearningProcessController,
     }));
@@ -103,12 +105,12 @@ describe('API controller route composition', () => {
 
     const router = createLearningProcessRouter();
 
-    expect(LearningProcessService).toHaveBeenCalledTimes(1);
+    expect(createLearningProcessService).toHaveBeenCalledTimes(1);
     expect(LearningProcessController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the learned-lesson route factory with an injected service', () => {
+  it('wires the learned-lesson route factory with createLearnedLessonService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
@@ -116,10 +118,12 @@ describe('API controller route composition', () => {
       'getCompletedLessons',
       'markLessonCompleted',
     ]);
-    const LearnedLessonService = jest.fn(() => serviceInstance);
+    const createLearnedLessonService = jest.fn(() => serviceInstance);
     const LearnedLessonController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/learned-lesson.service', () => ({ LearnedLessonService }));
+    jest.doMock('@backend/api/services/learned-lesson.service', () => ({
+      createLearnedLessonService,
+    }));
     jest.doMock('@backend/api/controllers/learned-lesson.controller', () => ({
       LearnedLessonController,
     }));
@@ -131,12 +135,12 @@ describe('API controller route composition', () => {
 
     const router = createLearnedLessonRouter();
 
-    expect(LearnedLessonService).toHaveBeenCalledTimes(1);
+    expect(createLearnedLessonService).toHaveBeenCalledTimes(1);
     expect(LearnedLessonController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the lesson-detail route factory with an injected service', () => {
+  it('wires the lesson-detail route factory with createLessonDetailService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
@@ -144,10 +148,12 @@ describe('API controller route composition', () => {
       'getLessonsByTopicId',
       'getAllLessons',
     ]);
-    const LessonDetailService = jest.fn(() => serviceInstance);
+    const createLessonDetailService = jest.fn(() => serviceInstance);
     const LessonDetailController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/lessonDetail.service', () => ({ LessonDetailService }));
+    jest.doMock('@backend/api/services/lessonDetail.service', () => ({
+      createLessonDetailService,
+    }));
     jest.doMock('@backend/api/controllers/lessonDetail.controller', () => ({
       LessonDetailController,
     }));
@@ -159,12 +165,12 @@ describe('API controller route composition', () => {
 
     const router = createLessonDetailRouter();
 
-    expect(LessonDetailService).toHaveBeenCalledTimes(1);
+    expect(createLessonDetailService).toHaveBeenCalledTimes(1);
     expect(LessonDetailController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the admin-user route factory with an injected service', () => {
+  it('wires the admin-user route factory with createAdminUserService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
@@ -175,10 +181,12 @@ describe('API controller route composition', () => {
       'update',
       'remove',
     ]);
-    const AdminUserService = jest.fn(() => serviceInstance);
+    const createAdminUserService = jest.fn(() => serviceInstance);
     const AdminUserController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/admin/adminUser.service', () => ({ AdminUserService }));
+    jest.doMock('@backend/api/services/admin/adminUser.service', () => ({
+      createAdminUserService,
+    }));
     jest.doMock('@backend/api/controllers/admin/adminUser.controller', () => ({
       __esModule: true,
       default: AdminUserController,
@@ -191,19 +199,21 @@ describe('API controller route composition', () => {
 
     const router = createAdminUserRouter();
 
-    expect(AdminUserService).toHaveBeenCalledTimes(1);
+    expect(createAdminUserService).toHaveBeenCalledTimes(1);
     expect(AdminUserController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the admin-teacher route factory with an injected service', () => {
+  it('wires the admin-teacher route factory with createAdminUserService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble(['list', 'create', 'update']);
-    const AdminUserService = jest.fn(() => serviceInstance);
+    const createAdminUserService = jest.fn(() => serviceInstance);
     const AdminTeacherController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/admin/adminUser.service', () => ({ AdminUserService }));
+    jest.doMock('@backend/api/services/admin/adminUser.service', () => ({
+      createAdminUserService,
+    }));
     jest.doMock('@backend/api/controllers/admin/adminTeacher.controller', () => ({
       __esModule: true,
       default: AdminTeacherController,
@@ -216,12 +226,12 @@ describe('API controller route composition', () => {
 
     const router = createAdminTeacherRouter();
 
-    expect(AdminUserService).toHaveBeenCalledTimes(1);
+    expect(createAdminUserService).toHaveBeenCalledTimes(1);
     expect(AdminTeacherController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the admin-topic route factory with an injected service', () => {
+  it('wires the admin-topic route factory with createAdminTopicService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
@@ -232,10 +242,12 @@ describe('API controller route composition', () => {
       'delete',
       'getStats',
     ]);
-    const AdminTopicService = jest.fn(() => serviceInstance);
+    const createAdminTopicService = jest.fn(() => serviceInstance);
     const AdminTopicController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/admin/adminTopic.service', () => ({ AdminTopicService }));
+    jest.doMock('@backend/api/services/admin/adminTopic.service', () => ({
+      createAdminTopicService,
+    }));
     jest.doMock('@backend/api/controllers/admin/adminTopic.controller', () => ({
       AdminTopicController,
     }));
@@ -247,19 +259,21 @@ describe('API controller route composition', () => {
 
     const router = createAdminTopicRouter();
 
-    expect(AdminTopicService).toHaveBeenCalledTimes(1);
+    expect(createAdminTopicService).toHaveBeenCalledTimes(1);
     expect(AdminTopicController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
 
-  it('wires the dashboard route factory with an injected service', () => {
+  it('wires the dashboard route factory with createDashboardService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble(['getStats']);
-    const DashboardService = jest.fn(() => serviceInstance);
+    const createDashboardService = jest.fn(() => serviceInstance);
     const DashboardController = jest.fn(() => controllerInstance);
 
-    jest.doMock('@backend/api/services/admin/dashboard.service', () => ({ DashboardService }));
+    jest.doMock('@backend/api/services/admin/dashboard.service', () => ({
+      createDashboardService,
+    }));
     jest.doMock('@backend/api/controllers/admin/dashboard.controller', () => ({
       DashboardController,
     }));
@@ -271,7 +285,7 @@ describe('API controller route composition', () => {
 
     const router = createDashboardRouter();
 
-    expect(DashboardService).toHaveBeenCalledTimes(1);
+    expect(createDashboardService).toHaveBeenCalledTimes(1);
     expect(DashboardController).toHaveBeenCalledWith(serviceInstance);
     expect(typeof (router as Router).use).toBe('function');
   });
@@ -291,11 +305,13 @@ describe('API controller route composition', () => {
         res.status(200).json({ html: req.body.content });
       }),
     };
-    const AdminLessonService = jest.fn(() => serviceInstance);
+    const createAdminLessonService = jest.fn(() => serviceInstance);
     const AdminLessonController = jest.fn(() => adminControllerInstance);
     const LessonUploadController = jest.fn(() => uploadControllerInstance);
 
-    jest.doMock('@backend/api/services/admin/adminLesson.service', () => ({ AdminLessonService }));
+    jest.doMock('@backend/api/services/admin/adminLesson.service', () => ({
+      createAdminLessonService,
+    }));
     jest.doMock('@backend/api/controllers/admin/adminLesson.controller', () => ({
       __esModule: true,
       default: AdminLessonController,
@@ -316,7 +332,7 @@ describe('API controller route composition', () => {
 
     const response = await request(app).post('/parse-content').send({ content: '<p>Hello</p>' });
 
-    expect(AdminLessonService).toHaveBeenCalledTimes(1);
+    expect(createAdminLessonService).toHaveBeenCalledTimes(1);
     expect(AdminLessonController).toHaveBeenCalledWith(serviceInstance);
     expect(LessonUploadController).toHaveBeenCalledTimes(1);
     expect(uploadControllerInstance.parseContent).toHaveBeenCalledTimes(1);

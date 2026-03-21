@@ -2,13 +2,19 @@ import {
   LessonDetailRepository,
   LessonDetailResponse,
 } from '../repositories/lessonDetail.repository';
+import { LessonRepository } from '../repositories/lesson.repository';
 import { LessonDetailNotFoundError } from '../exceptions/lesson.exceptions';
 
 export class LessonDetailService {
   private lessonDetailRepository: LessonDetailRepository;
+  private lessonRepository: LessonRepository;
 
-  constructor() {
-    this.lessonDetailRepository = new LessonDetailRepository();
+  constructor(deps: {
+    lessonDetailRepository: LessonDetailRepository;
+    lessonRepository: LessonRepository;
+  }) {
+    this.lessonDetailRepository = deps.lessonDetailRepository;
+    this.lessonRepository = deps.lessonRepository;
   }
 
   async getLessonById(lessonId: string): Promise<LessonDetailResponse> {
@@ -27,22 +33,25 @@ export class LessonDetailService {
   }
 
   async getAllLessons(): Promise<LessonDetailResponse[]> {
-    // Reuse the existing lesson repository method
-    const lessonRepository = new (
-      await import('@backend/api/repositories/lesson.repository')
-    ).LessonRepository();
-    const lessons = await lessonRepository.getAllLessons();
+    const lessons = await this.lessonRepository.getAllLessons();
 
-    // Convert to LessonDetailResponse format
     return lessons.map((lesson: any) => ({
       id: lesson.id,
       title: lesson.title,
       content: lesson.content,
-      videoUrl: null, // This field might not be available in the basic lesson response
+      videoUrl: null,
       topicId: lesson.topicId,
       topicName: lesson.topicName,
       createdAt: lesson.createdAt,
       updatedAt: lesson.updatedAt,
     }));
   }
+}
+
+/** Creates a LessonDetailService with concrete repository dependencies. */
+export function createLessonDetailService(): LessonDetailService {
+  return new LessonDetailService({
+    lessonDetailRepository: new LessonDetailRepository(),
+    lessonRepository: new LessonRepository(),
+  });
 }

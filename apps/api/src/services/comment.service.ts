@@ -8,8 +8,8 @@ import { CommentInsert, CommentEntity } from '@backend/shared/db/schema';
 export class CommentService {
   private repo: CommentRepository;
 
-  constructor() {
-    this.repo = new CommentRepository();
+  constructor(deps: { commentRepository: CommentRepository }) {
+    this.repo = deps.commentRepository;
   }
 
   async createComment(payload: CommentInsert): Promise<CommentEntity> {
@@ -55,4 +55,11 @@ export class CommentService {
 
     return this.repo.delete(id);
   }
+}
+
+/** Creates a CommentService with concrete repository dependencies. */
+export function createCommentService(): CommentService {
+  return new CommentService({
+    commentRepository: new CommentRepository(),
+  });
 }

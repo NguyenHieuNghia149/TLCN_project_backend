@@ -5,7 +5,7 @@ import { authenticationToken, requireTeacherOrOwner } from '@backend/api/middlew
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import AdminLessonController from '@backend/api/controllers/admin/adminLesson.controller';
 import LessonUploadController from '@backend/api/controllers/lesson-upload.controller';
-import { AdminLessonService } from '@backend/api/services/admin/adminLesson.service';
+import { createAdminLessonService } from '@backend/api/services/admin/adminLesson.service';
 import {
   CreateLessonSchema,
   UpdateLessonSchema,
@@ -14,7 +14,7 @@ import {
 /** Creates the admin-lesson router without constructing controllers at import time. */
 export function createAdminLessonRouter(): Router {
   const router = Router();
-  const adminLessonService = new AdminLessonService();
+  const adminLessonService = createAdminLessonService();
   const controller = new AdminLessonController(adminLessonService);
   const uploadController = new LessonUploadController();
 

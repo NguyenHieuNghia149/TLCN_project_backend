@@ -14,8 +14,8 @@ import {
 export class LearningProcessService {
   private learningProcessRepository: LearningProcessRepository;
 
-  constructor() {
-    this.learningProcessRepository = new LearningProcessRepository();
+  constructor(deps: { learningProcessRepository: LearningProcessRepository }) {
+    this.learningProcessRepository = deps.learningProcessRepository;
   }
 
   /**
@@ -115,4 +115,11 @@ export class LearningProcessService {
       throw error;
     }
   }
+}
+
+/** Creates a LearningProcessService with concrete repository dependencies. */
+export function createLearningProcessService(): LearningProcessService {
+  return new LearningProcessService({
+    learningProcessRepository: new LearningProcessRepository(),
+  });
 }

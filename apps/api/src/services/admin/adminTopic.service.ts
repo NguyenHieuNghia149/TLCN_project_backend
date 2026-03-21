@@ -40,8 +40,8 @@ export interface TopicStats {
 export class AdminTopicService {
   private repository: TopicRepository;
 
-  constructor() {
-    this.repository = new TopicRepository();
+  constructor(deps: { topicRepository: TopicRepository }) {
+    this.repository = deps.topicRepository;
   }
 
   async listTopics(
@@ -51,10 +51,8 @@ export class AdminTopicService {
     const { search, topicName } = filters;
     const { page, limit, sortBy, sortOrder } = pagination;
 
-    // Get all topics
     const allTopics = await this.repository.getAllTopics();
 
-    // Apply filters
     let filtered = allTopics;
     if (search) {
       const searchLower = search.toLowerCase();
@@ -65,7 +63,6 @@ export class AdminTopicService {
       filtered = filtered.filter((t: any) => t.topicName.toLowerCase().includes(topicNameLower));
     }
 
-    // Sort
     if (sortBy === 'topicName') {
       filtered.sort((a: any, b: any) => {
         const compareResult = a.topicName.localeCompare(b.topicName);
@@ -119,7 +116,6 @@ export class AdminTopicService {
         throw new NotFoundException(`Topic with ID ${id} not found`);
       }
 
-      // Check if new topic name already exists (if being updated)
       if (topicData.topicName && topicData.topicName !== topic.topicName) {
         const existingTopic = await this.repository.findByName(topicData.topicName);
         if (existingTopic) {
@@ -178,4 +174,11 @@ export class AdminTopicService {
       throw error;
     }
   }
+}
+
+/** Creates an AdminTopicService with concrete repository dependencies. */
+export function createAdminTopicService(): AdminTopicService {
+  return new AdminTopicService({
+    topicRepository: new TopicRepository(),
+  });
 }

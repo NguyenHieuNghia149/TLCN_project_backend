@@ -53,18 +53,24 @@ export class DashboardService {
   private examRepository: ExamRepository;
   private topicRepository: TopicRepository;
 
-  constructor() {
-    this.userRepository = new UserRepository();
-    this.lessonRepository = new LessonRepository();
-    this.problemRepository = new ProblemRepository();
-    this.submissionRepository = new SubmissionRepository();
-    this.examRepository = new ExamRepository();
-    this.topicRepository = new TopicRepository();
+  constructor(deps: {
+    userRepository: UserRepository;
+    lessonRepository: LessonRepository;
+    problemRepository: ProblemRepository;
+    submissionRepository: SubmissionRepository;
+    examRepository: ExamRepository;
+    topicRepository: TopicRepository;
+  }) {
+    this.userRepository = deps.userRepository;
+    this.lessonRepository = deps.lessonRepository;
+    this.problemRepository = deps.problemRepository;
+    this.submissionRepository = deps.submissionRepository;
+    this.examRepository = deps.examRepository;
+    this.topicRepository = deps.topicRepository;
   }
 
   async getStats(): Promise<DashboardStats> {
     try {
-      // Get all stats in parallel
       const [
         totalUsers,
         totalLessons,
@@ -134,4 +140,16 @@ export class DashboardService {
       throw error;
     }
   }
+}
+
+/** Creates a DashboardService with concrete repository dependencies. */
+export function createDashboardService(): DashboardService {
+  return new DashboardService({
+    userRepository: new UserRepository(),
+    lessonRepository: new LessonRepository(),
+    problemRepository: new ProblemRepository(),
+    submissionRepository: new SubmissionRepository(),
+    examRepository: new ExamRepository(),
+    topicRepository: new TopicRepository(),
+  });
 }

@@ -6,8 +6,8 @@ import { UserEntity, UserInsert } from '@backend/shared/db/schema';
 export class AdminUserService {
   private repo: AdminUserRepository;
 
-  constructor() {
-    this.repo = new AdminUserRepository();
+  constructor(deps: { adminUserRepository: AdminUserRepository }) {
+    this.repo = deps.adminUserRepository;
   }
 
   async listUsers(params: {
@@ -46,4 +46,11 @@ export class AdminUserService {
   async listTeachers(pagination: PaginationOptions): Promise<PaginatedResult<UserEntity>> {
     return this.repo.listByRole('teacher', pagination);
   }
+}
+
+/** Creates an AdminUserService with concrete repository dependencies. */
+export function createAdminUserService(): AdminUserService {
+  return new AdminUserService({
+    adminUserRepository: new AdminUserRepository(),
+  });
 }

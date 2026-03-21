@@ -3,8 +3,8 @@ import { LearnedLessonRepository } from '../repositories/learned-lesson.reposito
 export class LearnedLessonService {
   private learnedLessonRepository: LearnedLessonRepository;
 
-  constructor() {
-    this.learnedLessonRepository = new LearnedLessonRepository();
+  constructor(deps: { learnedLessonRepository: LearnedLessonRepository }) {
+    this.learnedLessonRepository = deps.learnedLessonRepository;
   }
 
   /**
@@ -53,4 +53,11 @@ export class LearnedLessonService {
       throw error;
     }
   }
+}
+
+/** Creates a LearnedLessonService with concrete repository dependencies. */
+export function createLearnedLessonService(): LearnedLessonService {
+  return new LearnedLessonService({
+    learnedLessonRepository: new LearnedLessonRepository(),
+  });
 }

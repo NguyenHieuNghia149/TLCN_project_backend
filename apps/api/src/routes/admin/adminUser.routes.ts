@@ -3,13 +3,13 @@ import { validate } from '@backend/api/middlewares/validate.middleware';
 import { authenticationToken, requireTeacherOrOwner } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import AdminUserController from '@backend/api/controllers/admin/adminUser.controller';
-import { AdminUserService } from '@backend/api/services/admin/adminUser.service';
+import { createAdminUserService } from '@backend/api/services/admin/adminUser.service';
 import { z } from 'zod';
 
 /** Creates the admin-user router without constructing controllers at import time. */
 export function createAdminUserRouter(): Router {
   const router = Router();
-  const adminUserService = new AdminUserService();
+  const adminUserService = createAdminUserService();
   const controller = new AdminUserController(adminUserService);
 
   const adminReadLimit = rateLimitMiddleware({
