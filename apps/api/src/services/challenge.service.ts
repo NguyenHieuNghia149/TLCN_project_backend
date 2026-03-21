@@ -8,17 +8,23 @@ import { TestcaseRepository } from '../repositories/testcase.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
 import { buildStarterCodeByLanguage, buildTestcaseDisplay } from '@backend/shared/utils';
-import {
-  ChallengeResponse,
-  ProblemInput,
-  ProblemResponse,
-} from '@backend/shared/validations/problem.validation';
+import { ChallengeResponse, ProblemInput } from '@backend/shared/validations/problem.validation';
 import { LessonRepository } from '../repositories/lesson.repository';
 import { SubmissionRepository } from '../repositories/submission.repository';
 import { SolutionApproachRepository } from '../repositories/solutionApproach.repository';
 import { SolutionResponse } from '@backend/shared/validations/solution.validation';
 import { FavoriteRepository } from '../repositories/favorite.repository';
-import { TestcaseResponse } from '@backend/shared/validations/testcase.validation';
+
+type ChallengeServiceDependencies = {
+  topicRepository: TopicRepository;
+  problemRepository: ProblemRepository;
+  testcaseRepository: TestcaseRepository;
+  solutionRepository: SolutionRepository;
+  lessonRepository: LessonRepository;
+  solutionApproachRepository: SolutionApproachRepository;
+  submissionRepository: SubmissionRepository;
+  favoriteRepository: FavoriteRepository;
+};
 
 export class ChallengeService {
   private topicRepository: TopicRepository;
@@ -30,15 +36,15 @@ export class ChallengeService {
   private submissionRepository: SubmissionRepository;
   private favoriteRepository: FavoriteRepository;
 
-  constructor() {
-    this.topicRepository = new TopicRepository();
-    this.problemRepository = new ProblemRepository();
-    this.testcaseRepository = new TestcaseRepository();
-    this.solutionRepository = new SolutionRepository();
-    this.lessonRepository = new LessonRepository();
-    this.solutionApproachRepository = new SolutionApproachRepository();
-    this.submissionRepository = new SubmissionRepository();
-    this.favoriteRepository = new FavoriteRepository();
+  constructor(deps: ChallengeServiceDependencies) {
+    this.topicRepository = deps.topicRepository;
+    this.problemRepository = deps.problemRepository;
+    this.testcaseRepository = deps.testcaseRepository;
+    this.solutionRepository = deps.solutionRepository;
+    this.lessonRepository = deps.lessonRepository;
+    this.solutionApproachRepository = deps.solutionApproachRepository;
+    this.submissionRepository = deps.submissionRepository;
+    this.favoriteRepository = deps.favoriteRepository;
   }
 
   async createChallenge(challengeData: ProblemInput): Promise<ChallengeResponse> {
@@ -531,7 +537,17 @@ export class ChallengeService {
   }
 }
 
-
-
-
+/** Creates a ChallengeService with concrete repository dependencies. */
+export function createChallengeService(): ChallengeService {
+  return new ChallengeService({
+    topicRepository: new TopicRepository(),
+    problemRepository: new ProblemRepository(),
+    testcaseRepository: new TestcaseRepository(),
+    solutionRepository: new SolutionRepository(),
+    lessonRepository: new LessonRepository(),
+    solutionApproachRepository: new SolutionApproachRepository(),
+    submissionRepository: new SubmissionRepository(),
+    favoriteRepository: new FavoriteRepository(),
+  });
+}
 

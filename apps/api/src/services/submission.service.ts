@@ -28,6 +28,24 @@ export interface SubmissionInput {
   userId: string;
 }
 
+/** Defines the minimal queue dependency required by SubmissionService. */
+export interface ISubmissionQueueService {
+  addJob(job: QueueJob): Promise<unknown>;
+  getQueueLength(): Promise<number>;
+  getQueueStatus(): Promise<{ length: number; isHealthy: boolean }>;
+}
+
+type SubmissionServiceDependencies = {
+  submissionRepository: SubmissionRepository;
+  resultSubmissionRepository: ResultSubmissionRepository;
+  testcaseRepository: TestcaseRepository;
+  problemRepository: ProblemRepository;
+  userRepository: UserRepository;
+  examParticipationRepository: ExamParticipationRepository;
+  examRepository: ExamRepository;
+  getQueueService: () => ISubmissionQueueService;
+}
+
 export class SubmissionService {
   private submissionRepository: SubmissionRepository;
   private resultSubmissionRepository: ResultSubmissionRepository;
@@ -36,19 +54,21 @@ export class SubmissionService {
   private userRepository: UserRepository;
   private examParticipationRepository: ExamParticipationRepository;
   private examRepository: ExamRepository;
+  private readonly queueServiceFactory: () => ISubmissionQueueService;
 
-  constructor() {
-    this.submissionRepository = new SubmissionRepository();
-    this.resultSubmissionRepository = new ResultSubmissionRepository();
-    this.testcaseRepository = new TestcaseRepository();
-    this.problemRepository = new ProblemRepository();
-    this.userRepository = new UserRepository();
-    this.examParticipationRepository = new ExamParticipationRepository();
-    this.examRepository = new ExamRepository();
+  constructor(deps: SubmissionServiceDependencies) {
+    this.submissionRepository = deps.submissionRepository;
+    this.resultSubmissionRepository = deps.resultSubmissionRepository;
+    this.testcaseRepository = deps.testcaseRepository;
+    this.problemRepository = deps.problemRepository;
+    this.userRepository = deps.userRepository;
+    this.examParticipationRepository = deps.examParticipationRepository;
+    this.examRepository = deps.examRepository;
+    this.queueServiceFactory = deps.getQueueService;
   }
 
-  private getQueueService() {
-    return getJudgeQueueService();
+  private getQueueService(): ISubmissionQueueService {
+    return this.queueServiceFactory();
   }
 
   async submitCode(input: CreateSubmissionInput & { userId: string }): Promise<{
@@ -687,8 +707,19 @@ export class SubmissionService {
   }
 }
 
-/** Creates a SubmissionService instance without keeping a module-level singleton. */
+/** Creates a SubmissionService with concrete repositories and a lazy queue accessor. */
 export function createSubmissionService(): SubmissionService {
-  return new SubmissionService();
+  return new SubmissionService({
+    submissionRepository: new SubmissionRepository(),
+    resultSubmissionRepository: new ResultSubmissionRepository(),
+    testcaseRepository: new TestcaseRepository(),
+    problemRepository: new ProblemRepository(),
+    userRepository: new UserRepository(),
+    examParticipationRepository: new ExamParticipationRepository(),
+    examRepository: new ExamRepository(),
+    getQueueService: getJudgeQueueService,
+  });
 }
+
+
 

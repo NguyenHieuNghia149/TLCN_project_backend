@@ -1,24 +1,36 @@
-const mockAddJob = jest.fn();
-const mockGetQueueLength = jest.fn();
-const mockGetQueueStatus = jest.fn();
-const mockPublish = jest.fn();
-const mockGetJudgeQueueService = jest.fn(() => ({
-  addJob: mockAddJob,
-  getQueueLength: mockGetQueueLength,
-  getQueueStatus: mockGetQueueStatus,
-  publish: mockPublish,
-}));
-
-jest.mock('@backend/shared/runtime/judge-queue', () => ({
-  getJudgeQueueService: mockGetJudgeQueueService,
-}));
-
 import {
   createSubmissionService,
+  ISubmissionQueueService,
   SubmissionService,
 } from '../../../apps/api/src/services/submission.service';
+import { SubmissionRepository } from '../../../apps/api/src/repositories/submission.repository';
+import { ResultSubmissionRepository } from '../../../apps/api/src/repositories/result-submission.repository';
+import { TestcaseRepository } from '../../../apps/api/src/repositories/testcase.repository';
+import { ProblemRepository } from '../../../apps/api/src/repositories/problem.repository';
+import { UserRepository } from '../../../apps/api/src/repositories/user.repository';
+import { ExamParticipationRepository } from '../../../apps/api/src/repositories/examParticipation.repository';
+import { ExamRepository } from '../../../apps/api/src/repositories/exam.repository';
 import type { QueueJob } from '@backend/shared/runtime/judge-queue';
 import { FunctionSignature } from '@backend/shared/types';
+
+/** Builds a dependency bag for SubmissionService tests with optional overrides. */
+function createSubmissionDependencies(overrides: Partial<any> = {}) {
+  return {
+    submissionRepository: {} as any,
+    resultSubmissionRepository: {} as any,
+    testcaseRepository: {} as any,
+    problemRepository: {} as any,
+    userRepository: {} as any,
+    examParticipationRepository: {} as any,
+    examRepository: {} as any,
+    getQueueService: () => ({
+      addJob: jest.fn(),
+      getQueueLength: jest.fn().mockResolvedValue(0),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 0, isHealthy: true }),
+    }),
+    ...overrides,
+  };
+}
 
 describe('SubmissionService JSON-first queue payload', () => {
   const signature: FunctionSignature = {
@@ -35,11 +47,21 @@ describe('SubmissionService JSON-first queue payload', () => {
   });
 
   it('creates a submission service without a module-level singleton export', () => {
-    expect(createSubmissionService()).toBeInstanceOf(SubmissionService);
+    const service = createSubmissionService();
+
+    expect(service).toBeInstanceOf(SubmissionService);
+    expect((service as any).submissionRepository).toBeInstanceOf(SubmissionRepository);
+    expect((service as any).resultSubmissionRepository).toBeInstanceOf(ResultSubmissionRepository);
+    expect((service as any).testcaseRepository).toBeInstanceOf(TestcaseRepository);
+    expect((service as any).problemRepository).toBeInstanceOf(ProblemRepository);
+    expect((service as any).userRepository).toBeInstanceOf(UserRepository);
+    expect((service as any).examParticipationRepository).toBeInstanceOf(ExamParticipationRepository);
+    expect((service as any).examRepository).toBeInstanceOf(ExamRepository);
+    expect(typeof (service as any).queueServiceFactory).toBe('function');
   });
 
   it('omits cached text fields from queue jobs', () => {
-    const service = new SubmissionService();
+    const service = new SubmissionService(createSubmissionDependencies());
     const job = (service as any).prepareQueueJob(
       {
         id: 'submission-1',
@@ -81,7 +103,7 @@ describe('SubmissionService JSON-first queue payload', () => {
   });
 
   it('derives submission result display from JSON even when cached text is stale', () => {
-    const service = new SubmissionService();
+    const service = new SubmissionService(createSubmissionDependencies());
     const status = (service as any).mapSubmissionStatus(
       {
         id: 'submission-1',
@@ -122,15 +144,18 @@ describe('SubmissionService JSON-first queue payload', () => {
     });
   });
 
-  it('uses the lazy queue accessor instead of a module-level singleton', () => {
-    const service = new SubmissionService();
+  it('uses the injected queue accessor instead of a module-level singleton', () => {
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn(),
+      getQueueLength: jest.fn().mockResolvedValue(3),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 3, isHealthy: true }),
+    };
+    const getQueueService = jest.fn(() => queueService);
+    const service = new SubmissionService(
+      createSubmissionDependencies({ getQueueService }),
+    );
 
-    expect((service as any).getQueueService()).toEqual({
-      addJob: mockAddJob,
-      getQueueLength: mockGetQueueLength,
-      getQueueStatus: mockGetQueueStatus,
-      publish: mockPublish,
-    });
-    expect(mockGetJudgeQueueService).toHaveBeenCalledTimes(1);
+    expect((service as any).getQueueService()).toBe(queueService);
+    expect(getQueueService).toHaveBeenCalledTimes(1);
   });
 });

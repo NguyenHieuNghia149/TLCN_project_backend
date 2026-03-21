@@ -1,4 +1,4 @@
-﻿import {
+import {
   FavoriteRepository,
   FavoriteWithProblem,
   FavoriteWithLesson,
@@ -23,6 +23,14 @@ import { LessonEntity } from '@backend/shared/db/schema';
 import { buildStarterCodeByLanguage, logger } from '@backend/shared/utils';
 import { FunctionSignature } from '@backend/shared/types';
 
+type FavoriteServiceDependencies = {
+  favoriteRepository: FavoriteRepository;
+  problemRepository: ProblemRepository;
+  testcaseRepository: TestcaseRepository;
+  submissionRepository: SubmissionRepository;
+  lessonRepository: LessonRepository;
+};
+
 export class FavoriteService {
   private readonly favoriteRepository: FavoriteRepository;
   private readonly problemRepository: ProblemRepository;
@@ -30,12 +38,12 @@ export class FavoriteService {
   private readonly submissionRepository: SubmissionRepository;
   private readonly lessonRepository: LessonRepository;
 
-  constructor() {
-    this.favoriteRepository = new FavoriteRepository();
-    this.problemRepository = new ProblemRepository();
-    this.testcaseRepository = new TestcaseRepository();
-    this.submissionRepository = new SubmissionRepository();
-    this.lessonRepository = new LessonRepository();
+  constructor(deps: FavoriteServiceDependencies) {
+    this.favoriteRepository = deps.favoriteRepository;
+    this.problemRepository = deps.problemRepository;
+    this.testcaseRepository = deps.testcaseRepository;
+    this.submissionRepository = deps.submissionRepository;
+    this.lessonRepository = deps.lessonRepository;
   }
 
   async addFavorite(userId: string, problemId: string): Promise<FavoriteResponse> {
@@ -261,7 +269,8 @@ export class FavoriteService {
       lessonId: string | null;
       topicId: string | null;
       createdAt: Date | string | null;
-      updatedAt: Date | string | null;      functionSignature?: FunctionSignature | null;
+      updatedAt: Date | string | null;
+      functionSignature?: FunctionSignature | null;
     },
     totalPoints: number,
     options?: { isSolved?: boolean; isFavorite?: boolean }
@@ -450,8 +459,16 @@ export class FavoriteService {
   }
 }
 
-
-
+/** Creates a FavoriteService with concrete repository dependencies. */
+export function createFavoriteService(): FavoriteService {
+  return new FavoriteService({
+    favoriteRepository: new FavoriteRepository(),
+    problemRepository: new ProblemRepository(),
+    testcaseRepository: new TestcaseRepository(),
+    submissionRepository: new SubmissionRepository(),
+    lessonRepository: new LessonRepository(),
+  });
+}
 
 
 

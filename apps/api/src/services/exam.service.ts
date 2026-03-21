@@ -32,7 +32,7 @@ import {
   ExamEndedException,
 } from '../exceptions/exam.exceptions';
 import { ESubmissionStatus } from '@backend/shared/types';
-import { ChallengeService } from './challenge.service';
+import { ChallengeService, createChallengeService } from './challenge.service';
 import { createNotificationService } from './notification.service';
 
 export interface INotificationPublisher {
@@ -60,7 +60,7 @@ export class ExamService {
     this.submissionRepository = new SubmissionRepository();
     this.testcaseRepository = new TestcaseRepository();
     this.resultSubmissionRepository = new ResultSubmissionRepository();
-    this.challengeService = new ChallengeService();
+    this.challengeService = createChallengeService();
   }
 
   /**
@@ -1207,4 +1207,5 @@ export class ExamService {
 
   // Problem creation and related DB operations were moved to ProblemRepository.
 }
+
 

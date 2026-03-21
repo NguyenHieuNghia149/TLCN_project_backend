@@ -5,7 +5,7 @@ import {
   UpdateChallengeSchema,
   UpdateSolutionVisibilitySchema,
 } from '@backend/api/controllers/challenge.controller';
-import { ChallengeService } from '@backend/api/services/challenge.service';
+import { createChallengeService } from '@backend/api/services/challenge.service';
 import {
   authenticationToken,
   requireTeacher,
@@ -18,7 +18,7 @@ import { validate } from '@backend/api/middlewares/validate.middleware';
 /** Creates the challenge router without instantiating services at import time. */
 export function createChallengeRouter(): Router {
   const router = Router();
-  const challengeService = new ChallengeService();
+  const challengeService = createChallengeService();
   const challengeController = new ChallengeController(challengeService);
 
   const challengeRateLimit = rateLimitMiddleware({
@@ -121,3 +121,4 @@ export function createChallengeRouter(): Router {
 
   return router;
 }
+

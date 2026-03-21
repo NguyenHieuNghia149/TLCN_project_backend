@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { FavoriteController } from '@backend/api/controllers/favorite.controller';
-import { FavoriteService } from '@backend/api/services/favorite.service';
+import { createFavoriteService } from '@backend/api/services/favorite.service';
 import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { validate } from '@backend/api/middlewares/validate.middleware';
@@ -14,7 +14,7 @@ import {
 /** Creates the favorite router without instantiating services at import time. */
 export function createFavoriteRouter(): Router {
   const router = Router();
-  const favoriteService = new FavoriteService();
+  const favoriteService = createFavoriteService();
   const favoriteController = new FavoriteController(favoriteService);
 
   const favoriteRateLimit = rateLimitMiddleware({
@@ -61,3 +61,4 @@ export function createFavoriteRouter(): Router {
 
   return router;
 }
+
