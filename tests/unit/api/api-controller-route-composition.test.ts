@@ -437,6 +437,38 @@ describe('API controller route composition', () => {
     expect(typeof (router as Router).use).toBe('function');
   });
 
+  it('wires the leaderboard route factory with createLeaderboardService', () => {
+    mockRouteMiddlewareModules();
+    const serviceInstance = {};
+    const controllerInstance = createControllerDouble([
+      'getLeaderboard',
+      'getTopUsers',
+      'getUserRank',
+      'getUserRankContext',
+      'getLeaderboardStats',
+    ]);
+    const createLeaderboardService = jest.fn(() => serviceInstance);
+    const LeaderboardController = jest.fn(() => controllerInstance);
+
+    jest.doMock('@backend/api/services/leaderboard.service', () => ({
+      createLeaderboardService,
+    }));
+    jest.doMock('@backend/api/controllers/leaderboard.controller', () => ({
+      LeaderboardController,
+    }));
+
+    let createLeaderboardRouter!: typeof import('@backend/api/routes/leaderboard.routes').createLeaderboardRouter;
+    jest.isolateModules(() => {
+      ({ createLeaderboardRouter } = require('@backend/api/routes/leaderboard.routes'));
+    });
+
+    const router = createLeaderboardRouter();
+
+    expect(createLeaderboardService).toHaveBeenCalledTimes(1);
+    expect(LeaderboardController).toHaveBeenCalledWith(serviceInstance);
+    expect(typeof (router as Router).use).toBe('function');
+  });
+
   it('wires the exam route factory with createExamService', () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};

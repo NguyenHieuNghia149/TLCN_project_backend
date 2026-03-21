@@ -56,6 +56,17 @@ describe('lazy SSE service bootstrap', () => {
     expect(RedisMock).not.toHaveBeenCalled();
   });
 
+  it('creates a fresh Redis-backed SSE service through the factory', () => {
+    const { sseModule, RedisMock } = loadSseModule();
+    resetSseServiceForTesting = sseModule.resetSseServiceForTesting;
+
+    const first = sseModule.createSseService();
+    const second = sseModule.createSseService();
+
+    expect(RedisMock).toHaveBeenCalledTimes(2);
+    expect(first).not.toBe(second);
+  });
+
   it('initializes the Redis-backed SSE service only once', () => {
     const { sseModule, RedisMock } = loadSseModule();
     resetSseServiceForTesting = sseModule.resetSseServiceForTesting;
@@ -81,4 +92,3 @@ describe('lazy SSE service bootstrap', () => {
     expect(second).not.toBe(first);
   });
 });
-

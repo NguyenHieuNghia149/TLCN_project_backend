@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { LeaderboardController } from '@backend/api/controllers/leaderboard.controller';
-import { LeaderboardService } from '@backend/api/services/leaderboard.service';
-import { LeaderboardRepository } from '@backend/api/repositories/leaderboard.repository';
+import { createLeaderboardService } from '@backend/api/services/leaderboard.service';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 
 /** Creates the leaderboard router without instantiating repository dependencies at import time. */
@@ -13,8 +12,7 @@ export function createLeaderboardRouter(): Router {
     message: 'Too many leaderboard requests, please try again later.',
   });
 
-  const leaderboardRepository = new LeaderboardRepository();
-  const leaderboardService = new LeaderboardService(leaderboardRepository);
+  const leaderboardService = createLeaderboardService();
   const leaderboardController = new LeaderboardController(leaderboardService);
 
   router.get('/', leaderboardReadLimit, leaderboardController.getLeaderboard.bind(leaderboardController));

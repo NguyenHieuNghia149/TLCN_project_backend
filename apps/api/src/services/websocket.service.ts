@@ -6,20 +6,30 @@ export interface IWebSocketNotifier {
   getIO(): { emit(event: string, data: unknown): boolean };
 }
 
+interface ISocketIOClientAdapter {
+  id: string;
+  on(event: 'authenticate', listener: (data: { userId: string }) => void): this;
+  on(event: 'disconnect', listener: () => void): this;
+  join(room: string): void;
+}
+
+interface ISocketIOAdapter {
+  on(event: 'connection', listener: (socket: ISocketIOClientAdapter) => void): this;
+  to(room: string): { emit(event: string, data: unknown): boolean };
+  emit(event: string, data: unknown): boolean;
+  engine: { clientsCount: number };
+}
+
+type WebSocketServiceDependencies = {
+  io: ISocketIOAdapter;
+};
+
 export class WebSocketService implements IWebSocketNotifier {
-  private io: SocketIOServer;
-  private connectedClients: Map<string, Set<string>> = new Map();
+  private readonly io: ISocketIOAdapter;
+  private readonly connectedClients: Map<string, Set<string>> = new Map();
 
-  constructor(server: HTTPServer) {
-    this.io = new SocketIOServer(server, {
-      cors: {
-        origin: process.env.CORS_ORIGIN?.split(','),
-        methods: ['GET', 'POST'],
-        credentials: true,
-      },
-      transports: ['websocket', 'polling'],
-    });
-
+  constructor({ io }: WebSocketServiceDependencies) {
+    this.io = io;
     this.setupEventHandlers();
   }
 
@@ -69,7 +79,7 @@ export class WebSocketService implements IWebSocketNotifier {
     return this.connectedClients.has(userId) && this.connectedClients.get(userId)!.size > 0;
   }
 
-  getIO(): SocketIOServer {
+  getIO(): { emit(event: string, data: unknown): boolean } {
     return this.io;
   }
 
@@ -88,9 +98,24 @@ export class WebSocketService implements IWebSocketNotifier {
 
 let websocketService: WebSocketService | null = null;
 
+/** Creates a WebSocketService with a concrete Socket.IO server. */
+export function createWebSocketService(server: HTTPServer): WebSocketService {
+  const io = new SocketIOServer(server, {
+    cors: {
+      origin: process.env.CORS_ORIGIN?.split(','),
+      methods: ['GET', 'POST'],
+      credentials: true,
+    },
+    transports: ['websocket', 'polling'],
+  }) as unknown as ISocketIOAdapter;
+
+  return new WebSocketService({ io });
+}
+
 export const initializeWebSocket = (server: HTTPServer): WebSocketService => {
-  websocketService = new WebSocketService(server);
-  return websocketService;
+  const service = createWebSocketService(server);
+  websocketService = service;
+  return service;
 };
 
 /** Returns the active websocket service when it has been initialized, otherwise null. */

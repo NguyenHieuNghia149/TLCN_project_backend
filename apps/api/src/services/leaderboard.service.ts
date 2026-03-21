@@ -1,7 +1,6 @@
 import {
   LeaderboardRepository,
   LeaderboardEntry,
-  LeaderboardFilters,
 } from '../repositories/leaderboard.repository';
 
 export interface LeaderboardResponse {
@@ -17,8 +16,16 @@ export interface UserRankResponse extends LeaderboardEntry {
   percentile: number; // User's percentile rank (0-100)
 }
 
+type LeaderboardServiceDependencies = {
+  leaderboardRepository: LeaderboardRepository;
+};
+
 export class LeaderboardService {
-  constructor(private readonly leaderboardRepository: LeaderboardRepository) {}
+  private readonly leaderboardRepository: LeaderboardRepository;
+
+  constructor({ leaderboardRepository }: LeaderboardServiceDependencies) {
+    this.leaderboardRepository = leaderboardRepository;
+  }
 
   /**
    * Get paginated leaderboard
@@ -126,4 +133,11 @@ export class LeaderboardService {
       avgRankingPoints,
     };
   }
+}
+
+/** Creates a LeaderboardService with a concrete leaderboard repository. */
+export function createLeaderboardService(): LeaderboardService {
+  return new LeaderboardService({
+    leaderboardRepository: new LeaderboardRepository(),
+  });
 }
