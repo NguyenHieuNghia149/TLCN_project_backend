@@ -43,21 +43,17 @@ export class EMailService {
         pass: config.email.pass,
       },
       tls: {
-        // Add this line so Node.js does not reject Brevo's certificate
         ciphers: 'SSLv3',
         rejectUnauthorized: false,
       },
-      // Connection timeout settings
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 5000, // 5 seconds
-      socketTimeout: 15000, // 15 seconds
-      // Connection pool settings
+      connectionTimeout: 10000,
+      greetingTimeout: 5000,
+      socketTimeout: 15000,
       pool: true,
       maxConnections: 5,
       maxMessages: 10,
       rateDelta: 1000,
       rateLimit: 5,
-      // Debug
       logger: true,
       debug: process.env.NODE_ENV === 'production',
     });
@@ -94,16 +90,15 @@ export class EMailService {
 
       logger.info(`[Email Service] Attempting to send OTP to ${email}`);
       logger.info(
-        `[Email Service] SMTP Config: ${config.email.host}:${config.email.port}, User: ${config.email.user}`
+        `[Email Service] SMTP Config: ${config.email.host}:${config.email.port}, User: ${config.email.user}`,
       );
 
       await this.transporter.sendMail(emailTemplate);
 
-      logger.info(`[Email Service] ✅ OTP sent successfully to ${email}`);
+      logger.info(`[Email Service] âœ… OTP sent successfully to ${email}`);
     } catch (error) {
-      logger.error(`[Email Service] ❌ Failed to send OTP to ${email}:`, error);
+      logger.error(`[Email Service] âŒ Failed to send OTP to ${email}:`, error);
 
-      // Log SMTP configuration status (without exposing password)
       logger.error('[Email Service] SMTP Config Check:', {
         host: config.email.host,
         port: config.email.port,
@@ -113,7 +108,7 @@ export class EMailService {
       });
 
       throw new ValidationException(
-        `Failed to send verification email. Please check SMTP configuration. Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to send verification email. Please check SMTP configuration. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
   }
@@ -135,10 +130,14 @@ export class EMailService {
     if (!isValid) {
       otpStore.delete(email);
       throw new ValidationException('Invalid OTP');
-    } else {
-      otpStore.set(email, otpData);
     }
 
+    otpStore.set(email, otpData);
     return isValid;
   }
+}
+
+/** Creates an email service for auth composition roots. */
+export function createEMailService(): EMailService {
+  return new EMailService();
 }

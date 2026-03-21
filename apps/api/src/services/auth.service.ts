@@ -18,26 +18,57 @@ import {
 } from '../exceptions/auth.exceptions';
 import { Request } from 'express';
 import { EStatus } from '@backend/shared/types';
-import { EMailService, otpStore } from './email.service';
+import { createEMailService, EMailService, otpStore } from './email.service';
 import { EUserRole } from '@backend/shared/types';
 import { OAuth2Client } from 'google-auth-library';
+
+export interface IGoogleIdentityClient {
+  verifyIdToken(options: {
+    idToken: string;
+    audience?: string;
+  }): Promise<{
+    getPayload(): {
+      email?: string;
+      given_name?: string;
+      family_name?: string;
+      picture?: string;
+      email_verified?: boolean;
+    } | undefined;
+  }>;
+}
+
+type AuthServiceDependencies = {
+  userRepository: UserRepository;
+  tokenRepository: TokenRepository;
+  emailService: EMailService;
+  googleIdentityClient?: IGoogleIdentityClient;
+};
+
+type CreateAuthServiceOptions = {
+  emailService?: EMailService;
+  googleIdentityClient?: IGoogleIdentityClient;
+};
 
 export class AuthService {
   private userRepository: UserRepository;
   private tokenRepository: TokenRepository;
   private emailService: EMailService;
-  private googleClient?: OAuth2Client;
-  constructor() {
-    this.userRepository = new UserRepository();
-    this.tokenRepository = new TokenRepository();
-    this.emailService = new EMailService();
-    if (process.env.GOOGLE_CLIENT_ID) {
-      this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-    }
+  private googleClient?: IGoogleIdentityClient;
+
+  constructor({
+    userRepository,
+    tokenRepository,
+    emailService,
+    googleIdentityClient,
+  }: AuthServiceDependencies) {
+    this.userRepository = userRepository;
+    this.tokenRepository = tokenRepository;
+    this.emailService = emailService;
+    this.googleClient = googleIdentityClient;
   }
 
   async register(dto: RegisterInput): Promise<RegisterResponseSchema> {
-    const isOTPValid = this.emailService.verifyOTP(dto.email, dto.otp);
+    const isOTPValid = await this.emailService.verifyOTP(dto.email, dto.otp);
 
     if (!isOTPValid) {
       throw new ValidationException('Invalid or expired OTP');
@@ -78,11 +109,6 @@ export class AuthService {
         status: user.status,
         createdAt: user.createdAt.toISOString(),
       },
-      // tokens: {
-      //   accessToken: tokens.accessToken,
-      //   refreshToken: tokens.refreshToken,
-      //   expiresIn: tokens.expiresIn,
-      // },
     };
   }
 
@@ -92,20 +118,17 @@ export class AuthService {
       throw new InvalidCredentialsException('User with this email does not exist');
     }
 
-    // Verify password
     const isPasswordValid = await PasswordUtils.comparePassword(dto.password, user.password);
     if (!isPasswordValid) {
       throw new InvalidCredentialsException('Invalid email or password');
     }
 
-    // Check if account is active
     if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
     await this.userRepository.updateLastLogin(user.id);
 
-    // Generate tokens (no sessionId)
     const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
     await this.tokenRepository.createRefreshToken({
@@ -114,7 +137,6 @@ export class AuthService {
       expiresAt: new Date(Date.now() + (dto.rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000),
     });
 
-    // get rank info
     const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
     return {
       user: {
@@ -154,11 +176,6 @@ export class AuthService {
     }
 
     const email = payload.email;
-    // const emailVerified = payload.email_verified;
-    // if (!emailVerified) {
-    //   throw new ValidationException('Google account email is not verified');
-    // }
-
     const firstName = (payload.given_name as string) || '';
     const lastName = (payload.family_name as string) || '';
     const avatar = (payload.picture as string) || null;
@@ -169,7 +186,7 @@ export class AuthService {
       user = await this.userRepository.createUser({
         email,
         password: await PasswordUtils.hashPassword(
-          Math.random().toString(36).slice(2) + Date.now().toString()
+          Math.random().toString(36).slice(2) + Date.now().toString(),
         ),
         firstName,
         lastName,
@@ -178,42 +195,40 @@ export class AuthService {
         role: EUserRole.USER,
         rankingPoint: 0,
       } as any);
-    } else {
-      if (avatar && user.avatar !== avatar) {
-        await this.userRepository.updateUser(user.id, { avatar });
-        user = { ...user, avatar } as any;
-      }
+    } else if (avatar && user.avatar !== avatar) {
+      await this.userRepository.updateUser(user.id, { avatar });
+      user = { ...user, avatar } as any;
     }
 
     if (!user) {
       throw new ValidationException('Unable to create or load user');
     }
 
-    const u = user as NonNullable<typeof user>;
-    await this.userRepository.updateLastLogin(u.id);
+    const ensuredUser = user as NonNullable<typeof user>;
+    await this.userRepository.updateLastLogin(ensuredUser.id);
 
-    const tokens = JWTUtils.generateTokenPair(u.id, u.email, u.role);
+    const tokens = JWTUtils.generateTokenPair(ensuredUser.id, ensuredUser.email, ensuredUser.role);
     await this.tokenRepository.createRefreshToken({
       token: tokens.refreshToken,
-      userId: u.id,
+      userId: ensuredUser.id,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    const { rankingPoint, rank } = await this.userRepository.getUserRank(u.id);
+    const { rankingPoint, rank } = await this.userRepository.getUserRank(ensuredUser.id);
 
     return {
       user: {
-        id: u.id,
-        email: u.email,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        avatar: u.avatar,
-        role: u.role,
-        rankingPoint: rankingPoint,
-        rank: rank,
-        status: u.status,
-        createdAt: u.createdAt.toISOString(),
-        lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+        id: ensuredUser.id,
+        email: ensuredUser.email,
+        firstName: ensuredUser.firstName,
+        lastName: ensuredUser.lastName,
+        avatar: ensuredUser.avatar,
+        role: ensuredUser.role,
+        rankingPoint,
+        rank,
+        status: ensuredUser.status,
+        createdAt: ensuredUser.createdAt.toISOString(),
+        lastLoginAt: ensuredUser.lastLoginAt ? ensuredUser.lastLoginAt.toISOString() : null,
       },
       tokens: {
         accessToken: tokens.accessToken,
@@ -275,40 +290,9 @@ export class AuthService {
     await this.tokenRepository.revokeAllUserTokens(userId);
   }
 
-  // Removed session-based revoke
-
   async cleanupExpiredTokens(): Promise<void> {
     await this.tokenRepository.cleanupExpiredTokens();
   }
-
-  // async sendVerificationCode(email: string, req: Request): Promise<void> {
-  //   const rateLimitKey = `sendVeriCode:${req.ip}`;
-  //   const rateLimit = RateLimitUtils.checkRateLimit(rateLimitKey, 20, 15 * 60 * 1000);
-  //   if (!rateLimit.allowed) {
-  //     throw new RateLimitExceededException();
-  //   }
-
-  //   const user = await this.userRepository.findByEmail(email);
-
-  //   if (!user) {
-  //     throw new InvalidCredentialsException("User with this email doesn't exist");
-  //   }
-
-  //   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  //   otpStore.set(email, {
-  //     otp,
-  //     expires: new Date(Date.now() + 10 * 60 * 1000),
-  //     userData: { email },
-  //   });
-
-  //   await transporter.sendMail({
-  //     from: process.env.EMAIL,
-  //     to: email,
-  //     subject: 'Your Verification Code',
-  //     text: `Your verification code is ${otp}. It will expire in 10 minutes.`,
-  //   });
-  // }
 
   async resetPassword(email: string, newPassword: string, otp: string): Promise<void> {
     const isOTPValid = await this.emailService.verifyOTP(email, otp!);
@@ -333,4 +317,20 @@ export class AuthService {
     otpStore.delete(email);
     await this.tokenRepository.revokeAllUserTokens(user.id);
   }
+}
+
+/** Creates an AuthService with concrete repositories and optional shared auth dependencies. */
+export function createAuthService(options: CreateAuthServiceOptions = {}): AuthService {
+  const emailService = options.emailService ?? createEMailService();
+  const googleIdentityClient = options.googleIdentityClient ??
+    (process.env.GOOGLE_CLIENT_ID
+      ? (new OAuth2Client(process.env.GOOGLE_CLIENT_ID) as IGoogleIdentityClient)
+      : undefined);
+
+  return new AuthService({
+    userRepository: new UserRepository(),
+    tokenRepository: new TokenRepository(),
+    emailService,
+    googleIdentityClient,
+  });
 }

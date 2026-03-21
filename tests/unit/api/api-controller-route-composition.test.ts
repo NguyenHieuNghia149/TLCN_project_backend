@@ -28,8 +28,17 @@ function mockRouteMiddlewareModules(): void {
     validate: jest.fn(() => passThroughMiddleware),
   }));
   jest.doMock('@backend/api/middlewares/ratelimit.middleware', () => ({
+    authLimiter: passThroughMiddleware,
+    refreshLimiter: passThroughMiddleware,
+    passwordResetLimiter: passThroughMiddleware,
+    emailVerificationLimiter: passThroughMiddleware,
     rateLimitMiddleware: jest.fn(() => passThroughMiddleware),
     strictLimiter: passThroughMiddleware,
+  }));
+  jest.doMock('@backend/api/middlewares/upload.middleware', () => ({
+    upload: {
+      single: jest.fn(() => passThroughMiddleware),
+    },
   }));
 }
 
@@ -76,6 +85,64 @@ describe('API controller route composition', () => {
 
     expect(createCommentService).toHaveBeenCalledTimes(1);
     expect(CommentController).toHaveBeenCalledWith(serviceInstance);
+    expect(typeof (router as Router).use).toBe('function');
+  });
+
+  it('wires the auth route factory with shared auth services', () => {
+    mockRouteMiddlewareModules();
+    const authServiceInstance = {};
+    const userServiceInstance = {};
+    const emailServiceInstance = {};
+    const controllerInstance = createControllerDouble([
+      'register',
+      'login',
+      'googleLogin',
+      'refreshToken',
+      'logout',
+      'changePassword',
+      'getProfile',
+      'getProfileById',
+      'updateProfile',
+      'uploadAvatar',
+      'resetPassword',
+      'sendVerificationCode',
+      'sendResetOTP',
+      'verifyOTP',
+    ]);
+    const createAuthService = jest.fn(() => authServiceInstance);
+    const createUserService = jest.fn(() => userServiceInstance);
+    const createEMailService = jest.fn(() => emailServiceInstance);
+    const AuthController = jest.fn(() => controllerInstance);
+
+    jest.doMock('@backend/api/services/auth.service', () => ({ createAuthService }));
+    jest.doMock('@backend/api/services/user.service', () => ({ createUserService }));
+    jest.doMock('@backend/api/services/email.service', () => ({ createEMailService }));
+    jest.doMock('@backend/api/controllers/auth.controller', () => ({ AuthController }));
+    jest.doMock('@backend/shared/validations/auth.validation', () => ({
+      LoginSchema: {},
+      RegisterSchema: {},
+      ChangePasswordSchema: {},
+      PasswordResetSchema: {},
+      SendVerificationEmailSchema: {},
+      GoogleLoginSchema: {},
+      VerifyOTPSchema: {},
+    }));
+
+    let createAuthRouter!: typeof import('@backend/api/routes/auth.routes').createAuthRouter;
+    jest.isolateModules(() => {
+      ({ createAuthRouter } = require('@backend/api/routes/auth.routes'));
+    });
+
+    const router = createAuthRouter();
+
+    expect(createEMailService).toHaveBeenCalledTimes(1);
+    expect(createUserService).toHaveBeenCalledTimes(1);
+    expect(createAuthService).toHaveBeenCalledWith({ emailService: emailServiceInstance });
+    expect(AuthController).toHaveBeenCalledWith(
+      authServiceInstance,
+      userServiceInstance,
+      emailServiceInstance,
+    );
     expect(typeof (router as Router).use).toBe('function');
   });
 

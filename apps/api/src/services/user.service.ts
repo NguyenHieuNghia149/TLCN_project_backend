@@ -5,12 +5,18 @@ import { TokenRepository } from '../repositories/token.repository';
 import { UserRepository } from '../repositories/user.repository';
 import { ChangePasswordInput } from '@backend/shared/validations/auth.validation';
 
+type UserServiceDependencies = {
+  userRepository: UserRepository;
+  tokenRepository: TokenRepository;
+};
+
 export class UserService {
   private userRepository: UserRepository;
   private tokenRepository: TokenRepository;
-  constructor() {
-    this.userRepository = new UserRepository();
-    this.tokenRepository = new TokenRepository();
+
+  constructor({ userRepository, tokenRepository }: UserServiceDependencies) {
+    this.userRepository = userRepository;
+    this.tokenRepository = tokenRepository;
   }
 
   async getProfile(userId: string) {
@@ -45,9 +51,8 @@ export class UserService {
       gender?: string;
       dateOfBirth?: string;
       avatar?: string;
-    }
+    },
   ) {
-    // Create a new object for the update
     const dataToUpdate: any = {
       firstName: updateData.firstName,
       lastName: updateData.lastName,
@@ -55,7 +60,6 @@ export class UserService {
       avatar: updateData.avatar,
     };
 
-    // Convert dateOfBirth from ISO string to Date if provided
     if (updateData.dateOfBirth) {
       try {
         dataToUpdate.dateOfBirth = new Date(updateData.dateOfBirth);
@@ -97,7 +101,7 @@ export class UserService {
 
     const isCurrentPasswordValid = await PasswordUtils.comparePassword(
       dto.currentPassword,
-      user.password
+      user.password,
     );
     if (!isCurrentPasswordValid) {
       throw new InvalidCredentialsException('Current password is incorrect');
@@ -119,4 +123,12 @@ export class UserService {
   async create(userData: UserInsert) {
     return this.userRepository.create(userData);
   }
+}
+
+/** Creates a UserService with concrete repository dependencies. */
+export function createUserService(): UserService {
+  return new UserService({
+    userRepository: new UserRepository(),
+    tokenRepository: new TokenRepository(),
+  });
 }
