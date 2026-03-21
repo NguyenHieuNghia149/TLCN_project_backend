@@ -1,7 +1,5 @@
 import { logger } from '@backend/shared/utils';
-import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
-import { ExamRepository } from '../repositories/exam.repository';
-import { ExamService } from './exam.service';
+import { createExamService } from './exam.service';
 
 export interface IExamAutoSubmitService {
   start(checkIntervalMs?: number): Promise<void>;
@@ -12,26 +10,26 @@ export interface IExamAutoSubmitService {
   };
 }
 
-/**
- * Service to handle automatic exam submission for expired exams
- */
+/** Defines the finalizer dependency used by ExamAutoSubmitService. */
+export interface IExpiredParticipationFinalizer {
+  finalizeExpiredParticipations(): Promise<number>;
+}
+
+type ExamAutoSubmitServiceDependencies = {
+  examFinalizer: IExpiredParticipationFinalizer;
+};
+
+/** Service to handle automatic exam submission for expired exams. */
 export class ExamAutoSubmitService implements IExamAutoSubmitService {
-  private examParticipationRepository: ExamParticipationRepository;
-  private examRepository: ExamRepository;
-  private examService: ExamService;
+  private readonly examFinalizer: IExpiredParticipationFinalizer;
   private isRunning: boolean = false;
   private checkInterval: NodeJS.Timeout | null = null;
 
-  constructor() {
-    this.examParticipationRepository = new ExamParticipationRepository();
-    this.examRepository = new ExamRepository();
-    this.examService = new ExamService();
+  constructor(deps: ExamAutoSubmitServiceDependencies) {
+    this.examFinalizer = deps.examFinalizer;
   }
 
-  /**
-   * Start the auto-submit service
-   * Checks for expired exams every 30 seconds
-   */
+  /** Starts the auto-submit service and schedules recurring checks. */
   async start(checkIntervalMs: number = 30000): Promise<void> {
     if (this.isRunning) {
       return;
@@ -50,9 +48,7 @@ export class ExamAutoSubmitService implements IExamAutoSubmitService {
     }, checkIntervalMs);
   }
 
-  /**
-   * Stop the auto-submit service
-   */
+  /** Stops the auto-submit interval and resets the running flag. */
   async stop(): Promise<void> {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
@@ -61,12 +57,10 @@ export class ExamAutoSubmitService implements IExamAutoSubmitService {
     this.isRunning = false;
   }
 
-  /**
-   * Check for expired participations and auto-submit them
-   */
+  /** Runs one pass of expired-participation finalization with error logging. */
   private async checkAndAutoSubmitExpiredExams(): Promise<void> {
     try {
-      await this.examService.finalizeExpiredParticipations();
+      await this.examFinalizer.finalizeExpiredParticipations();
     } catch (error) {
       logger.error('Error finalizing expired participations:', error);
     }
@@ -83,7 +77,9 @@ export class ExamAutoSubmitService implements IExamAutoSubmitService {
   }
 }
 
-/** Creates an exam auto-submit service instance for startup code without a module singleton. */
+/** Creates an exam auto-submit runner wired to a fresh ExamService finalizer. */
 export function createExamAutoSubmitService(): IExamAutoSubmitService {
-  return new ExamAutoSubmitService();
+  return new ExamAutoSubmitService({
+    examFinalizer: createExamService(),
+  });
 }

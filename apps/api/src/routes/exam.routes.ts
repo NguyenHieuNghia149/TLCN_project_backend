@@ -6,7 +6,7 @@ import {
   GetExamLeaderboardSchema,
   UpdateExamSchema,
 } from '@backend/shared/validations/exam.validation';
-import { ExamService } from '@backend/api/services/exam.service';
+import { createExamService } from '@backend/api/services/exam.service';
 import { authenticationToken, requireTeacher } from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { validate } from '@backend/api/middlewares/validate.middleware';
@@ -14,7 +14,7 @@ import { validate } from '@backend/api/middlewares/validate.middleware';
 /** Creates the exam router without instantiating services at import time. */
 export function createExamRouter(): Router {
   const router = Router();
-  const examService = new ExamService();
+  const examService = createExamService();
   const examController = new ExamController(examService);
 
   const examRateLimit = rateLimitMiddleware({

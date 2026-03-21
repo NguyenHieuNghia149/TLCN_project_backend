@@ -22,6 +22,7 @@ function mockRouteMiddlewareModules(): void {
     optionalAuth: passThroughMiddleware,
     requireTeacherOrOwner: passThroughMiddleware,
     requireOwner: passThroughMiddleware,
+    requireTeacher: passThroughMiddleware,
   }));
   jest.doMock('@backend/api/middlewares/validate.middleware', () => ({
     validate: jest.fn(() => passThroughMiddleware),
@@ -290,6 +291,52 @@ describe('API controller route composition', () => {
     expect(typeof (router as Router).use).toBe('function');
   });
 
+  it('wires the exam route factory with createExamService', () => {
+    mockRouteMiddlewareModules();
+    const serviceInstance = {};
+    const controllerInstance = createControllerDouble([
+      'getExams',
+      'getExamById',
+      'getExamChallenge',
+      'joinExam',
+      'submitExam',
+      'getLeaderboard',
+      'getExamLeaderboard',
+      'getMyParticipation',
+      'getOrCreateSession',
+      'getParticipationSubmission',
+      'getParticipation',
+      'syncSession',
+      'createExam',
+      'updateExam',
+      'deleteExam',
+    ]);
+    const createExamService = jest.fn(() => serviceInstance);
+    const ExamController = jest.fn(() => controllerInstance);
+
+    jest.doMock('@backend/api/services/exam.service', () => ({ createExamService }));
+    jest.doMock('@backend/api/controllers/exam.controller', () => ({
+      ExamController,
+      CreateExamSchema: {},
+    }));
+    jest.doMock('@backend/shared/validations/exam.validation', () => ({
+      JoinExamSchema: {},
+      SubmitExamSchema: {},
+      GetExamLeaderboardSchema: {},
+      UpdateExamSchema: {},
+    }));
+
+    let createExamRouter!: typeof import('@backend/api/routes/exam.routes').createExamRouter;
+    jest.isolateModules(() => {
+      ({ createExamRouter } = require('@backend/api/routes/exam.routes'));
+    });
+
+    const router = createExamRouter();
+
+    expect(createExamService).toHaveBeenCalledTimes(1);
+    expect(ExamController).toHaveBeenCalledWith(serviceInstance);
+    expect(typeof (router as Router).use).toBe('function');
+  });
   it('keeps the admin-lesson parse-content path wired through LessonUploadController', async () => {
     mockRouteMiddlewareModules();
     const serviceInstance = {};
@@ -340,3 +387,6 @@ describe('API controller route composition', () => {
     expect(response.body).toEqual({ html: '<p>Hello</p>' });
   });
 });
+
+
+

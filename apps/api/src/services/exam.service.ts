@@ -5,6 +5,7 @@ import { ProblemRepository } from '../repositories/problem.repository';
 import { SubmissionRepository } from '../repositories/submission.repository';
 import { TestcaseRepository } from '../repositories/testcase.repository';
 import { ResultSubmissionRepository } from '../repositories/result-submission.repository';
+import { UserRepository } from '../repositories/user.repository';
 import { CreateExamInput, ExamResponse } from '@backend/shared/validations/exam.validation';
 import { ProblemInput } from '@backend/shared/validations/problem.validation';
 import {
@@ -39,6 +40,19 @@ export interface INotificationPublisher {
   notifyAllUsers(type: string, title: string, message: string, metadata?: unknown): Promise<void>;
 }
 
+type ExamServiceDependencies = {
+  examRepository: ExamRepository;
+  examToProblemsRepository: ExamToProblemsRepository;
+  examParticipationRepository: ExamParticipationRepository;
+  problemRepository: ProblemRepository;
+  submissionRepository: SubmissionRepository;
+  testcaseRepository: TestcaseRepository;
+  resultSubmissionRepository: ResultSubmissionRepository;
+  userRepository: UserRepository;
+  challengeService: ChallengeService;
+  getNotificationPublisher?: () => INotificationPublisher;
+};
+
 export class ExamService {
   private examRepository: ExamRepository;
   private examToProblemsRepository: ExamToProblemsRepository;
@@ -47,20 +61,22 @@ export class ExamService {
   private submissionRepository: SubmissionRepository;
   private testcaseRepository: TestcaseRepository;
   private resultSubmissionRepository: ResultSubmissionRepository;
+  private userRepository: UserRepository;
   private challengeService: ChallengeService;
+  private readonly getNotificationPublisher: () => INotificationPublisher;
 
-  constructor(
-    private readonly getNotificationPublisher: () => INotificationPublisher = () =>
-      createNotificationService()
-  ) {
-    this.examRepository = new ExamRepository();
-    this.examToProblemsRepository = new ExamToProblemsRepository();
-    this.examParticipationRepository = new ExamParticipationRepository();
-    this.problemRepository = new ProblemRepository();
-    this.submissionRepository = new SubmissionRepository();
-    this.testcaseRepository = new TestcaseRepository();
-    this.resultSubmissionRepository = new ResultSubmissionRepository();
-    this.challengeService = createChallengeService();
+  constructor(deps: ExamServiceDependencies) {
+    this.examRepository = deps.examRepository;
+    this.examToProblemsRepository = deps.examToProblemsRepository;
+    this.examParticipationRepository = deps.examParticipationRepository;
+    this.problemRepository = deps.problemRepository;
+    this.submissionRepository = deps.submissionRepository;
+    this.testcaseRepository = deps.testcaseRepository;
+    this.resultSubmissionRepository = deps.resultSubmissionRepository;
+    this.userRepository = deps.userRepository;
+    this.challengeService = deps.challengeService;
+    this.getNotificationPublisher =
+      deps.getNotificationPublisher ?? (() => createNotificationService());
   }
 
   /**
@@ -1121,8 +1137,7 @@ export class ExamService {
     const problemIds = problems.map((p: any) => p.problemId);
 
     // Get user info
-    const userRepo = new (await import('../repositories/user.repository')).UserRepository();
-    const user = await userRepo.findById(participation.userId);
+    const user = await this.userRepository.findById(participation.userId);
 
     // Get solutions for each problem
     const solutions = await Promise.all(
@@ -1206,6 +1221,22 @@ export class ExamService {
   }
 
   // Problem creation and related DB operations were moved to ProblemRepository.
+}
+
+/** Creates a fresh ExamService with concrete repositories and default providers. */
+export function createExamService(): ExamService {
+  return new ExamService({
+    examRepository: new ExamRepository(),
+    examToProblemsRepository: new ExamToProblemsRepository(),
+    examParticipationRepository: new ExamParticipationRepository(),
+    problemRepository: new ProblemRepository(),
+    submissionRepository: new SubmissionRepository(),
+    testcaseRepository: new TestcaseRepository(),
+    resultSubmissionRepository: new ResultSubmissionRepository(),
+    userRepository: new UserRepository(),
+    challengeService: createChallengeService(),
+    getNotificationPublisher: () => createNotificationService(),
+  });
 }
 
 

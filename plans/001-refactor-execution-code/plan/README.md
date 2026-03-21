@@ -17,6 +17,7 @@ Included slices:
 - slice 15: API Controller Injection And Composition Root Cleanup
 - Slice 16: API Simple Service Dependency Injection And Service Factories
 - Slice 17: Judge-Facing API Service DI And Factory Completion
+- Slice 18: Exam Service DI And Auto-Submit Finalizer Cleanup
 
 Notes:
 
