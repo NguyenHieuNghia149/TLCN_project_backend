@@ -1,65 +1,115 @@
-import winston from 'winston';
+﻿import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
 
-const isDev = process.env.NODE_ENV !== 'production';
+type Logger = winston.Logger;
 
-const LOG_DIR = process.env.LOG_DIR || path.resolve(process.cwd(), 'logs');
+type LoggerConfig = {
+  isDev: boolean;
+  logDir: string;
+  logToFile: boolean;
+  logLevel: string;
+};
 
-const devFormat = winston.format.combine(
-  winston.format.colorize({ all: true }),
-  winston.format.timestamp({ format: 'HH:mm:ss' }),
-  winston.format.printf(({ level, message, timestamp, ...meta }) => {
-    const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-    return `[${timestamp}] ${level}: ${message}${metaStr}`;
-  })
-);
+const buildWinstonLogger = winston['createLogger'].bind(winston);
+const RotateFileTransport = DailyRotateFile as unknown as new (
+  options: Record<string, unknown>,
+) => winston.transport;
 
-const prodFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.errors({ stack: true }),
-  winston.format.json()
-);
+let loggerInstance: Logger | null = null;
 
-const transports: winston.transport[] = [
-  new winston.transports.Console({
-    format: isDev ? devFormat : prodFormat,
-  }),
-];
+/** Resolves logger config from the current process environment. */
+function readLoggerConfig(): LoggerConfig {
+  const isDev = process.env.NODE_ENV !== 'production';
 
-// File transports only in environments where LOG_DIR is writable
-if (!isDev || process.env.LOG_TO_FILE === 'true') {
-  // Combined log: all levels
-  transports.push(
-    new DailyRotateFile({
-      dirname: LOG_DIR,
-      filename: 'application-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true,
-      maxFiles: '14d',
-      level: 'info',
-      format: prodFormat,
-    })
-  );
+  return {
+    isDev,
+    logDir: process.env.LOG_DIR || path.resolve(process.cwd(), 'logs'),
+    logToFile: !isDev || process.env.LOG_TO_FILE === 'true',
+    logLevel: process.env.LOG_LEVEL || (isDev ? 'debug' : 'info'),
+  };
+}
 
-  // Error log: errors only
-  transports.push(
-    new DailyRotateFile({
-      dirname: LOG_DIR,
-      filename: 'error-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true,
-      maxFiles: '14d',
-      level: 'error',
-      format: prodFormat,
-    })
+/** Builds the colored formatter used in development. */
+function createDevFormat() {
+  return winston.format.combine(
+    winston.format.colorize({ all: true }),
+    winston.format.timestamp({ format: 'HH:mm:ss' }),
+    winston.format.printf(({ level, message, timestamp, ...meta }) => {
+      const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
+      return `[${timestamp}] ${level}: ${message}${metaStr}`;
+    }),
   );
 }
 
-export const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || (isDev ? 'debug' : 'info'),
-  transports,
-  exitOnError: false,
-});
+/** Builds the structured formatter used outside development. */
+function createProdFormat() {
+  return winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json(),
+  );
+}
+
+/** Builds the logger transport list from resolved config. */
+function createTransports(config: LoggerConfig): winston.transport[] {
+  const devFormat = createDevFormat();
+  const prodFormat = createProdFormat();
+  const transports: winston.transport[] = [
+    new winston.transports.Console({
+      format: config.isDev ? devFormat : prodFormat,
+    }),
+  ];
+
+  if (config.logToFile) {
+    transports.push(
+      new RotateFileTransport({
+        dirname: config.logDir,
+        filename: 'application-%DATE%.log',
+        datePattern: 'YYYY-MM-DD',
+        zippedArchive: true,
+        maxFiles: '14d',
+        level: 'info',
+        format: prodFormat,
+      }),
+    );
+
+    transports.push(
+      new RotateFileTransport({
+        dirname: config.logDir,
+        filename: 'error-%DATE%.log',
+        datePattern: 'YYYY-MM-DD',
+        zippedArchive: true,
+        maxFiles: '14d',
+        level: 'error',
+        format: prodFormat,
+      }),
+    );
+  }
+
+  return transports;
+}
+
+/** Creates a fresh logger instance with the current environment-driven config. */
+export function createLogger(): Logger {
+  const config = readLoggerConfig();
+
+  return buildWinstonLogger({
+    level: config.logLevel,
+    transports: createTransports(config),
+    exitOnError: false,
+  });
+}
+
+/** Returns the shared logger singleton, creating it on first access. */
+export function getLogger(): Logger {
+  if (!loggerInstance) {
+    loggerInstance = createLogger();
+  }
+
+  return loggerInstance;
+}
+
+export const logger: Logger = getLogger();
 
 export default logger;

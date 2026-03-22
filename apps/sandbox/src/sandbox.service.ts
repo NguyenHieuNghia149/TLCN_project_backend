@@ -62,34 +62,50 @@ export interface ISandboxService {
   healthCheck(): Promise<boolean>;
 }
 
+interface ISandboxSecurityService {
+  validateCodeSecurity(code: string, language: string): void;
+}
+
+interface ISandboxMonitoringService {
+  detectMaliciousCode(code: string, language: string): Array<{ message: string }>;
+  logSecurityEvent(event: unknown): void;
+}
+
+type SandboxServiceDependencies = {
+  config: SandboxConfig;
+  workspaceDir: string;
+  sandboxYamlPath: string;
+  securityService: ISandboxSecurityService;
+  monitoringService: ISandboxMonitoringService;
+};
+
 export class SandboxService {
   private config: SandboxConfig;
   private workspaceDir: string;
+  private sandboxYamlPath: string;
+  private securityService: ISandboxSecurityService;
+  private monitoringService: ISandboxMonitoringService;
   private activeJobs: Map<string, any> = new Map();
   private yamlConfig: GlobalSandboxConfig | null = null;
 
-  constructor() {
-    this.config = {
-      host: process.env.SANDBOX_HOST || 'localhost',
-      port: parseInt(process.env.SANDBOX_PORT || '4000'),
-      timeout: parseInt(process.env.SANDBOX_TIMEOUT || '30000'),
-      maxConcurrent: parseInt(process.env.SANDBOX_MAX_CONCURRENT || '5'),
-    };
-
-    this.workspaceDir = process.env.WORKSPACE_DIR || path.join(process.cwd(), 'workspace');
+  constructor(deps: SandboxServiceDependencies) {
+    this.config = deps.config;
+    this.workspaceDir = deps.workspaceDir;
+    this.sandboxYamlPath = deps.sandboxYamlPath;
+    this.securityService = deps.securityService;
+    this.monitoringService = deps.monitoringService;
     this.ensureWorkspaceDir();
     this.loadSandboxYamlConfig();
   }
 
   private loadSandboxYamlConfig(): void {
     try {
-      const configPath = path.join(process.cwd(), 'config', 'sandbox.yaml');
-      if (FsUtils.exists(configPath)) {
-        const fileContents = FsUtils.readFile(configPath, 'utf8');
+      if (FsUtils.exists(this.sandboxYamlPath)) {
+        const fileContents = FsUtils.readFile(this.sandboxYamlPath, 'utf8');
         this.yamlConfig = yaml.parse(fileContents);
         logger.info('Successfully loaded sandbox.yaml configuration');
       } else {
-        logger.warn(`Sandbox YAML config not found at ${configPath}`);
+        logger.warn(`Sandbox YAML config not found at ${this.sandboxYamlPath}`);
       }
     } catch (error) {
       logger.error('Failed to parse sandbox.yaml', error);
@@ -148,11 +164,10 @@ export class SandboxService {
   }
 
   private validateCodeSecurity(code: string, language: string): void {
-    getSecurityService().validateCodeSecurity(code, language);
-    const monitoringService = getMonitoringService();
-    const maliciousEvents = monitoringService.detectMaliciousCode(code, language);
+    this.securityService.validateCodeSecurity(code, language);
+    const maliciousEvents = this.monitoringService.detectMaliciousCode(code, language);
     if (maliciousEvents.length > 0) {
-      maliciousEvents.forEach(event => monitoringService.logSecurityEvent(event));
+      maliciousEvents.forEach(event => this.monitoringService.logSecurityEvent(event));
       throw new Error(
         `Code contains malicious patterns: ${maliciousEvents[0]?.message || 'Unknown pattern'}`
       );
@@ -584,9 +599,26 @@ export class SandboxService {
   }
 }
 
+/** Creates a SandboxService with default config, workspace path, YAML path, and runtime providers. */
 export function createSandboxService(): SandboxService {
-  return new SandboxService();
+  return new SandboxService({
+    config: {
+      host: process.env.SANDBOX_HOST || 'localhost',
+      port: parseInt(process.env.SANDBOX_PORT || '4000', 10),
+      timeout: parseInt(process.env.SANDBOX_TIMEOUT || '30000', 10),
+      maxConcurrent: parseInt(process.env.SANDBOX_MAX_CONCURRENT || '5', 10),
+    },
+    workspaceDir: process.env.WORKSPACE_DIR || path.join(process.cwd(), 'workspace'),
+    sandboxYamlPath: path.join(process.cwd(), 'config', 'sandbox.yaml'),
+    securityService: getSecurityService(),
+    monitoringService: getMonitoringService(),
+  });
 }
+
+
+
+
+
 
 
 

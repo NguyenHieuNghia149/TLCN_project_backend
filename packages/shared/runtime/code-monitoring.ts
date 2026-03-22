@@ -22,12 +22,16 @@ export interface SecurityEvent {
   details?: any;
 }
 
+type CodeMonitoringServiceDependencies = {
+  logDir: string;
+};
+
 export class CodeMonitoringService {
   private logDir: string;
   private securityEvents: SecurityEvent[] = [];
 
-  constructor() {
-    this.logDir = path.join(process.cwd(), 'logs');
+  constructor(deps: CodeMonitoringServiceDependencies) {
+    this.logDir = deps.logDir;
     this.ensureLogDir();
   }
 
@@ -348,10 +352,19 @@ export class CodeMonitoringService {
 
 let monitoringServiceInstance: CodeMonitoringService | null = null;
 
+/** Creates a CodeMonitoringService with the log directory resolved from the current working directory. */
+export function createCodeMonitoringService(): CodeMonitoringService {
+  return new CodeMonitoringService({
+    logDir: path.join(process.cwd(), 'logs'),
+  });
+}
+
 export function getMonitoringService(): CodeMonitoringService {
   if (!monitoringServiceInstance) {
-    monitoringServiceInstance = new CodeMonitoringService();
+    monitoringServiceInstance = createCodeMonitoringService();
   }
 
   return monitoringServiceInstance;
 }
+
+

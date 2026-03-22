@@ -24,12 +24,16 @@ export class CodeSecurityError extends Error {
   }
 }
 
+type CodeSecurityServiceDependencies = {
+  securityDir: string;
+};
+
 export class CodeSecurityService {
   private securityDir: string;
   private seccompProfile: any;
 
-  constructor() {
-    this.securityDir = path.join(process.cwd(), 'security');
+  constructor(deps: CodeSecurityServiceDependencies) {
+    this.securityDir = deps.securityDir;
     this.ensureSecurityDir();
     this.initializeSeccompProfile();
   }
@@ -521,10 +525,19 @@ export class CodeSecurityService {
 
 let securityServiceInstance: CodeSecurityService | null = null;
 
+/** Creates a CodeSecurityService with the security directory resolved from the current working directory. */
+export function createCodeSecurityService(): CodeSecurityService {
+  return new CodeSecurityService({
+    securityDir: path.join(process.cwd(), 'security'),
+  });
+}
+
 export function getSecurityService(): CodeSecurityService {
   if (!securityServiceInstance) {
-    securityServiceInstance = new CodeSecurityService();
+    securityServiceInstance = createCodeSecurityService();
   }
 
   return securityServiceInstance;
 }
+
+
