@@ -1,10 +1,3 @@
-jest.mock('nodemailer', () => ({
-  __esModule: true,
-  default: {
-    createTransport: jest.fn(() => ({ sendMail: jest.fn() })),
-  },
-}));
-
 import { JWTUtils, PasswordUtils } from '@backend/shared/utils';
 import {
   AuthService,

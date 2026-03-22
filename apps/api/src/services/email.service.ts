@@ -30,33 +30,25 @@ export interface AuthRequest extends Request {
 
 export const otpStore = new Map<string, OTPData>();
 
-export class EMailService {
-  private transporter;
+/** Minimal transport contract used by EMailService. */
+export interface IEmailTransporter {
+  sendMail(options: {
+    from: string;
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<unknown>;
+}
 
-  constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: config.email.host,
-      port: config.email.port,
-      secure: false,
-      auth: {
-        user: config.email.user,
-        pass: config.email.pass,
-      },
-      tls: {
-        ciphers: 'SSLv3',
-        rejectUnauthorized: false,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 5000,
-      socketTimeout: 15000,
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 10,
-      rateDelta: 1000,
-      rateLimit: 5,
-      logger: true,
-      debug: process.env.NODE_ENV === 'production',
-    });
+type EMailServiceDependencies = {
+  transporter: IEmailTransporter;
+};
+
+export class EMailService {
+  private transporter: IEmailTransporter;
+
+  constructor({ transporter }: EMailServiceDependencies) {
+    this.transporter = transporter;
   }
 
   generateOTP(): string {
@@ -137,7 +129,36 @@ export class EMailService {
   }
 }
 
+/** Creates the concrete Nodemailer transporter from the current email config. */
+export function createEMailTransporter(): IEmailTransporter {
+  return nodemailer.createTransport({
+    host: config.email.host,
+    port: config.email.port,
+    secure: false,
+    auth: {
+      user: config.email.user,
+      pass: config.email.pass,
+    },
+    tls: {
+      ciphers: 'SSLv3',
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 5000,
+    socketTimeout: 15000,
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 10,
+    rateDelta: 1000,
+    rateLimit: 5,
+    logger: true,
+    debug: process.env.NODE_ENV === 'production',
+  });
+}
+
 /** Creates an email service for auth composition roots. */
-export function createEMailService(): EMailService {
-  return new EMailService();
+export function createEMailService(options: { transporter?: IEmailTransporter } = {}): EMailService {
+  return new EMailService({
+    transporter: options.transporter ?? createEMailTransporter(),
+  });
 }
