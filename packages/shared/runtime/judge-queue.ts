@@ -37,27 +37,38 @@ export class JudgeQueueError extends Error {
   }
 }
 
+interface IJudgeQueuePublisher {
+  on(event: 'error', listener: (err: Error) => void): this;
+  ping(): Promise<unknown>;
+  publish(channel: string, message: string): Promise<unknown>;
+  quit(): Promise<unknown>;
+  disconnect(): void;
+}
+
+type JudgeQueueServiceDependencies = {
+  createQueue: () => Queue;
+  createPublisher: () => IJudgeQueuePublisher;
+};
+
 export class JudgeQueueService {
+  private readonly createQueue: () => Queue;
+  private readonly createPublisher: () => IJudgeQueuePublisher;
   private queue?: Queue;
-  private publisher?: Redis;
+  private publisher?: IJudgeQueuePublisher;
   private initialized = false;
+
+  constructor({ createQueue, createPublisher }: JudgeQueueServiceDependencies) {
+    this.createQueue = createQueue;
+    this.createPublisher = createPublisher;
+  }
 
   private initializeIfNeeded(): void {
     if (this.initialized) {
       return;
     }
 
-    const queueRedisUrl =
-      process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
-    const queueConnection = new Redis(queueRedisUrl, {
-      maxRetriesPerRequest: null,
-    });
-
-    this.queue = new Queue('judge_queue', { connection: queueConnection as any });
-
-    const pubsubRedisUrl =
-      process.env.REDIS_CACHE_URL || process.env.REDIS_URL || 'redis://localhost:6379/0';
-    this.publisher = new Redis(pubsubRedisUrl);
+    this.queue = this.createQueue();
+    this.publisher = this.createPublisher();
 
     this.publisher.on('error', (err: Error) => {
       logger.error('[JudgeQueueService Publisher] Redis error:', err.message);
@@ -170,9 +181,28 @@ export class JudgeQueueService {
 
 let judgeQueueServiceInstance: JudgeQueueService | null = null;
 
+/** Creates a fresh JudgeQueueService backed by the current Redis env configuration. */
+export function createJudgeQueueService(): JudgeQueueService {
+  const queueRedisUrl =
+    process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
+  const pubsubRedisUrl =
+    process.env.REDIS_CACHE_URL || process.env.REDIS_URL || 'redis://localhost:6379/0';
+
+  return new JudgeQueueService({
+    createQueue: () => {
+      const queueConnection = new Redis(queueRedisUrl, {
+        maxRetriesPerRequest: null,
+      });
+
+      return new Queue('judge_queue', { connection: queueConnection as any });
+    },
+    createPublisher: () => new Redis(pubsubRedisUrl) as unknown as IJudgeQueuePublisher,
+  });
+}
+
 export function getJudgeQueueService(): JudgeQueueService {
   if (!judgeQueueServiceInstance) {
-    judgeQueueServiceInstance = new JudgeQueueService();
+    judgeQueueServiceInstance = createJudgeQueueService();
   }
 
   return judgeQueueServiceInstance;

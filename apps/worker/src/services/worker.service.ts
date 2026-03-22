@@ -25,35 +25,54 @@ export interface IWorkerService {
   stop(): Promise<void>;
 }
 
+interface IWorkerQueuePublisher {
+  publish(channel: string, message: string): Promise<unknown>;
+}
+
+type WorkerInstanceFactory = (processor: (bullJob: Job) => Promise<void>) => Worker;
+
 type WorkerBreakerFactory = (
   bullWorker: Worker,
   sandboxClient: ISandboxGrpcClient
 ) => SandboxBreaker;
 
+type WorkerServiceDependencies = {
+  sandboxClient: ISandboxGrpcClient;
+  createBullWorker: WorkerInstanceFactory;
+  createBreaker: WorkerBreakerFactory;
+  getQueueService?: () => IWorkerQueuePublisher;
+};
+
 export class WorkerService implements IWorkerService {
   private workerId: string;
   private totalProcessed: number = 0;
   private totalErrors: number = 0;
-  private worker: Worker | null = null;
+  private bullWorker: Worker | null = null;
   private breaker: SandboxBreaker | null = null;
   private readonly sandboxClient: ISandboxGrpcClient;
+  private readonly createBullWorker: WorkerInstanceFactory;
   private readonly createBreaker: WorkerBreakerFactory;
+  private readonly getQueueServiceProvider: () => IWorkerQueuePublisher;
 
-  constructor(
-    sandboxClient: ISandboxGrpcClient,
-    createBreaker: WorkerBreakerFactory = createSandboxBreaker
-  ) {
+  constructor(deps: WorkerServiceDependencies) {
     this.workerId = `worker-${Date.now()}`;
-    this.sandboxClient = sandboxClient;
-    this.createBreaker = createBreaker;
+    this.sandboxClient = deps.sandboxClient;
+    this.createBullWorker = deps.createBullWorker;
+    this.createBreaker = deps.createBreaker;
+    this.getQueueServiceProvider = deps.getQueueService ?? (() => getJudgeQueueService());
   }
 
   private getQueueService() {
-    return getJudgeQueueService();
+    return this.getQueueServiceProvider();
   }
 
   async start(): Promise<void> {
     logger.info(`Starting Code Execution Worker: ${this.workerId}`);
+
+    if (this.bullWorker) {
+      logger.info(`Worker ${this.workerId} already started. Reusing existing BullMQ worker.`);
+      return;
+    }
 
     try {
       const sandboxAvailable = await this.testSandboxService();
@@ -64,30 +83,17 @@ export class WorkerService implements IWorkerService {
         logger.warn(`Sandbox gRPC URL: ${process.env.SANDBOX_GRPC_URL || 'localhost:50051'}`);
       }
 
-      const queueRedisUrl =
-        process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
-      const connection = new Redis(queueRedisUrl, { maxRetriesPerRequest: null });
+      this.bullWorker = this.createBullWorker(async (bullJob: Job) => {
+        await this.processJob(bullJob);
+      });
 
-      this.worker = new Worker(
-        'judge_queue',
-        async (bullJob: Job) => {
-          await this.processJob(bullJob);
-        },
-        {
-          connection: connection as any,
-          concurrency: 5,
-          lockDuration: 30000,
-          stalledInterval: 15000,
-        }
-      );
+      this.breaker = this.createBreaker(this.bullWorker, this.sandboxClient);
 
-      this.breaker = this.createBreaker(this.worker, this.sandboxClient);
-
-      this.worker.on('completed', (job: Job) => {
+      this.bullWorker.on('completed', (job: Job) => {
         logger.info(`Job ${job.id} completed successfully`);
       });
 
-      this.worker.on('failed', async (job: Job | undefined, err: Error) => {
+      this.bullWorker.on('failed', async (job: Job | undefined, err: Error) => {
         if (!job) {
           logger.error('Worker global error:', err.message);
           return;
@@ -137,6 +143,8 @@ export class WorkerService implements IWorkerService {
 
       logger.info(`Worker ${this.workerId} started seamlessly`);
     } catch (error) {
+      this.bullWorker = null;
+      this.breaker = null;
       logger.error('Failed to start worker:', error);
       throw error;
     }
@@ -144,11 +152,12 @@ export class WorkerService implements IWorkerService {
 
   async stop(): Promise<void> {
     logger.info(`Stopping worker ${this.workerId}...`);
-    if (this.worker) {
-      await this.worker.close();
-      this.worker = null;
+    if (this.bullWorker) {
+      await this.bullWorker.close();
+      this.bullWorker = null;
       logger.info('Worker closed gracefully.');
     }
+    this.breaker = null;
     this.sandboxClient.close();
   }
 
@@ -445,5 +454,22 @@ export function createWorkerService(deps: {
   sandboxClient: ISandboxGrpcClient;
   createBreaker?: WorkerBreakerFactory;
 }): IWorkerService {
-  return new WorkerService(deps.sandboxClient, deps.createBreaker ?? createSandboxBreaker);
+  const createBullWorker: WorkerInstanceFactory = processor => {
+    const queueRedisUrl =
+      process.env.REDIS_QUEUE_URL || process.env.REDIS_URL || 'redis://localhost:6379/1';
+    const connection = new Redis(queueRedisUrl, { maxRetriesPerRequest: null });
+
+    return new Worker('judge_queue', processor, {
+      connection: connection as any,
+      concurrency: 5,
+      lockDuration: 30000,
+      stalledInterval: 15000,
+    });
+  };
+
+  return new WorkerService({
+    sandboxClient: deps.sandboxClient,
+    createBullWorker,
+    createBreaker: deps.createBreaker ?? createSandboxBreaker,
+  });
 }

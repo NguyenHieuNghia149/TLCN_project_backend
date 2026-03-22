@@ -80,17 +80,46 @@ describe('JudgeQueueService lazy initialization', () => {
     expect(Redis).not.toHaveBeenCalled();
   });
 
-  it('connect is idempotent', async () => {
+  it('creates fresh judge queue services without initializing clients at construction time', () => {
     const Queue = require('bullmq').Queue as jest.Mock;
     const Redis = require('ioredis') as jest.Mock;
     const runtime = require('../../../packages/shared/runtime/judge-queue');
-    const service = runtime.getJudgeQueueService();
+
+    const first = runtime.createJudgeQueueService();
+    const second = runtime.createJudgeQueueService();
+
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(second).not.toBe(first);
+    expect(Queue).not.toHaveBeenCalled();
+    expect(Redis).not.toHaveBeenCalled();
+  });
+
+  it('uses injected factories lazily and keeps connect idempotent', async () => {
+    const runtime = require('../../../packages/shared/runtime/judge-queue') as typeof import('../../../packages/shared/runtime/judge-queue');
+    const mockQueue = {
+      close: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const mockPublisher = {
+      on: jest.fn().mockReturnThis(),
+      ping: jest.fn().mockResolvedValue('PONG'),
+      publish: jest.fn().mockResolvedValue(1),
+      quit: jest.fn().mockResolvedValue('OK'),
+      disconnect: jest.fn(),
+    } as any;
+    const createQueue = jest.fn(() => mockQueue);
+    const createPublisher = jest.fn(() => mockPublisher);
+    const service = new runtime.JudgeQueueService({ createQueue, createPublisher });
+
+    expect(createQueue).not.toHaveBeenCalled();
+    expect(createPublisher).not.toHaveBeenCalled();
 
     await service.connect();
     await service.connect();
 
-    expect(Queue).toHaveBeenCalledTimes(1);
-    expect(Redis).toHaveBeenCalledTimes(2);
+    expect(createQueue).toHaveBeenCalledTimes(1);
+    expect(createPublisher).toHaveBeenCalledTimes(1);
+    expect(mockPublisher.on).toHaveBeenCalledTimes(1);
   });
 
   it('disconnect is a no-op when the service was never initialized', async () => {
@@ -112,6 +141,29 @@ describe('JudgeQueueService lazy initialization', () => {
     const second = runtime.getJudgeQueueService();
 
     expect(second).not.toBe(first);
+  });
+
+  it('getQueue lazily initializes a queue for Bull Board consumers', () => {
+    const runtime = require('../../../packages/shared/runtime/judge-queue') as typeof import('../../../packages/shared/runtime/judge-queue');
+    const mockQueue = {
+      close: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const mockPublisher = {
+      on: jest.fn().mockReturnThis(),
+      ping: jest.fn().mockResolvedValue('PONG'),
+      publish: jest.fn().mockResolvedValue(1),
+      quit: jest.fn().mockResolvedValue('OK'),
+      disconnect: jest.fn(),
+    } as any;
+    const createQueue = jest.fn(() => mockQueue);
+    const createPublisher = jest.fn(() => mockPublisher);
+    const service = new runtime.JudgeQueueService({ createQueue, createPublisher });
+
+    const queue = (service as any)['getQueue']();
+
+    expect(queue).toBe(mockQueue);
+    expect(createQueue).toHaveBeenCalledTimes(1);
+    expect(createPublisher).toHaveBeenCalledTimes(1);
   });
 
   it('lazily initializes queue methods and returns queue status', async () => {
@@ -147,3 +199,4 @@ describe('JudgeQueueService lazy initialization', () => {
     expect(mockRedisClients[1]!.ping).toHaveBeenCalledTimes(1);
   });
 });
+

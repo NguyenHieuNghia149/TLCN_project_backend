@@ -42,6 +42,18 @@ export interface ISandboxGrpcClient {
   close(): void;
 }
 
+interface ISandboxGrpcStub {
+  ExecuteCode(
+    request: GrpcExecutionRequest,
+    callback: (err: grpc.ServiceError | null, response: GrpcExecutionResponse) => void
+  ): void;
+}
+
+type SandboxGrpcClientDependencies = {
+  sandboxAddress: string;
+  stub: ISandboxGrpcStub;
+};
+
 function getJudgeProto(): any {
   if (judgeProtoCache) {
     return judgeProtoCache;
@@ -60,16 +72,12 @@ function getJudgeProto(): any {
 }
 
 export class SandboxGrpcClient implements ISandboxGrpcClient {
-  private stub: any;
+  private readonly stub: ISandboxGrpcStub;
   private readonly sandboxAddress: string;
 
-  constructor() {
-    this.sandboxAddress = process.env.SANDBOX_GRPC_URL || 'localhost:50051';
-    const judgeProto = getJudgeProto();
-    this.stub = new judgeProto.judge.SandboxService(
-      this.sandboxAddress,
-      grpc.credentials.createInsecure()
-    );
+  constructor(deps: SandboxGrpcClientDependencies) {
+    this.sandboxAddress = deps.sandboxAddress;
+    this.stub = deps.stub;
     logger.info(`[gRPC Client] Connected to sandbox at ${this.sandboxAddress}`);
   }
 
@@ -89,10 +97,22 @@ export class SandboxGrpcClient implements ISandboxGrpcClient {
   }
 
   close(): void {
-    grpc.closeClient(this.stub);
+    grpc.closeClient(this.stub as unknown as grpc.Client);
   }
 }
 
+/** Creates a sandbox gRPC client backed by the cached proto definition and current env config. */
 export function createSandboxGrpcClient(): ISandboxGrpcClient {
-  return new SandboxGrpcClient();
+  const sandboxAddress = process.env.SANDBOX_GRPC_URL || 'localhost:50051';
+  const judgeProto = getJudgeProto();
+  const stub = new judgeProto.judge.SandboxService(
+    sandboxAddress,
+    grpc.credentials.createInsecure()
+  ) as ISandboxGrpcStub;
+
+  return new SandboxGrpcClient({
+    sandboxAddress,
+    stub,
+  });
 }
+

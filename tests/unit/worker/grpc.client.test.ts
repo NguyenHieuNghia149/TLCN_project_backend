@@ -14,7 +14,9 @@ describe('worker grpc client lazy bootstrap', () => {
       },
     }));
 
-    jest.doMock('@backend/shared/utils', () => ({ logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() } }));
+    jest.doMock('@backend/shared/utils', () => ({
+      logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+    }));
     jest.doMock('@grpc/proto-loader', () => ({ loadSync }));
     jest.doMock('@grpc/grpc-js', () => ({
       loadPackageDefinition,
@@ -31,6 +33,54 @@ describe('worker grpc client lazy bootstrap', () => {
     expect(sandboxServiceCtor).not.toHaveBeenCalled();
   });
 
+  it('wraps callback-style stub execution and closes the injected stub', async () => {
+    const closeClient = jest.fn();
+    const fakeResponse = {
+      submission_id: 'submission-1',
+      overall_status: 'ACCEPTED',
+      compile_error: '',
+      results: [],
+    };
+
+    jest.doMock('@backend/shared/utils', () => ({
+      logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+    }));
+    jest.doMock('@grpc/proto-loader', () => ({ loadSync: jest.fn() }));
+    jest.doMock('@grpc/grpc-js', () => ({
+      loadPackageDefinition: jest.fn(),
+      credentials: { createInsecure: jest.fn(() => ({})) },
+      closeClient,
+    }));
+
+    let SandboxGrpcClient!: typeof import('../../../apps/worker/src/grpc/client').SandboxGrpcClient;
+    jest.isolateModules(() => {
+      ({ SandboxGrpcClient } = require('../../../apps/worker/src/grpc/client'));
+    });
+
+    const ExecuteCode = jest.fn((request, callback) => callback(null, fakeResponse));
+    const client = new SandboxGrpcClient({
+      sandboxAddress: 'sandbox:50051',
+      stub: { ExecuteCode } as any,
+    });
+
+    await expect(
+      client.executeCode({
+        submission_id: 'submission-1',
+        source_code: 'print(1)',
+        language: 'python',
+        time_limit_ms: 1000,
+        memory_limit_kb: 65536,
+        test_cases: [],
+      })
+    ).resolves.toEqual(fakeResponse);
+
+    expect(ExecuteCode).toHaveBeenCalledTimes(1);
+
+    client.close();
+    expect(closeClient).toHaveBeenCalledTimes(1);
+    expect(closeClient).toHaveBeenCalledWith(expect.objectContaining({ ExecuteCode }));
+  });
+
   it('loads proto lazily and caches it across client creation', () => {
     const loadSync = jest.fn(() => ({ proto: true }));
     const executeCode = jest.fn();
@@ -43,7 +93,9 @@ describe('worker grpc client lazy bootstrap', () => {
     const createInsecure = jest.fn(() => ({}));
     const closeClient = jest.fn();
 
-    jest.doMock('@backend/shared/utils', () => ({ logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() } }));
+    jest.doMock('@backend/shared/utils', () => ({
+      logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+    }));
     jest.doMock('@grpc/proto-loader', () => ({ loadSync }));
     jest.doMock('@grpc/grpc-js', () => ({
       loadPackageDefinition,
@@ -59,6 +111,7 @@ describe('worker grpc client lazy bootstrap', () => {
     const clientA = createSandboxGrpcClient();
     const clientB = createSandboxGrpcClient();
 
+    expect(clientA).not.toBe(clientB);
     expect(loadSync).toHaveBeenCalledTimes(1);
     expect(loadPackageDefinition).toHaveBeenCalledTimes(1);
     expect(sandboxServiceCtor).toHaveBeenCalledTimes(2);
@@ -69,5 +122,3 @@ describe('worker grpc client lazy bootstrap', () => {
     expect(closeClient).toHaveBeenCalledTimes(2);
   });
 });
-
-

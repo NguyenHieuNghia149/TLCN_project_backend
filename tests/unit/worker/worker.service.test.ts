@@ -24,6 +24,16 @@ import type { ISandboxGrpcClient } from '../../../apps/worker/src/grpc/client';
 import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 import { FunctionSignature } from '@backend/shared/types';
 
+/** Creates a minimal BullMQ worker double for lifecycle tests. */
+function createFakeBullWorker() {
+  const fakeWorker = {
+    on: jest.fn().mockReturnThis(),
+    close: jest.fn(async () => undefined),
+  };
+
+  return fakeWorker;
+}
+
 describe('WorkerService JSON-first execution payload', () => {
   const signature: FunctionSignature = {
     name: 'twoSum',
@@ -71,7 +81,11 @@ describe('WorkerService JSON-first execution payload', () => {
   });
 
   it('builds sandbox stdin and expected output directly from structured JSON', () => {
-    const service = new WorkerService(mockSandboxClient, mockCreateBreaker as any);
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
     const payload = (service as any).prepareExecutionPayload(job);
 
     expect(payload.testcases).toEqual([
@@ -85,7 +99,11 @@ describe('WorkerService JSON-first execution payload', () => {
   });
 
   it('derives display text from shared helpers instead of cached fields', () => {
-    const service = new WorkerService(mockSandboxClient, mockCreateBreaker as any);
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
     const executionResult = {
       results: [
         {
@@ -117,7 +135,11 @@ describe('WorkerService JSON-first execution payload', () => {
       results: [],
     });
 
-    const service = new WorkerService(mockSandboxClient, mockCreateBreaker as any);
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
     const ok = await (service as any).testSandboxService();
 
     expect(ok).toBe(true);
@@ -127,10 +149,73 @@ describe('WorkerService JSON-first execution payload', () => {
   });
 
   it('uses the lazy queue accessor instead of a module-level singleton', () => {
-    const service = new WorkerService(mockSandboxClient, mockCreateBreaker as any);
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
 
     expect((service as any).getQueueService()).toEqual({ publish: mockPublish });
     expect(mockGetJudgeQueueService).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates the BullMQ worker lazily and makes start idempotent', async () => {
+    mockSandboxClient.executeCode.mockResolvedValue({
+      submission_id: 'health-probe',
+      overall_status: 'ACCEPTED',
+      compile_error: '',
+      results: [],
+    });
+    const fakeWorker = createFakeBullWorker();
+    const createBullWorker = jest.fn(() => fakeWorker as any);
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker,
+      createBreaker: mockCreateBreaker as any,
+    });
+
+    expect(createBullWorker).not.toHaveBeenCalled();
+
+    await service.start();
+    await service.start();
+
+    expect(createBullWorker).toHaveBeenCalledTimes(1);
+    expect(mockCreateBreaker).toHaveBeenCalledTimes(1);
+    expect(mockCreateBreaker).toHaveBeenCalledWith(fakeWorker, mockSandboxClient);
+    expect(mockSandboxClient.executeCode).toHaveBeenCalledTimes(1);
+    expect(fakeWorker.on).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops the worker and closes the sandbox client after start', async () => {
+    mockSandboxClient.executeCode.mockResolvedValue({
+      submission_id: 'health-probe',
+      overall_status: 'ACCEPTED',
+      compile_error: '',
+      results: [],
+    });
+    const fakeWorker = createFakeBullWorker();
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(() => fakeWorker as any),
+      createBreaker: mockCreateBreaker as any,
+    });
+
+    await service.start();
+    await service.stop();
+
+    expect(fakeWorker.close).toHaveBeenCalledTimes(1);
+    expect(mockSandboxClient.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops safely before start without throwing', async () => {
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
+
+    await expect(service.stop()).resolves.toBeUndefined();
+    expect(mockSandboxClient.close).toHaveBeenCalledTimes(1);
   });
 });
 
