@@ -7,13 +7,16 @@ import {
   PaginationOptions,
   UserFilters,
 } from '@backend/api/repositories/user.repository';
+type AdminUserRepositoryDependencies = {
+  userRepository: UserRepository;
+};
 
 export class AdminUserRepository extends BaseRepository<typeof users, UserEntity, UserInsert> {
   private userRepository: UserRepository;
 
-  constructor() {
+  constructor(deps: AdminUserRepositoryDependencies) {
     super(users);
-    this.userRepository = new UserRepository();
+    this.userRepository = deps.userRepository;
   }
 
   async list(
@@ -45,4 +48,9 @@ export class AdminUserRepository extends BaseRepository<typeof users, UserEntity
   ): Promise<PaginatedResult<UserEntity>> {
     return this.userRepository.findUsersWithFilters({ role }, pagination);
   }
+}
+
+/** Creates an AdminUserRepository with a concrete user repository dependency. */
+export function createAdminUserRepository(): AdminUserRepository {
+  return new AdminUserRepository({ userRepository: new UserRepository() });
 }

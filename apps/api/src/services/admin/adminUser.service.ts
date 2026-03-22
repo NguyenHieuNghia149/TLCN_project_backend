@@ -1,5 +1,8 @@
 import { PasswordUtils } from '@backend/shared/utils';
-import { AdminUserRepository } from '@backend/api/repositories/admin/adminUser.repository';
+import {
+  AdminUserRepository,
+  createAdminUserRepository,
+} from '@backend/api/repositories/admin/adminUser.repository';
 import { PaginatedResult, PaginationOptions, UserFilters } from '@backend/api/repositories/user.repository';
 import { UserEntity, UserInsert } from '@backend/shared/db/schema';
 
@@ -51,6 +54,6 @@ export class AdminUserService {
 /** Creates an AdminUserService with concrete repository dependencies. */
 export function createAdminUserService(): AdminUserService {
   return new AdminUserService({
-    adminUserRepository: new AdminUserRepository(),
+    adminUserRepository: createAdminUserRepository(),
   });
 }

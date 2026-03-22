@@ -1,4 +1,4 @@
-import { ExamRepository } from '../repositories/exam.repository';
+import { createExamRepository, ExamRepository } from '../repositories/exam.repository';
 import { ExamToProblemsRepository } from '../repositories/examToProblems.repository';
 import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
 import { ProblemRepository } from '../repositories/problem.repository';
@@ -1226,7 +1226,7 @@ export class ExamService {
 /** Creates a fresh ExamService with concrete repositories and default providers. */
 export function createExamService(): ExamService {
   return new ExamService({
-    examRepository: new ExamRepository(),
+    examRepository: createExamRepository(),
     examToProblemsRepository: new ExamToProblemsRepository(),
     examParticipationRepository: new ExamParticipationRepository(),
     problemRepository: new ProblemRepository(),

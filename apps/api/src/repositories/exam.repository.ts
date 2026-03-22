@@ -1,10 +1,18 @@
-import { exam, ExamEntity, ExamInsert, problems, examToProblems } from '@backend/shared/db/schema';
+import { exam, ExamEntity, ExamInsert, problems, examToProblems, examParticipations } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
+import { ProblemRepository } from './problem.repository';
 import { desc, eq, count, and, inArray, sql } from 'drizzle-orm';
 
+type ExamRepositoryDependencies = {
+  problemRepository: ProblemRepository;
+};
+
 export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, ExamInsert> {
-  constructor() {
+  private problemRepository: ProblemRepository;
+
+  constructor(deps: ExamRepositoryDependencies) {
     super(exam);
+    this.problemRepository = deps.problemRepository;
   }
 
   getAllExams(): Promise<ExamEntity[]> {
@@ -94,12 +102,7 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
           challengeIds.push(ch.challengeId);
           orderMap.set(ch.challengeId, orderIndex);
         } else if (ch.type === 'new') {
-          // create problem inside the same tx using ProblemRepository's tx-aware method
-          const { ProblemRepository } = await import('../repositories/problem.repository');
-          const probRepo = new ProblemRepository();
-          // Use the repository's transactional API which accepts an optional tx
-          // so we reuse the active transaction rather than calling a separate tx helper.
-          const res = await probRepo.createProblemTransactional(ch.challenge, tx);
+          const res = await this.problemRepository.createProblemTransactional(ch.challenge, tx);
           challengeIds.push(res.problem.id);
           orderMap.set(res.problem.id, orderIndex);
         }
@@ -171,7 +174,6 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
    * Delete an exam and all related data (links, participations).
    */
   async deleteExamWithRelations(examId: string): Promise<boolean> {
-    const { examParticipations } = await import('@backend/shared/db/schema');
     return this.db.transaction(async (tx: any) => {
       // 1. Delete exam_to_problems links
       await tx.delete(examToProblems).where(eq(examToProblems.examId, examId));
@@ -210,4 +212,9 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       .orderBy(desc(exam.createdAt))
       .limit(limit);
   }
+}
+
+/** Creates an ExamRepository with a concrete problem repository dependency. */
+export function createExamRepository(): ExamRepository {
+  return new ExamRepository({ problemRepository: new ProblemRepository() });
 }

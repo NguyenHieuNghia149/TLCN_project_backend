@@ -11,6 +11,13 @@ import {
   LearningProgressResponse,
   LessonProgressResponse,
 } from '@backend/shared/validations/learningprocess.validation';
+type LearningProcessRepositoryDependencies = {
+  submissionRepository: SubmissionRepository;
+  learnedLessonRepository: LearnedLessonRepository;
+  problemRepository: ProblemRepository;
+  lessonRepository: LessonRepository;
+  topicRepository: TopicRepository;
+};
 
 export class LearningProcessRepository {
   private submissionRepository: SubmissionRepository;
@@ -19,12 +26,12 @@ export class LearningProcessRepository {
   private lessonRepository: LessonRepository;
   private topicRepository: TopicRepository;
 
-  constructor() {
-    this.submissionRepository = new SubmissionRepository();
-    this.learnedLessonRepository = new LearnedLessonRepository();
-    this.problemRepository = new ProblemRepository();
-    this.lessonRepository = new LessonRepository();
-    this.topicRepository = new TopicRepository();
+  constructor(deps: LearningProcessRepositoryDependencies) {
+    this.submissionRepository = deps.submissionRepository;
+    this.learnedLessonRepository = deps.learnedLessonRepository;
+    this.problemRepository = deps.problemRepository;
+    this.lessonRepository = deps.lessonRepository;
+    this.topicRepository = deps.topicRepository;
   }
 
   /**
@@ -327,4 +334,15 @@ export class LearningProcessRepository {
       throw error;
     }
   }
+}
+
+/** Creates a LearningProcessRepository with concrete nested repository dependencies. */
+export function createLearningProcessRepository(): LearningProcessRepository {
+  return new LearningProcessRepository({
+    submissionRepository: new SubmissionRepository(),
+    learnedLessonRepository: new LearnedLessonRepository(),
+    problemRepository: new ProblemRepository(),
+    lessonRepository: new LessonRepository(),
+    topicRepository: new TopicRepository(),
+  });
 }

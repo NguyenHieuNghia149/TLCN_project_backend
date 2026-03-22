@@ -1,4 +1,7 @@
-import { LearningProcessRepository } from '../repositories/learningprocess.repository';
+import {
+  createLearningProcessRepository,
+  LearningProcessRepository,
+} from '../repositories/learningprocess.repository';
 import {
   TopicProgress,
   LessonProgress,
@@ -120,6 +123,6 @@ export class LearningProcessService {
 /** Creates a LearningProcessService with concrete repository dependencies. */
 export function createLearningProcessService(): LearningProcessService {
   return new LearningProcessService({
-    learningProcessRepository: new LearningProcessRepository(),
+    learningProcessRepository: createLearningProcessRepository(),
   });
 }

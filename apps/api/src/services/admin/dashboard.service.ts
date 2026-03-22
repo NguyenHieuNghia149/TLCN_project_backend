@@ -2,7 +2,7 @@ import { UserRepository } from '@backend/api/repositories/user.repository';
 import { LessonRepository } from '@backend/api/repositories/lesson.repository';
 import { ProblemRepository } from '@backend/api/repositories/problem.repository';
 import { SubmissionRepository } from '@backend/api/repositories/submission.repository';
-import { ExamRepository } from '@backend/api/repositories/exam.repository';
+import { createExamRepository, ExamRepository } from '@backend/api/repositories/exam.repository';
 import { TopicRepository } from '@backend/api/repositories/topic.repository';
 
 export interface DashboardStats {
@@ -149,7 +149,7 @@ export function createDashboardService(): DashboardService {
     lessonRepository: new LessonRepository(),
     problemRepository: new ProblemRepository(),
     submissionRepository: new SubmissionRepository(),
-    examRepository: new ExamRepository(),
+    examRepository: createExamRepository(),
     topicRepository: new TopicRepository(),
   });
 }

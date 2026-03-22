@@ -15,7 +15,7 @@ import { TestcaseRepository } from '../repositories/testcase.repository';
 import { ProblemRepository } from '../repositories/problem.repository';
 import { UserRepository } from '../repositories/user.repository';
 import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
-import { ExamRepository } from '../repositories/exam.repository';
+import { createExamRepository, ExamRepository } from '../repositories/exam.repository';
 // Removed direct schema entity imports - using validation types instead
 import { PaginationOptions } from '../repositories/base.repository';
 import axios from 'axios';
@@ -716,7 +716,7 @@ export function createSubmissionService(): SubmissionService {
     problemRepository: new ProblemRepository(),
     userRepository: new UserRepository(),
     examParticipationRepository: new ExamParticipationRepository(),
-    examRepository: new ExamRepository(),
+    examRepository: createExamRepository(),
     getQueueService: getJudgeQueueService,
   });
 }
