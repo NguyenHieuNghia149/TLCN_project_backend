@@ -20,7 +20,7 @@ import {
   ProblemResponseSchema,
 } from '@backend/shared/validations/problem.validation';
 import { LessonEntity } from '@backend/shared/db/schema';
-import { buildStarterCodeByLanguage, logger } from '@backend/shared/utils';
+import { buildStarterCodeByLanguage, logger, normalizeFunctionSignature } from '@backend/shared/utils';
 import { FunctionSignature } from '@backend/shared/types';
 
 type FavoriteServiceDependencies = {
@@ -291,6 +291,8 @@ export class FavoriteService {
       );
     }
 
+    const functionSignature = normalizeFunctionSignature(problem.functionSignature);
+
     const response: ProblemResponse = {
       id: problem.id,
       title: problem.title,
@@ -306,8 +308,8 @@ export class FavoriteService {
       totalPoints,
       isSolved: options?.isSolved ?? false,
       isFavorite: options?.isFavorite ?? false,
-      functionSignature: problem.functionSignature,
-      starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(problem.functionSignature),
+      functionSignature,
+      starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(functionSignature),
       createdAt: this.formatDate(problem.createdAt),
       updatedAt: this.formatDate(problem.updatedAt),
     };

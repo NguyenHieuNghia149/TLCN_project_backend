@@ -14,6 +14,7 @@ import {
   type FunctionSignatureProblemRow,
   type FunctionSignatureTestcaseRow,
 } from './function-signature-migrate.shared';
+import { unsupportedFunctionSignatureProblems } from './function-signature-unsupported-catalog';
 
 /** Resolves the optional manifest path used for audit-only DB comparison. */
 export function resolveAuditManifestPath(cliPath?: string): string | null {
@@ -93,6 +94,7 @@ export async function runFunctionSignatureAudit(options: {
     manifestPath,
     problems,
     testcases,
+    unsupportedProblems: unsupportedFunctionSignatureProblems,
     now: options.now,
   });
 

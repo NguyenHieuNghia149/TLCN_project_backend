@@ -1,172 +1,13 @@
-﻿type Language = 'cpp' | 'java' | 'python';
+import {
+  CanonicalFunctionArgument,
+  CanonicalFunctionSignature,
+  CanonicalFunctionTypeNode,
+  FunctionScalarType,
+  FunctionSignature,
+} from '@backend/shared/types';
+import { normalizeFunctionSignature } from '@backend/shared/utils';
 
-type ScalarType = 'integer' | 'string' | 'boolean';
-
-type ScalarNode = {
-  type: ScalarType;
-};
-
-type ArrayNode = {
-  type: 'array';
-  items: ScalarType;
-};
-
-type TypeNode = ScalarNode | ArrayNode;
-
-type ASTArgument = {
-  name: string;
-  type: ScalarType | 'array';
-  items?: ScalarType;
-};
-
-type AST = {
-  name: string;
-  returnType: TypeNode;
-  args: ASTArgument[];
-};
-
-type NormalizedArgument = {
-  name: string;
-  type: TypeNode;
-};
-
-type NormalizedSignature = {
-  name: string;
-  returnType: TypeNode;
-  args: NormalizedArgument[];
-};
-
-const SCALAR_TYPES: ReadonlySet<ScalarType> = new Set(['integer', 'string', 'boolean']);
-const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function assertAllowedKeys(
-  value: Record<string, unknown>,
-  allowedKeys: readonly string[],
-  path: string
-): void {
-  const unknownKeys = Object.keys(value).filter(key => !allowedKeys.includes(key));
-  if (unknownKeys.length > 0) {
-    throw new Error(`${path} contains unsupported keys: ${unknownKeys.join(', ')}`);
-  }
-}
-
-function validateIdentifier(value: unknown, path: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`${path} must be a non-empty string`);
-  }
-
-  if (!IDENTIFIER_PATTERN.test(value)) {
-    throw new Error(`${path} must be a valid identifier`);
-  }
-
-  return value;
-}
-
-function validateScalarType(value: unknown, path: string): ScalarType {
-  if (typeof value !== 'string' || !SCALAR_TYPES.has(value as ScalarType)) {
-    throw new Error(`${path} must be one of: ${Array.from(SCALAR_TYPES).join(', ')}`);
-  }
-
-  return value as ScalarType;
-}
-
-function validateTypeNode(value: unknown, path: string): TypeNode {
-  if (!isRecord(value)) {
-    throw new Error(`${path} must be an object`);
-  }
-
-  if (value.type === 'array') {
-    assertAllowedKeys(value, ['type', 'items'], path);
-
-    if (!('items' in value)) {
-      throw new Error(`${path}.items is required for array types`);
-    }
-
-    return {
-      type: 'array',
-      items: validateScalarType(value.items, `${path}.items`),
-    };
-  }
-
-  assertAllowedKeys(value, ['type'], path);
-  return {
-    type: validateScalarType(value.type, `${path}.type`),
-  };
-}
-
-function validateArgument(value: unknown, index: number): NormalizedArgument {
-  const path = `signature.args[${index}]`;
-
-  if (!isRecord(value)) {
-    throw new Error(`${path} must be an object`);
-  }
-
-  assertAllowedKeys(value, ['name', 'type', 'items'], path);
-
-  const name = validateIdentifier(value.name, `${path}.name`);
-  const typeValue = value.type;
-
-  if (typeValue === 'array') {
-    if (!('items' in value)) {
-      throw new Error(`${path}.items is required when type is array`);
-    }
-
-    return {
-      name,
-      type: {
-        type: 'array',
-        items: validateScalarType(value.items, `${path}.items`),
-      },
-    };
-  }
-
-  if ('items' in value && value.items !== undefined) {
-    throw new Error(`${path}.items is only allowed when type is array`);
-  }
-
-  return {
-    name,
-    type: {
-      type: validateScalarType(typeValue, `${path}.type`),
-    },
-  };
-}
-
-function normalizeSignature(signature: AST): NormalizedSignature {
-  if (!isRecord(signature)) {
-    throw new Error('signature must be an object');
-  }
-
-  assertAllowedKeys(signature, ['name', 'returnType', 'args'], 'signature');
-
-  const name = validateIdentifier(signature.name, 'signature.name');
-  const returnType = validateTypeNode(signature.returnType, 'signature.returnType');
-
-  if (!Array.isArray(signature.args)) {
-    throw new Error('signature.args must be an array');
-  }
-
-  const args = signature.args.map((argument, index) => validateArgument(argument, index));
-  const seenNames = new Set<string>();
-
-  for (const argument of args) {
-    if (seenNames.has(argument.name)) {
-      throw new Error(`signature.args contains duplicate name: ${argument.name}`);
-    }
-
-    seenNames.add(argument.name);
-  }
-
-  return {
-    name,
-    returnType,
-    args,
-  };
-}
+type Language = 'cpp' | 'java' | 'python';
 
 function ensureUserCode(userCode: string): string {
   if (typeof userCode !== 'string' || userCode.trim().length === 0) {
@@ -176,10 +17,28 @@ function ensureUserCode(userCode: string): string {
   return userCode.replace(/\r\n/g, '\n');
 }
 
-function mapCppScalar(type: ScalarType): string {
-  switch (type) {
+function escapeStringLiteral(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function isScalarNode(
+  descriptor: CanonicalFunctionTypeNode,
+): descriptor is { type: FunctionScalarType } {
+  return descriptor.type !== 'array' && descriptor.type !== 'nullable';
+}
+
+function isFlatJavaScalarArray(
+  descriptor: CanonicalFunctionTypeNode,
+): descriptor is { type: 'array'; items: { type: FunctionScalarType } } {
+  return descriptor.type === 'array' && isScalarNode(descriptor.items);
+}
+
+function toCppScalarType(typeName: FunctionScalarType): string {
+  switch (typeName) {
     case 'integer':
       return 'int';
+    case 'number':
+      return 'double';
     case 'string':
       return 'std::string';
     case 'boolean':
@@ -187,63 +46,21 @@ function mapCppScalar(type: ScalarType): string {
   }
 }
 
-function mapCppType(type: TypeNode): string {
-  if (type.type === 'array') {
-    return `std::vector<${mapCppScalar(type.items)}>`;
+function toCppType(descriptor: CanonicalFunctionTypeNode): string {
+  if (descriptor.type === 'array') {
+    return `std::vector<${toCppType(descriptor.items)}>`;
   }
 
-  return mapCppScalar(type.type);
-}
-
-function mapJavaScalar(type: ScalarType): string {
-  switch (type) {
-    case 'integer':
-      return 'int';
-    case 'string':
-      return 'String';
-    case 'boolean':
-      return 'boolean';
-  }
-}
-
-function mapJavaType(type: TypeNode): string {
-  if (type.type === 'array') {
-    return `${mapJavaScalar(type.items)}[]`;
+  if (descriptor.type === 'nullable') {
+    return `std::optional<${toCppType(descriptor.value)}>`;
   }
 
-  return mapJavaScalar(type.type);
+  return toCppScalarType(descriptor.type);
 }
 
-function mapPythonScalar(type: ScalarType): string {
-  switch (type) {
-    case 'integer':
-      return 'int';
-    case 'string':
-      return 'str';
-    case 'boolean':
-      return 'bool';
-  }
-}
-
-function mapPythonType(type: TypeNode): string {
-  if (type.type === 'array') {
-    return `List[${mapPythonScalar(type.items)}]`;
-  }
-
-  return mapPythonScalar(type.type);
-}
-
-function stripJavaPublicSolutionClass(userCode: string): string {
-  return userCode.replace(/(^|\n)(\s*)public\s+class\s+Solution\b/, '$1$2class Solution');
-}
-
-function escapeStringLiteral(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function buildCppArgumentExtraction(argument: NormalizedArgument): string[] {
+function buildCppArgumentExtraction(argument: CanonicalFunctionArgument): string[] {
   const key = escapeStringLiteral(argument.name);
-  const typeName = mapCppType(argument.type);
+  const typeName = toCppType(argument.type);
 
   return [
     `    if (!payload.contains("${key}")) {`,
@@ -254,7 +71,7 @@ function buildCppArgumentExtraction(argument: NormalizedArgument): string[] {
   ];
 }
 
-function buildCppWrapper(signature: NormalizedSignature, userCode: string): string {
+function buildCppWrapper(signature: CanonicalFunctionSignature, userCode: string): string {
   const extractions = signature.args.flatMap(argument => buildCppArgumentExtraction(argument));
   const callArguments = signature.args.map(argument => argument.name).join(', ');
 
@@ -262,6 +79,7 @@ function buildCppWrapper(signature: NormalizedSignature, userCode: string): stri
     '#include <iostream>',
     '#include <vector>',
     '#include <string>',
+    '#include <optional>',
     '#include <chrono>',
     '#include <iterator>',
     '#include <nlohmann/json.hpp>',
@@ -313,39 +131,104 @@ function buildCppWrapper(signature: NormalizedSignature, userCode: string): stri
   ].join('\n');
 }
 
-function buildJavaArgumentReader(argument: NormalizedArgument): string {
-  const fieldName = escapeStringLiteral(argument.name);
-
-  if (argument.type.type === 'array') {
-    switch (argument.type.items) {
-      case 'integer':
-        return `        ${mapJavaType(argument.type)} ${argument.name} = readIntegerArray(payload, "${fieldName}");`;
-      case 'string':
-        return `        ${mapJavaType(argument.type)} ${argument.name} = readStringArray(payload, "${fieldName}");`;
-      case 'boolean':
-        return `        ${mapJavaType(argument.type)} ${argument.name} = readBooleanArray(payload, "${fieldName}");`;
-    }
-  }
-
-  switch (argument.type.type) {
+function toJavaScalarType(typeName: FunctionScalarType, boxed: boolean): string {
+  switch (typeName) {
     case 'integer':
-      return `        ${mapJavaType(argument.type)} ${argument.name} = readInteger(payload, "${fieldName}");`;
+      return boxed ? 'Integer' : 'int';
+    case 'number':
+      return boxed ? 'Double' : 'double';
     case 'string':
-      return `        ${mapJavaType(argument.type)} ${argument.name} = readString(payload, "${fieldName}");`;
+      return 'String';
     case 'boolean':
-      return `        ${mapJavaType(argument.type)} ${argument.name} = readBoolean(payload, "${fieldName}");`;
+      return boxed ? 'Boolean' : 'boolean';
   }
 }
 
-function buildJavaWrapper(signature: NormalizedSignature, userCode: string): string {
+function toJavaType(
+  descriptor: CanonicalFunctionTypeNode,
+  context: 'root' | 'generic' = 'root',
+): string {
+  if (descriptor.type === 'nullable') {
+    return toJavaType(descriptor.value, 'generic');
+  }
+
+  if (descriptor.type === 'array') {
+    if (context === 'root' && isScalarNode(descriptor.items)) {
+      return `${toJavaScalarType(descriptor.items.type, false)}[]`;
+    }
+
+    return `List<${toJavaType(descriptor.items, 'generic')}>`;
+  }
+
+  return toJavaScalarType(descriptor.type, context === 'generic');
+}
+
+function toJavaScalarReader(typeName: FunctionScalarType): string {
+  switch (typeName) {
+    case 'integer':
+      return 'readInteger';
+    case 'number':
+      return 'readNumber';
+    case 'string':
+      return 'readString';
+    case 'boolean':
+      return 'readBoolean';
+  }
+}
+
+function toJavaArrayReader(typeName: FunctionScalarType): string {
+  switch (typeName) {
+    case 'integer':
+      return 'readIntegerArray';
+    case 'number':
+      return 'readNumberArray';
+    case 'string':
+      return 'readStringArray';
+    case 'boolean':
+      return 'readBooleanArray';
+  }
+}
+
+function toJavaBoxedScalarType(typeName: FunctionScalarType): string {
+  return toJavaScalarType(typeName, true);
+}
+
+function buildJavaTypeReference(descriptor: CanonicalFunctionTypeNode): string {
+  return `new TypeReference<${toJavaType(descriptor, 'generic')}>() {}`;
+}
+
+function buildJavaArgumentReader(argument: CanonicalFunctionArgument): string {
+  const fieldName = escapeStringLiteral(argument.name);
+  const typeName = toJavaType(argument.type);
+
+  if (argument.type.type === 'nullable' && isScalarNode(argument.type.value)) {
+    return `        ${typeName} ${argument.name} = readTypedValue(payload, "${fieldName}", ${toJavaBoxedScalarType(argument.type.value.type)}.class);`;
+  }
+
+  if (isFlatJavaScalarArray(argument.type)) {
+    return `        ${typeName} ${argument.name} = ${toJavaArrayReader(argument.type.items.type)}(payload, "${fieldName}");`;
+  }
+
+  if (isScalarNode(argument.type)) {
+    return `        ${typeName} ${argument.name} = ${toJavaScalarReader(argument.type.type)}(payload, "${fieldName}");`;
+  }
+
+  return `        ${typeName} ${argument.name} = readTypedValue(payload, "${fieldName}", ${buildJavaTypeReference(argument.type)});`;
+}
+
+function stripJavaPublicSolutionClass(userCode: string): string {
+  return userCode.replace(/(^|\n)(\s*)public\s+class\s+Solution\b/, '$1$2class Solution');
+}
+
+function buildJavaWrapper(signature: CanonicalFunctionSignature, userCode: string): string {
   const sanitizedUserCode = stripJavaPublicSolutionClass(userCode);
   const readers = signature.args.map(argument => buildJavaArgumentReader(argument));
   const callArguments = signature.args.map(argument => argument.name).join(', ');
 
   return [
     'import java.util.*;',
-    'import java.time.*;',
     'import java.nio.charset.StandardCharsets;',
+    'import com.fasterxml.jackson.core.type.TypeReference;',
     'import com.fasterxml.jackson.databind.JsonNode;',
     'import com.fasterxml.jackson.databind.ObjectMapper;',
     '',
@@ -368,6 +251,14 @@ function buildJavaWrapper(signature: NormalizedSignature, userCode: string): str
     '            throw new IllegalArgumentException("Argument " + fieldName + " must be an integer");',
     '        }',
     '        return node.intValue();',
+    '    }',
+    '',
+    '    private static double readNumber(JsonNode payload, String fieldName) {',
+    '        JsonNode node = requireField(payload, fieldName);',
+    '        if (!node.isNumber()) {',
+    '            throw new IllegalArgumentException("Argument " + fieldName + " must be a number");',
+    '        }',
+    '        return node.doubleValue();',
     '    }',
     '',
     '    private static String readString(JsonNode payload, String fieldName) {',
@@ -394,6 +285,14 @@ function buildJavaWrapper(signature: NormalizedSignature, userCode: string): str
     '        return MAPPER.treeToValue(node, int[].class);',
     '    }',
     '',
+    '    private static double[] readNumberArray(JsonNode payload, String fieldName) throws Exception {',
+    '        JsonNode node = requireField(payload, fieldName);',
+    '        if (!node.isArray()) {',
+    '            throw new IllegalArgumentException("Argument " + fieldName + " must be an array");',
+    '        }',
+    '        return MAPPER.treeToValue(node, double[].class);',
+    '    }',
+    '',
     '    private static String[] readStringArray(JsonNode payload, String fieldName) throws Exception {',
     '        JsonNode node = requireField(payload, fieldName);',
     '        if (!node.isArray()) {',
@@ -408,6 +307,22 @@ function buildJavaWrapper(signature: NormalizedSignature, userCode: string): str
     '            throw new IllegalArgumentException("Argument " + fieldName + " must be an array");',
     '        }',
     '        return MAPPER.treeToValue(node, boolean[].class);',
+    '    }',
+    '',
+    '    private static <T> T readTypedValue(JsonNode payload, String fieldName, Class<T> clazz) {',
+    '        JsonNode node = requireField(payload, fieldName);',
+    '        if (node.isNull()) {',
+    '            return null;',
+    '        }',
+    '        return MAPPER.convertValue(node, clazz);',
+    '    }',
+    '',
+    '    private static <T> T readTypedValue(JsonNode payload, String fieldName, TypeReference<T> typeReference) {',
+    '        JsonNode node = requireField(payload, fieldName);',
+    '        if (node.isNull()) {',
+    '            return null;',
+    '        }',
+    '        return MAPPER.convertValue(node, typeReference);',
     '    }',
     '',
     '    public static void main(String[] args) throws Exception {',
@@ -439,91 +354,62 @@ function buildJavaWrapper(signature: NormalizedSignature, userCode: string): str
   ].join('\n');
 }
 
-function buildPythonArgumentReader(argument: NormalizedArgument): string {
-  const fieldName = escapeStringLiteral(argument.name);
-
-  if (argument.type.type === 'array') {
-    switch (argument.type.items) {
-      case 'integer':
-        return `    ${argument.name} = _read_integer_array(payload, "${fieldName}")`;
-      case 'string':
-        return `    ${argument.name} = _read_string_array(payload, "${fieldName}")`;
-      case 'boolean':
-        return `    ${argument.name} = _read_boolean_array(payload, "${fieldName}")`;
-    }
-  }
-
-  switch (argument.type.type) {
-    case 'integer':
-      return `    ${argument.name} = _read_integer(payload, "${fieldName}")`;
-    case 'string':
-      return `    ${argument.name} = _read_string(payload, "${fieldName}")`;
-    case 'boolean':
-      return `    ${argument.name} = _read_boolean(payload, "${fieldName}")`;
-  }
+function buildPythonSignatureLiteral(signature: CanonicalFunctionSignature): string {
+  return JSON.stringify(signature).replace(/\\/g, '\\\\').replace(/'''/g, "\\'\\'\\'");
 }
 
-function buildPythonWrapper(signature: NormalizedSignature, userCode: string): string {
-  const readers = signature.args.map(argument => buildPythonArgumentReader(argument));
+function buildPythonWrapper(signature: CanonicalFunctionSignature, userCode: string): string {
+  const readers = signature.args.map((argument, index) => [
+    `    ${argument.name} = _require_arg(payload, "${escapeStringLiteral(argument.name)}")`,
+    `    _assert_type(${argument.name}, SIGNATURE["args"][${index}]["type"], "${escapeStringLiteral(argument.name)}")`,
+  ]).flat();
   const callArguments = signature.args.map(argument => argument.name).join(', ');
+  const signatureLiteral = buildPythonSignatureLiteral(signature);
 
   return [
     'import json',
     'import sys',
     'import time',
-    'from typing import List',
     '',
     userCode,
+    '',
+    `SIGNATURE = json.loads(r'''${signatureLiteral}''')`,
     '',
     'def _require_arg(payload, name):',
     '    if name not in payload:',
     '        raise KeyError(f"Missing required argument: {name}")',
     '    return payload[name]',
     '',
-    'def _read_integer(payload, name):',
-    '    value = _require_arg(payload, name)',
-    '    if not isinstance(value, int) or isinstance(value, bool):',
-    '        raise TypeError(f"Argument {name} must be an integer")',
-    '    return value',
-    '',
-    'def _read_string(payload, name):',
-    '    value = _require_arg(payload, name)',
-    '    if not isinstance(value, str):',
-    '        raise TypeError(f"Argument {name} must be a string")',
-    '    return value',
-    '',
-    'def _read_boolean(payload, name):',
-    '    value = _require_arg(payload, name)',
-    '    if not isinstance(value, bool):',
-    '        raise TypeError(f"Argument {name} must be a boolean")',
-    '    return value',
-    '',
-    'def _read_integer_array(payload, name):',
-    '    value = _require_arg(payload, name)',
-    '    if not isinstance(value, list):',
-    '        raise TypeError(f"Argument {name} must be an array")',
-    '    for index, item in enumerate(value):',
-    '        if not isinstance(item, int) or isinstance(item, bool):',
-    '            raise TypeError(f"Argument {name}[{index}] must be an integer")',
-    '    return value',
-    '',
-    'def _read_string_array(payload, name):',
-    '    value = _require_arg(payload, name)',
-    '    if not isinstance(value, list):',
-    '        raise TypeError(f"Argument {name} must be an array")',
-    '    for index, item in enumerate(value):',
-    '        if not isinstance(item, str):',
-    '            raise TypeError(f"Argument {name}[{index}] must be a string")',
-    '    return value',
-    '',
-    'def _read_boolean_array(payload, name):',
-    '    value = _require_arg(payload, name)',
-    '    if not isinstance(value, list):',
-    '        raise TypeError(f"Argument {name} must be an array")',
-    '    for index, item in enumerate(value):',
-    '        if not isinstance(item, bool):',
-    '            raise TypeError(f"Argument {name}[{index}] must be a boolean")',
-    '    return value',
+    'def _assert_type(value, descriptor, path):',
+    '    type_name = descriptor["type"]',
+    '    if type_name == "nullable":',
+    '        if value is None:',
+    '            return',
+    '        _assert_type(value, descriptor["value"], path)',
+    '        return',
+    '    if type_name == "array":',
+    '        if not isinstance(value, list):',
+    '            raise TypeError(f"Argument {path} must be an array")',
+    '        for index, item in enumerate(value):',
+    '            _assert_type(item, descriptor["items"], f"{path}[{index}]")',
+    '        return',
+    '    if type_name == "integer":',
+    '        if not isinstance(value, int) or isinstance(value, bool):',
+    '            raise TypeError(f"Argument {path} must be an integer")',
+    '        return',
+    '    if type_name == "number":',
+    '        if (not isinstance(value, (int, float))) or isinstance(value, bool):',
+    '            raise TypeError(f"Argument {path} must be a number")',
+    '        return',
+    '    if type_name == "string":',
+    '        if not isinstance(value, str):',
+    '            raise TypeError(f"Argument {path} must be a string")',
+    '        return',
+    '    if type_name == "boolean":',
+    '        if not isinstance(value, bool):',
+    '            raise TypeError(f"Argument {path} must be a boolean")',
+    '        return',
+    '    raise TypeError(f"Unsupported descriptor for {path}: {descriptor}")',
     '',
     'def main():',
     '    raw_input = sys.stdin.read()',
@@ -549,8 +435,8 @@ function buildPythonWrapper(signature: NormalizedSignature, userCode: string): s
   ].join('\n');
 }
 
-export function generateWrapper(language: Language, signature: AST, userCode: string): string {
-  const normalizedSignature = normalizeSignature(signature);
+export function generateWrapper(language: Language, signature: FunctionSignature, userCode: string): string {
+  const normalizedSignature = normalizeFunctionSignature(signature);
   const normalizedUserCode = ensureUserCode(userCode);
 
   switch (language) {

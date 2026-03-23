@@ -4,17 +4,57 @@ import {
 } from '../../../scripts/migrate/function-signature-normalizer';
 
 describe('function-signature-normalizer', () => {
-  it('passes canonical shape through unchanged', () => {
+  it('passes the recursive canonical shape through unchanged', () => {
     const signature = {
-      name: 'twoSum',
+      name: 'inorderTraversal',
       args: [
-        { name: 'nums', type: 'array', items: 'integer' },
-        { name: 'target', type: 'integer' },
+        {
+          name: 'root',
+          type: {
+            type: 'array',
+            items: {
+              type: 'nullable',
+              value: { type: 'integer' },
+            },
+          },
+        },
       ],
-      returnType: { type: 'array', items: 'integer' },
+      returnType: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
     };
 
     expect(normalizeRuntimeSignature(signature)).toEqual(signature);
+  });
+
+  it('normalizes the old flat argument shape into the recursive canonical shape', () => {
+    expect(
+      normalizeRuntimeSignature({
+        name: 'twoSum',
+        args: [
+          { name: 'nums', type: 'array', items: 'integer' },
+          { name: 'target', type: 'integer' },
+        ],
+        returnType: { type: 'array', items: 'integer' },
+      }),
+    ).toEqual({
+      name: 'twoSum',
+      args: [
+        {
+          name: 'nums',
+          type: {
+            type: 'array',
+            items: { type: 'integer' },
+          },
+        },
+        { name: 'target', type: { type: 'integer' } },
+      ],
+      returnType: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    });
   });
 
   it('normalizes the legacy methodName/parameters shape', () => {
@@ -30,10 +70,103 @@ describe('function-signature-normalizer', () => {
     ).toEqual({
       name: 'twoSum',
       args: [
-        { name: 'nums', type: 'array', items: 'integer' },
-        { name: 'target', type: 'integer' },
+        {
+          name: 'nums',
+          type: {
+            type: 'array',
+            items: { type: 'integer' },
+          },
+        },
+        { name: 'target', type: { type: 'integer' } },
       ],
-      returnType: { type: 'array', items: 'integer' },
+      returnType: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    });
+  });
+
+  it('supports nullable nodes, nested arrays, and number scalars', () => {
+    expect(
+      normalizeRuntimeSignature({
+        name: 'groupAnagrams',
+        args: [
+          {
+            name: 'strs',
+            type: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+        ],
+        returnType: {
+          type: 'array',
+          items: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+      }),
+    ).toEqual({
+      name: 'groupAnagrams',
+      args: [
+        {
+          name: 'strs',
+          type: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+      ],
+      returnType: {
+        type: 'array',
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+    });
+
+    expect(
+      normalizeRuntimeSignature({
+        name: 'findMedianSortedArrays',
+        args: [
+          {
+            name: 'nums1',
+            type: {
+              type: 'array',
+              items: { type: 'integer' },
+            },
+          },
+          {
+            name: 'nums2',
+            type: {
+              type: 'array',
+              items: { type: 'integer' },
+            },
+          },
+        ],
+        returnType: { type: 'number' },
+      }),
+    ).toEqual({
+      name: 'findMedianSortedArrays',
+      args: [
+        {
+          name: 'nums1',
+          type: {
+            type: 'array',
+            items: { type: 'integer' },
+          },
+        },
+        {
+          name: 'nums2',
+          type: {
+            type: 'array',
+            items: { type: 'integer' },
+          },
+        },
+      ],
+      returnType: { type: 'number' },
     });
   });
 

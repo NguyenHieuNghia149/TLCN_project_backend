@@ -1,4 +1,4 @@
-import { JudgeUtils, logger, buildTestcaseDisplay } from '@backend/shared/utils';
+import { JudgeUtils, logger, buildTestcaseDisplay, normalizeFunctionSignature } from '@backend/shared/utils';
 import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
 import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
 import type { QueueJob } from '@backend/shared/runtime/judge-queue';
@@ -161,6 +161,23 @@ export class SubmissionService {
     }
   }
 
+  private requireNormalizedFunctionSignature(problemId: string, functionSignature: unknown): FunctionSignature {
+    try {
+      return normalizeFunctionSignature(functionSignature);
+    } catch (error) {
+      logger.error('Problem functionSignature invalid while preparing submission execution', {
+        problemId,
+        error,
+        functionSignature,
+      });
+      throw new BaseException(
+        'problem configuration invalid',
+        500,
+        'PROBLEM_CONFIGURATION_INVALID'
+      );
+    }
+  }
+
   private async validateProblemAndTestcases(problemId: string) {
     const problem = await this.problemRepository.findById(problemId);
     if (!problem) {
@@ -232,7 +249,10 @@ export class SubmissionService {
     testcases: any[],
     jobType: 'SUBMISSION' | 'RUN_CODE' = 'SUBMISSION'
   ): QueueJob {
-    const functionSignature = problem.functionSignature as FunctionSignature;
+    const functionSignature = this.requireNormalizedFunctionSignature(
+      problem.id ?? submission.problemId,
+      problem.functionSignature,
+    );
 
     return {
       submissionId: submission.id,
@@ -356,7 +376,10 @@ export class SubmissionService {
         );
       }
 
-      const functionSignature = problem.functionSignature;
+      const functionSignature = this.requireNormalizedFunctionSignature(
+        submission.problemId,
+        problem.functionSignature,
+      );
       const testcasesById = new Map(testcases.map(testcase => [testcase.id, testcase]));
 
       result = {

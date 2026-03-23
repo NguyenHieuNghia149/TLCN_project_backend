@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { DatabaseService, db } from '@backend/shared/db/connection';
 import { problems, resultSubmissions, submissions, testcases, users } from '@backend/shared/db/schema';
 import {
@@ -9,7 +9,6 @@ import {
 } from '@backend/shared/types';
 import { SubmissionResult } from '@backend/shared/validations/submission.validation';
 import { SubmissionRepository } from '@backend/api/repositories/submission.repository';
-import { buildFunctionInputDisplayValue, canonicalizeStructuredValue } from '@backend/shared/utils';
 
 type CleanupState = {
   submissionIds: string[];
@@ -20,10 +19,10 @@ type CleanupState = {
 const signature: FunctionSignature = {
   name: 'twoSum',
   args: [
-    { name: 'nums', type: 'array', items: 'integer' },
-    { name: 'target', type: 'integer' },
+    { name: 'nums', type: { type: 'array', items: { type: 'integer' } } },
+    { name: 'target', type: { type: 'integer' } },
   ],
-  returnType: { type: 'array', items: 'integer' },
+  returnType: { type: 'array', items: { type: 'integer' } },
 };
 
 function createCleanupState(): CleanupState {
@@ -82,18 +81,6 @@ describe('SubmissionRepository.finalizeSubmissionResult', () => {
     return user;
   }
 
-  async function hasLegacyTestcaseTextCacheColumns(): Promise<boolean> {
-    const result = await db.execute(sql`
-      SELECT COUNT(*)::int AS count
-      FROM information_schema.columns
-      WHERE table_name = 'testcases'
-        AND column_name IN ('input', 'output')
-    `);
-
-    const countValue = Number((result.rows[0] as { count?: number | string } | undefined)?.count ?? 0);
-    return countValue === 2;
-  }
-
 
   async function createProblemWithTestcases(points: number[]) {
     const [problem] = await db
@@ -112,67 +99,26 @@ describe('SubmissionRepository.finalizeSubmissionResult', () => {
 
     cleanup.problemIds.push(problem.id);
 
-    const testcasePayloads = points.map((point, index) => {
-      const inputJson = { nums: [2, 7, 11, 15], target: index + 9 };
-      const outputJson = [0, 1];
-      return {
-        problemId: problem.id,
-        inputJson,
-        outputJson,
-        point,
-        isPublic: index === 0,
-        input: buildFunctionInputDisplayValue(signature, inputJson),
-        output: canonicalizeStructuredValue(outputJson),
-      };
-    });
+    const testcasePayloads = points.map((point, index) => ({
+      problemId: problem.id,
+      inputJson: { nums: [2, 7, 11, 15], target: index + 9 },
+      outputJson: [0, 1],
+      point,
+      isPublic: index === 0,
+    }));
 
-    let createdTestcases: Array<typeof testcases.$inferSelect>;
-    if (await hasLegacyTestcaseTextCacheColumns()) {
-      const values = sql.join(
-        testcasePayloads.map(payload =>
-          sql`(
-            ${JSON.stringify(payload.inputJson)}::jsonb,
-            ${JSON.stringify(payload.outputJson)}::jsonb,
-            ${payload.isPublic},
-            ${payload.point},
-            ${payload.problemId}::uuid,
-            ${payload.input},
-            ${payload.output}
-          )`
-        ),
-        sql`, `
-      );
-
-      const inserted = await db.execute(sql`
-        INSERT INTO testcases (input_json, output_json, is_public, point, problem_id, input, output)
-        VALUES ${values}
-        RETURNING id, input_json, output_json, is_public, point, problem_id, created_at, updated_at
-      `);
-
-      createdTestcases = inserted.rows.map(row => ({
-        id: String((row as any).id),
-        inputJson: (row as any).input_json as Record<string, unknown>,
-        outputJson: (row as any).output_json,
-        isPublic: Boolean((row as any).is_public),
-        point: Number((row as any).point),
-        problemId: String((row as any).problem_id),
-        createdAt: new Date((row as any).created_at),
-        updatedAt: new Date((row as any).updated_at),
-      }));
-    } else {
-      createdTestcases = await db
-        .insert(testcases)
-        .values(
-          testcasePayloads.map(payload => ({
-            problemId: payload.problemId,
-            inputJson: payload.inputJson,
-            outputJson: payload.outputJson,
-            point: payload.point,
-            isPublic: payload.isPublic,
-          }))
-        )
-        .returning();
-    }
+    const createdTestcases = await db
+      .insert(testcases)
+      .values(
+        testcasePayloads.map(payload => ({
+          problemId: payload.problemId,
+          inputJson: payload.inputJson,
+          outputJson: payload.outputJson,
+          point: payload.point,
+          isPublic: payload.isPublic,
+        }))
+      )
+      .returning();
 
     return { problem, testcases: createdTestcases };
   }

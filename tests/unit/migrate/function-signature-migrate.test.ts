@@ -4,15 +4,25 @@ import {
   planFunctionSignatureBackfill,
   type FunctionSignatureProblemRow,
   type FunctionSignatureTestcaseRow,
+  type UnsupportedProblemCatalogEntry,
 } from '../../../scripts/migrate/function-signature-migrate.shared';
 
 const canonicalSignature = {
   name: 'twoSum',
   args: [
-    { name: 'nums', type: 'array', items: 'integer' },
-    { name: 'target', type: 'integer' },
+    {
+      name: 'nums',
+      type: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    },
+    { name: 'target', type: { type: 'integer' } },
   ],
-  returnType: { type: 'array', items: 'integer' },
+  returnType: {
+    type: 'array',
+    items: { type: 'integer' },
+  },
 } as const;
 
 const legacySignature = {
@@ -62,6 +72,7 @@ describe('function-signature migrate shared helpers', () => {
       manifestPath: null,
       problems: [buildProblemRow()],
       testcases: [buildTestcaseRow({ inputJson: null })],
+      unsupportedProblems: [],
       now: () => new Date('2026-03-22T00:00:00.000Z'),
     });
 
@@ -79,6 +90,39 @@ describe('function-signature migrate shared helpers', () => {
       canBackfillNow: 0,
       requiresManifestEntry: 1,
       alreadyCanonical: 0,
+      quarantinedUnsupported: 0,
+    });
+  });
+
+  it('excludes unsupported problemIds from requiresManifestEntry and reports them separately', () => {
+    const unsupportedProblems: UnsupportedProblemCatalogEntry[] = [
+      {
+        problemId: '00000000-0000-0000-0000-000000000000',
+        reason: 'oop_operations',
+      },
+    ];
+
+    const report = buildFunctionSignatureAuditReport({
+      manifest: { problems: [] },
+      manifestPath: null,
+      problems: [buildProblemRow({ title: 'Design HashMap' })],
+      testcases: [],
+      unsupportedProblems,
+      now: () => new Date('2026-03-22T00:00:00.000Z'),
+    });
+
+    expect(report.quarantined).toEqual([
+      {
+        problemId: '00000000-0000-0000-0000-000000000000',
+        title: 'Design HashMap',
+        reason: 'oop_operations',
+      },
+    ]);
+    expect(report.summary).toEqual({
+      canBackfillNow: 0,
+      requiresManifestEntry: 0,
+      alreadyCanonical: 0,
+      quarantinedUnsupported: 1,
     });
   });
 

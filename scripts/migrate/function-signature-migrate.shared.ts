@@ -23,6 +23,22 @@ export type FunctionSignatureManifest = {
   problems: ManifestProblemEntry[];
 };
 
+export type FunctionSignatureManifestTemplate = {
+  generatedAt: string;
+  quarantined: QuarantinedProblemSummary[];
+  problems: Array<{
+    problemId: string;
+    title: string | null;
+    functionSignature: null;
+    existingFunctionSignature: unknown | null;
+    testcases: Array<{
+      testcaseId: string;
+      inputJson: unknown | null;
+      outputJson: unknown | null;
+    }>;
+  }>;
+};
+
 export type FunctionSignatureProblemRow = {
   problemId: string;
   title: string | null;
@@ -36,6 +52,23 @@ export type FunctionSignatureTestcaseRow = {
   outputJson: unknown | null;
 };
 
+export type UnsupportedProblemReason =
+  | 'oop_operations'
+  | 'contest_text_input'
+  | 'mislabeled_data'
+  | 'mixed_output';
+
+export type UnsupportedProblemCatalogEntry = {
+  problemId: string;
+  reason: UnsupportedProblemReason;
+};
+
+export type QuarantinedProblemSummary = {
+  problemId: string;
+  title: string | null;
+  reason: UnsupportedProblemReason;
+};
+
 export type FunctionSignatureAuditReport = {
   checkedAt: string;
   manifestPath: string | null;
@@ -43,10 +76,12 @@ export type FunctionSignatureAuditReport = {
   testcasesMissingStructuredJson: Array<{ problemId: string; testcaseId: string }>;
   problemsInManifestNotInDb: string[];
   problemsInDbMissingManifest: string[];
+  quarantined: QuarantinedProblemSummary[];
   summary: {
     canBackfillNow: number;
     requiresManifestEntry: number;
     alreadyCanonical: number;
+    quarantinedUnsupported: number;
   };
 };
 
@@ -77,6 +112,7 @@ type BuildAuditOptions = {
   testcases: FunctionSignatureTestcaseRow[];
   manifest: FunctionSignatureManifest;
   manifestPath: string | null;
+  unsupportedProblems: UnsupportedProblemCatalogEntry[];
   now?: () => Date;
 };
 
@@ -175,6 +211,13 @@ export function isCanonicalStoredSignature(signature: unknown | null): boolean {
   return normalized !== null && isDeepStrictEqual(signature, normalized);
 }
 
+/** Builds a lookup map for exact unsupported problem IDs. */
+export function buildUnsupportedProblemMap(
+  unsupportedProblems: UnsupportedProblemCatalogEntry[],
+): Map<string, UnsupportedProblemReason> {
+  return new Map(unsupportedProblems.map(problem => [problem.problemId, problem.reason]));
+}
+
 function getProblemTestcases(
   allTestcases: FunctionSignatureTestcaseRow[],
   problemId: string,
@@ -182,21 +225,71 @@ function getProblemTestcases(
   return allTestcases.filter(testcase => testcase.problemId === problemId);
 }
 
+/** Builds the operator-owned manifest template for problems still missing function signatures. */
+export function buildFunctionSignatureManifestTemplate(options: {
+  problems: FunctionSignatureProblemRow[];
+  testcases: FunctionSignatureTestcaseRow[];
+  unsupportedProblems: UnsupportedProblemCatalogEntry[];
+  now?: () => Date;
+}): FunctionSignatureManifestTemplate {
+  const unsupportedMap = buildUnsupportedProblemMap(options.unsupportedProblems);
+  const missingProblems = options.problems.filter(
+    problem => problem.functionSignature === null || problem.functionSignature === undefined,
+  );
+  const quarantined = missingProblems
+    .filter(problem => unsupportedMap.has(problem.problemId))
+    .map(problem => ({
+      problemId: problem.problemId,
+      title: problem.title,
+      reason: unsupportedMap.get(problem.problemId)!,
+    }));
+  const supportedMissingProblems = missingProblems.filter(
+    problem => !unsupportedMap.has(problem.problemId),
+  );
+
+  return {
+    generatedAt: (options.now ?? (() => new Date()))().toISOString(),
+    quarantined,
+    problems: supportedMissingProblems.map(problem => ({
+      problemId: problem.problemId,
+      title: problem.title,
+      functionSignature: null,
+      existingFunctionSignature: problem.functionSignature ?? null,
+      testcases: getProblemTestcases(options.testcases, problem.problemId).map(testcase => ({
+        testcaseId: testcase.testcaseId,
+        inputJson: testcase.inputJson,
+        outputJson: testcase.outputJson,
+      })),
+    })),
+  };
+}
+
 /** Builds the JSON audit report for the active function-signature repair flow. */
 export function buildFunctionSignatureAuditReport(
   options: BuildAuditOptions,
 ): FunctionSignatureAuditReport {
+  const unsupportedMap = buildUnsupportedProblemMap(options.unsupportedProblems);
   const manifestProblemIds = new Set(options.manifest.problems.map(problem => problem.problemId));
   const problemsMissingFunctionSignature = options.problems
     .filter(problem => problem.functionSignature === null || problem.functionSignature === undefined)
     .map(problem => ({ problemId: problem.problemId, title: problem.title }));
+  const quarantined = problemsMissingFunctionSignature
+    .filter(problem => unsupportedMap.has(problem.problemId))
+    .map(problem => ({
+      problemId: problem.problemId,
+      title: problem.title,
+      reason: unsupportedMap.get(problem.problemId)!,
+    }));
+  const supportedMissingProblems = problemsMissingFunctionSignature.filter(
+    problem => !unsupportedMap.has(problem.problemId),
+  );
   const testcasesMissingStructuredJson = options.testcases
     .filter(testcase => testcase.inputJson === null || testcase.outputJson === null)
     .map(testcase => ({ problemId: testcase.problemId, testcaseId: testcase.testcaseId }));
   const problemsInManifestNotInDb = options.manifest.problems
     .map(problem => problem.problemId)
     .filter(problemId => !options.problems.some(problem => problem.problemId === problemId));
-  const problemsInDbMissingManifest = problemsMissingFunctionSignature
+  const problemsInDbMissingManifest = supportedMissingProblems
     .map(problem => problem.problemId)
     .filter(problemId => !manifestProblemIds.has(problemId));
   const alreadyCanonical = options.problems.filter(problem =>
@@ -210,10 +303,12 @@ export function buildFunctionSignatureAuditReport(
     testcasesMissingStructuredJson,
     problemsInManifestNotInDb,
     problemsInDbMissingManifest,
+    quarantined,
     summary: {
-      canBackfillNow: problemsMissingFunctionSignature.length - problemsInDbMissingManifest.length,
+      canBackfillNow: supportedMissingProblems.length - problemsInDbMissingManifest.length,
       requiresManifestEntry: problemsInDbMissingManifest.length,
       alreadyCanonical,
+      quarantinedUnsupported: quarantined.length,
     },
   };
 }
@@ -384,5 +479,150 @@ export function planFunctionSignatureBackfill(options: PlanBackfillOptions): {
     summary,
     operations,
     exitCode: summary.failed > 0 ? 1 : 0,
+  };
+}
+
+export type SignatureCatalogEntry =
+  | {
+      match: { kind: 'title'; title: string };
+      functionSignature: FunctionSignature;
+    }
+  | {
+      match: { kind: 'problemId'; problemId: string };
+      functionSignature: FunctionSignature;
+    };
+
+export type FunctionSignatureSynthesisSummary = {
+  checkedAt: string;
+  matched: Array<{ problemId: string; title: string | null }>;
+  unresolved: Array<{ problemId: string; title: string | null }>;
+  conflicting: Array<{ problemId: string; title: string | null; matchedEntries: number }>;
+  quarantined: QuarantinedProblemSummary[];
+};
+
+function hasMissingFunctionSignature(signature: unknown | null): boolean {
+  return signature === null || signature === undefined;
+}
+
+function normalizeCatalogTitle(title: string | null): string | null {
+  if (typeof title !== 'string') {
+    return null;
+  }
+
+  const trimmed = title.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getProblemIdMatches(
+  problem: FunctionSignatureProblemRow,
+  catalog: SignatureCatalogEntry[],
+): SignatureCatalogEntry[] {
+  return catalog.filter(
+    entry => entry.match.kind === 'problemId' && entry.match.problemId === problem.problemId,
+  );
+}
+
+function getTitleMatches(
+  problem: FunctionSignatureProblemRow,
+  catalog: SignatureCatalogEntry[],
+): SignatureCatalogEntry[] {
+  const normalizedTitle = normalizeCatalogTitle(problem.title);
+  if (!normalizedTitle) {
+    return [];
+  }
+
+  return catalog.filter(
+    entry =>
+      entry.match.kind === 'title' &&
+      normalizeCatalogTitle(entry.match.title) === normalizedTitle,
+  );
+}
+
+/** Builds an executable function-signature manifest from DB problems plus the repo catalog. */
+export function buildFunctionSignatureManifestFromCatalog(options: {
+  problems: FunctionSignatureProblemRow[];
+  catalog: SignatureCatalogEntry[];
+  unsupportedProblems: UnsupportedProblemCatalogEntry[];
+  now?: () => Date;
+}): {
+  manifest: FunctionSignatureManifest;
+  summary: FunctionSignatureSynthesisSummary;
+  exitCode: number;
+} {
+  const unsupportedMap = buildUnsupportedProblemMap(options.unsupportedProblems);
+  const summary: FunctionSignatureSynthesisSummary = {
+    checkedAt: (options.now ?? (() => new Date()))().toISOString(),
+    matched: [],
+    unresolved: [],
+    conflicting: [],
+    quarantined: [],
+  };
+  const manifest: FunctionSignatureManifest = { problems: [] };
+
+  for (const problem of options.problems) {
+    if (!hasMissingFunctionSignature(problem.functionSignature)) {
+      continue;
+    }
+
+    const unsupportedReason = unsupportedMap.get(problem.problemId);
+    if (unsupportedReason) {
+      summary.quarantined.push({
+        problemId: problem.problemId,
+        title: problem.title,
+        reason: unsupportedReason,
+      });
+      continue;
+    }
+
+    const problemIdMatches = getProblemIdMatches(problem, options.catalog);
+    if (problemIdMatches.length > 1) {
+      summary.conflicting.push({
+        problemId: problem.problemId,
+        title: problem.title,
+        matchedEntries: problemIdMatches.length,
+      });
+      continue;
+    }
+
+    const problemIdMatch = problemIdMatches[0];
+    if (problemIdMatch) {
+      manifest.problems.push({
+        problemId: problem.problemId,
+        functionSignature: getCanonicalFunctionSignature(problemIdMatch.functionSignature),
+      });
+      summary.matched.push({ problemId: problem.problemId, title: problem.title });
+      continue;
+    }
+
+    const titleMatches = getTitleMatches(problem, options.catalog);
+    if (titleMatches.length > 1) {
+      summary.conflicting.push({
+        problemId: problem.problemId,
+        title: problem.title,
+        matchedEntries: titleMatches.length,
+      });
+      continue;
+    }
+
+    const titleMatch = titleMatches[0];
+    if (titleMatch) {
+      manifest.problems.push({
+        problemId: problem.problemId,
+        functionSignature: getCanonicalFunctionSignature(titleMatch.functionSignature),
+      });
+      summary.matched.push({ problemId: problem.problemId, title: problem.title });
+      continue;
+    }
+
+    summary.unresolved.push({
+      problemId: problem.problemId,
+      title: problem.title,
+    });
+  }
+
+  return {
+    manifest,
+    summary,
+    exitCode: summary.unresolved.length > 0 || summary.conflicting.length > 0 ? 1 : 0,
   };
 }

@@ -1,5 +1,5 @@
 import { FunctionSignature } from '@backend/shared/types';
-import { validateFunctionTestcaseInput, validateFunctionTestcaseOutput } from '@backend/shared/utils';
+import { normalizeFunctionSignature, validateFunctionTestcaseInput, validateFunctionTestcaseOutput } from '@backend/shared/utils';
 
 export type BackfillDecision =
   | { kind: 'backfill'; inputJson: Record<string, unknown>; outputJson: unknown }
@@ -80,12 +80,9 @@ function resolveFunctionSignature(
     return null;
   }
 
-  if (typeof signature !== 'string') {
-    return signature;
-  }
-
   try {
-    return JSON.parse(signature) as FunctionSignature;
+    const parsed = typeof signature === 'string' ? JSON.parse(signature) : signature;
+    return normalizeFunctionSignature(parsed);
   } catch {
     return null;
   }

@@ -1,9 +1,11 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 import { CreateTestcaseSchema, TestcaseResponseSchema } from './testcase.validation';
 import { CreateSolutionSchema, SolutionResponseSchema } from './solution.validation';
 import {
   buildStarterCodeByLanguage,
+  normalizeFunctionSignature,
+  normalizeFunctionTypeNode,
   validateFunctionTestcaseInput,
   validateFunctionTestcaseOutput,
 } from '@backend/shared/utils';
@@ -25,60 +27,51 @@ export {
   type UpdateSolutionVisibilityInput,
 } from './solution.validation';
 
-const FunctionScalarTypeSchema = z.enum(['integer', 'string', 'boolean']);
+function toZodCustomIssue(error: unknown): { code: 'custom'; message: string } {
+  return {
+    code: z.ZodIssueCode.custom,
+    message: error instanceof Error ? error.message : 'Invalid function signature.',
+  };
+}
 
-export const FunctionTypeNodeSchema = z.union([
-  z.object({ type: FunctionScalarTypeSchema }).strict(),
-  z.object({ type: z.literal('array'), items: FunctionScalarTypeSchema }).strict(),
-]);
-
-export const FunctionArgumentSchema = z
-  .object({
-    name: z.string().min(1, 'Argument name is required.'),
-    type: z.union([FunctionScalarTypeSchema, z.literal('array')]),
-    items: FunctionScalarTypeSchema.optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (value.type === 'array' && !value.items) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['items'],
-        message: 'items is required when argument type is array.',
-      });
-    }
-
-    if (value.type !== 'array' && value.items !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['items'],
-        message: 'items is only allowed when argument type is array.',
-      });
-    }
+function normalizeFunctionArgumentInput(value: unknown): unknown {
+  const normalized = normalizeFunctionSignature({
+    name: 'placeholder',
+    args: [value],
+    returnType: { type: 'integer' },
   });
 
-export const FunctionSignatureSchema = z
-  .object({
-    name: z.string().min(1, 'Function name is required.'),
-    args: z.array(FunctionArgumentSchema),
-    returnType: FunctionTypeNodeSchema,
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    const seenNames = new Set<string>();
+  return normalized.args[0];
+}
 
-    for (const [index, argument] of value.args.entries()) {
-      if (seenNames.has(argument.name)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['args', index, 'name'],
-          message: `Duplicate argument name: ${argument.name}`,
-        });
-      }
+export const FunctionScalarTypeSchema = z.enum(['integer', 'number', 'string', 'boolean']);
 
-      seenNames.add(argument.name);
-    }
-  });
+export const FunctionTypeNodeSchema = z.unknown().transform((value, ctx) => {
+  try {
+    return normalizeFunctionTypeNode(value);
+  } catch (error) {
+    ctx.addIssue(toZodCustomIssue(error));
+    return z.NEVER;
+  }
+});
+
+export const FunctionArgumentSchema = z.unknown().transform((value, ctx) => {
+  try {
+    return normalizeFunctionArgumentInput(value);
+  } catch (error) {
+    ctx.addIssue(toZodCustomIssue(error));
+    return z.NEVER;
+  }
+});
+
+export const FunctionSignatureSchema = z.unknown().transform((value, ctx) => {
+  try {
+    return normalizeFunctionSignature(value);
+  } catch (error) {
+    ctx.addIssue(toZodCustomIssue(error));
+    return z.NEVER;
+  }
+});
 
 const BaseProblemSchema = z
   .object({

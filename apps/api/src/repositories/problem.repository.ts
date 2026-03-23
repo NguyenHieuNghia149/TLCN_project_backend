@@ -12,6 +12,7 @@ import { ProblemInput } from '@backend/shared/validations/problem.validation';
 import { SolutionApproachEntity, solutionApproaches } from '@backend/shared/db/schema';
 import { and, desc, eq, gt, ilike, lt, or, inArray, sql, count } from 'drizzle-orm';
 import { ProblemVisibility } from '@backend/shared/types';
+import { normalizeFunctionSignature } from '@backend/shared/utils';
 import { topics } from '@backend/shared/db/schema';
 
 export type ChallengeCreationResult = {
@@ -33,6 +34,7 @@ export class ProblemRepository extends BaseRepository<
     input: ProblemInput
   ): Promise<ChallengeCreationResult> {
     const { testcases: testcaseInputs, solution, ...problemData } = input;
+    const normalizedFunctionSignature = normalizeFunctionSignature(problemData.functionSignature);
 
     const problemRows = await tx
       .insert(problems)
@@ -45,7 +47,7 @@ export class ProblemRepository extends BaseRepository<
         lessonId: problemData.lessonId,
         topicId: problemData.topicId,
         visibility: problemData.visibility ?? ProblemVisibility.PUBLIC,
-        functionSignature: problemData.functionSignature,
+        functionSignature: normalizedFunctionSignature,
 
       } as any)
       .returning();

@@ -7,7 +7,7 @@ import { SolutionRepository } from '../repositories/solution.repository';
 import { TestcaseRepository } from '../repositories/testcase.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
-import { buildStarterCodeByLanguage, buildTestcaseDisplay } from '@backend/shared/utils';
+import { buildStarterCodeByLanguage, buildTestcaseDisplay, normalizeFunctionSignature } from '@backend/shared/utils';
 import { ChallengeResponse, ProblemInput } from '@backend/shared/validations/problem.validation';
 import { LessonRepository } from '../repositories/lesson.repository';
 import { SubmissionRepository } from '../repositories/submission.repository';
@@ -76,6 +76,19 @@ export class ChallengeService {
     }
   }
 
+  private requireNormalizedFunctionSignature(problemId: string, functionSignature: unknown) {
+    try {
+      return normalizeFunctionSignature(functionSignature);
+    } catch (error) {
+      logger.error('Problem functionSignature invalid while building challenge response', {
+        problemId,
+        error,
+        functionSignature,
+      });
+      throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
+    }
+  }
+
   private buildStarterCodeByLanguageSafe(functionSignature: any) {
     if (!functionSignature) {
       return { cpp: '', java: '', python: '' };
@@ -94,19 +107,15 @@ export class ChallengeService {
 
   private mapToChallengeResponse(result: any): ChallengeResponse {
     const { problem, testcases, solution } = result;
-    if (!problem.functionSignature) {
-      logger.error('Problem functionSignature missing while building challenge response', {
-        problemId: problem.id,
-      });
-      throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
-    }
+    const functionSignature = this.requireNormalizedFunctionSignature(
+      problem.id,
+      problem.functionSignature,
+    );
     const totalPoints = (testcases || []).reduce((sum: number, tc: any) => {
       const point = typeof tc.point === 'number' ? tc.point : 0;
       return sum + point;
     }, 0);
 
-    // Get isSolved and isFavorite from problem object (passed from getChallengeById)
-    // These are explicitly set in getChallengeById, so we can safely read them
     const isSolved = Boolean((problem as any).isSolved ?? false);
     const isFavorite = Boolean((problem as any).isFavorite ?? false);
 
@@ -123,13 +132,13 @@ export class ChallengeService {
         totalPoints,
         isSolved,
         isFavorite,
-        functionSignature: problem.functionSignature,
-        starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(problem.functionSignature),
+        functionSignature,
+        starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(functionSignature),
         createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
         updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
       },
       testcases: testcases.map((tc: any) => {
-        const display = buildTestcaseDisplay(problem.functionSignature, {
+        const display = buildTestcaseDisplay(functionSignature, {
           inputJson: tc.inputJson as Record<string, unknown>,
           outputJson: tc.outputJson,
         });
@@ -149,7 +158,6 @@ export class ChallengeService {
       solution: solution ? this.mapSolutionToResponse(solution) : this.getEmptySolution(),
     };
   }
-
   private mapSolutionToResponse(solution: any) {
     return {
       id: solution.id,
@@ -464,14 +472,18 @@ export class ChallengeService {
       throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
     }
 
-    // Convert updateData to match database schema
+    const normalizedFunctionSignature = this.requireNormalizedFunctionSignature(
+      challengeId,
+      effectiveFunctionSignature,
+    );
+
     const dbUpdateData: any = {
       ...updateData,
       tags: updateData.tags ? updateData.tags.join(',') : undefined,
       topicId: updateData.topicId,
       lessonId: updateData.lessonId,
       difficult: updateData.difficulty,
-      functionSignature: effectiveFunctionSignature,
+      functionSignature: normalizedFunctionSignature,
     };
 
     // Remove fields that shouldn't be updated directly

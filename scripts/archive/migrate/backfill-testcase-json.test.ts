@@ -9,16 +9,86 @@ import {
 const twoSumSignature: FunctionSignature = {
   name: 'twoSum',
   args: [
-    { name: 'nums', type: 'array', items: 'integer' },
-    { name: 'target', type: 'integer' },
+    {
+      name: 'nums',
+      type: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    },
+    { name: 'target', type: { type: 'integer' } },
   ],
-  returnType: { type: 'array', items: 'integer' },
+  returnType: {
+    type: 'array',
+    items: { type: 'integer' },
+  },
 };
 
 const singleArgumentSignature: FunctionSignature = {
   name: 'isPalindrome',
-  args: [{ name: 'value', type: 'string' }],
+  args: [{ name: 'value', type: { type: 'string' } }],
   returnType: { type: 'boolean' },
+};
+
+const binaryTreeSignature: FunctionSignature = {
+  name: 'inorderTraversal',
+  args: [
+    {
+      name: 'root',
+      type: {
+        type: 'array',
+        items: {
+          type: 'nullable',
+          value: { type: 'integer' },
+        },
+      },
+    },
+  ],
+  returnType: {
+    type: 'array',
+    items: { type: 'integer' },
+  },
+};
+
+const groupedAnagramSignature: FunctionSignature = {
+  name: 'groupAnagrams',
+  args: [
+    {
+      name: 'strs',
+      type: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+  ],
+  returnType: {
+    type: 'array',
+    items: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+};
+
+const medianSignature: FunctionSignature = {
+  name: 'findMedianSortedArrays',
+  args: [
+    {
+      name: 'nums1',
+      type: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    },
+    {
+      name: 'nums2',
+      type: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    },
+  ],
+  returnType: { type: 'number' },
 };
 
 function buildCandidate(overrides: Partial<LegacyTestcaseCandidate> = {}): LegacyTestcaseCandidate {
@@ -101,6 +171,54 @@ describe('backfill-testcase-json.shared', () => {
         }),
       ),
     ).toEqual({ kind: 'audit', reason: 'output_parse_failed' });
+  });
+
+  it('backfills tree-style arrays with null values when the signature allows nullable integers', () => {
+    const decision = decideBackfill(
+      buildCandidate({
+        functionSignature: binaryTreeSignature,
+        rawInput: '{"root":[1,null,2,3]}',
+        rawOutput: '[1,3,2]',
+      }),
+    );
+
+    expect(decision).toEqual({
+      kind: 'backfill',
+      inputJson: { root: [1, null, 2, 3] },
+      outputJson: [1, 3, 2],
+    });
+  });
+
+  it('backfills nested array outputs for recursive signatures', () => {
+    const decision = decideBackfill(
+      buildCandidate({
+        functionSignature: groupedAnagramSignature,
+        rawInput: '{"strs":["eat","tea","tan","ate","nat","bat"]}',
+        rawOutput: '[["bat"],["nat","tan"],["ate","eat","tea"]]',
+      }),
+    );
+
+    expect(decision).toEqual({
+      kind: 'backfill',
+      inputJson: { strs: ['eat', 'tea', 'tan', 'ate', 'nat', 'bat'] },
+      outputJson: [['bat'], ['nat', 'tan'], ['ate', 'eat', 'tea']],
+    });
+  });
+
+  it('backfills non-integer numeric outputs when the signature return type is number', () => {
+    const decision = decideBackfill(
+      buildCandidate({
+        functionSignature: medianSignature,
+        rawInput: '{"nums1":[1,2],"nums2":[3,4]}',
+        rawOutput: '2.5',
+      }),
+    );
+
+    expect(decision).toEqual({
+      kind: 'backfill',
+      inputJson: { nums1: [1, 2], nums2: [3, 4] },
+      outputJson: 2.5,
+    });
   });
 
   it('keeps dry-run exit code at 0 even when ambiguous rows are present', async () => {

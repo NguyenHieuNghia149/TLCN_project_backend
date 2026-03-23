@@ -11,6 +11,7 @@ import {
   type LegacyTestcaseCandidate,
   processBackfillCandidates,
 } from './backfill-testcase-json.shared';
+import { unsupportedFunctionSignatureProblems } from './function-signature-unsupported-catalog';
 
 type CandidateRow = {
   testcase_id: string;
@@ -85,17 +86,23 @@ export async function fetchBackfillCandidates(): Promise<{
       `;
 
   const rows = extractRows<CandidateRow>(await db.execute(query));
+  const unsupportedProblemIds = new Set(
+    unsupportedFunctionSignatureProblems.map(problem => problem.problemId),
+  );
+
   return {
     legacyColumnsPresent,
-    candidates: rows.map(row => ({
-      testcaseId: String(row.testcase_id),
-      problemId: String(row.problem_id),
-      functionSignature: row.function_signature as any,
-      inputJson: row.input_json,
-      outputJson: row.output_json,
-      rawInput: row.raw_input,
-      rawOutput: row.raw_output,
-    })),
+    candidates: rows
+      .filter(row => !unsupportedProblemIds.has(String(row.problem_id)))
+      .map(row => ({
+        testcaseId: String(row.testcase_id),
+        problemId: String(row.problem_id),
+        functionSignature: row.function_signature as any,
+        inputJson: row.input_json,
+        outputJson: row.output_json,
+        rawInput: row.raw_input,
+        rawOutput: row.raw_output,
+      })),
   };
 }
 

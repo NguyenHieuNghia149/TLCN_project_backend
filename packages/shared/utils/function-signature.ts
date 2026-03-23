@@ -1,9 +1,16 @@
 import {
+  CanonicalFunctionSignature,
+  CanonicalFunctionTypeNode,
+  FunctionScalarType,
   FunctionSignature,
   FunctionStarterCodeByLanguage,
   FunctionTypeNode,
-  FunctionScalarType,
 } from '@backend/shared/types';
+
+import {
+  normalizeFunctionSignature,
+  normalizeFunctionTypeNode,
+} from './function-signature-normalizer';
 
 export type SupportedFunctionLanguage = 'cpp' | 'java' | 'python';
 
@@ -11,10 +18,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isScalarNode(descriptor: CanonicalFunctionTypeNode): descriptor is { type: FunctionScalarType } {
+  return descriptor.type !== 'array' && descriptor.type !== 'nullable';
+}
+
 function validateScalar(value: unknown, scalarType: FunctionScalarType): boolean {
   switch (scalarType) {
     case 'integer':
       return typeof value === 'number' && Number.isInteger(value);
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
     case 'boolean':
       return typeof value === 'boolean';
     case 'string':
@@ -22,24 +35,35 @@ function validateScalar(value: unknown, scalarType: FunctionScalarType): boolean
   }
 }
 
-export function validateFunctionValue(value: unknown, descriptor: FunctionTypeNode): boolean {
+function validateCanonicalFunctionValue(value: unknown, descriptor: CanonicalFunctionTypeNode): boolean {
+  if (descriptor.type === 'nullable') {
+    return value === null || validateCanonicalFunctionValue(value, descriptor.value);
+  }
+
   if (descriptor.type === 'array') {
-    return Array.isArray(value) && value.every(item => validateScalar(item, descriptor.items));
+    return Array.isArray(value) && value.every(item => validateCanonicalFunctionValue(item, descriptor.items));
   }
 
   return validateScalar(value, descriptor.type);
 }
 
+/** Validates a runtime value against either legacy or canonical function type metadata. */
+export function validateFunctionValue(value: unknown, descriptor: FunctionTypeNode): boolean {
+  return validateCanonicalFunctionValue(value, normalizeFunctionTypeNode(descriptor));
+}
+
+/** Validates function-style testcase input against the normalized signature. */
 export function validateFunctionTestcaseInput(
   signature: FunctionSignature,
-  input: unknown
+  input: unknown,
 ): string | null {
   if (!isRecord(input)) {
     return 'Function-style testcase input must be an object keyed by argument name.';
   }
 
+  const normalizedSignature = normalizeFunctionSignature(signature);
   const inputKeys = Object.keys(input);
-  const expectedKeys = signature.args.map(argument => argument.name);
+  const expectedKeys = normalizedSignature.args.map(argument => argument.name);
 
   for (const key of expectedKeys) {
     if (!(key in input)) {
@@ -53,13 +77,8 @@ export function validateFunctionTestcaseInput(
     }
   }
 
-  for (const argument of signature.args) {
-    const descriptor: FunctionTypeNode =
-      argument.type === 'array'
-        ? { type: 'array', items: argument.items as FunctionScalarType }
-        : { type: argument.type };
-
-    if (!validateFunctionValue(input[argument.name], descriptor)) {
+  for (const argument of normalizedSignature.args) {
+    if (!validateCanonicalFunctionValue(input[argument.name], argument.type)) {
       return `Invalid input type for argument: ${argument.name}`;
     }
   }
@@ -67,17 +86,19 @@ export function validateFunctionTestcaseInput(
   return null;
 }
 
+/** Validates function-style testcase output against the normalized signature. */
 export function validateFunctionTestcaseOutput(
   signature: FunctionSignature,
-  output: unknown
+  output: unknown,
 ): string | null {
-  if (!validateFunctionValue(output, signature.returnType)) {
+  if (!validateCanonicalFunctionValue(output, normalizeFunctionSignature(signature).returnType)) {
     return 'Invalid output type for function signature.';
   }
 
   return null;
 }
 
+/** Serializes any structured testcase value into canonical JSON text. */
 export function canonicalizeStructuredValue(value: unknown): string {
   return JSON.stringify(value);
 }
@@ -98,18 +119,22 @@ function formatDisplayValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** Builds the stable multiline testcase input display from structured JSON. */
 export function buildFunctionInputDisplayValue(
   signature: FunctionSignature,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
 ): string {
-  return signature.args
+  const normalizedSignature = normalizeFunctionSignature(signature);
+
+  return normalizedSignature.args
     .map(argument => `${argument.name}: ${formatDisplayValue(input[argument.name])}`)
     .join('\n');
 }
 
+/** Builds the public testcase display payload directly from structured JSON values. */
 export function buildTestcaseDisplay(
   signature: FunctionSignature,
-  testcase: { inputJson: Record<string, unknown>; outputJson: unknown }
+  testcase: { inputJson: Record<string, unknown>; outputJson: unknown },
 ): { input: string; output: string } {
   return {
     input: buildFunctionInputDisplayValue(signature, testcase.inputJson),
@@ -121,6 +146,8 @@ function toCppScalarType(typeName: FunctionScalarType): string {
   switch (typeName) {
     case 'integer':
       return 'int';
+    case 'number':
+      return 'double';
     case 'boolean':
       return 'bool';
     case 'string':
@@ -128,37 +155,56 @@ function toCppScalarType(typeName: FunctionScalarType): string {
   }
 }
 
-function toCppType(descriptor: FunctionTypeNode): string {
+function toCppType(descriptor: CanonicalFunctionTypeNode): string {
   if (descriptor.type === 'array') {
-    return `std::vector<${toCppScalarType(descriptor.items)}>`;
+    return `std::vector<${toCppType(descriptor.items)}>`;
+  }
+
+  if (descriptor.type === 'nullable') {
+    return `std::optional<${toCppType(descriptor.value)}>`;
   }
 
   return toCppScalarType(descriptor.type);
 }
 
-function toJavaScalarType(typeName: FunctionScalarType): string {
+function toJavaScalarType(typeName: FunctionScalarType, boxed: boolean): string {
   switch (typeName) {
     case 'integer':
-      return 'int';
+      return boxed ? 'Integer' : 'int';
+    case 'number':
+      return boxed ? 'Double' : 'double';
     case 'boolean':
-      return 'boolean';
+      return boxed ? 'Boolean' : 'boolean';
     case 'string':
       return 'String';
   }
 }
 
-function toJavaType(descriptor: FunctionTypeNode): string {
-  if (descriptor.type === 'array') {
-    return `${toJavaScalarType(descriptor.items)}[]`;
+function toJavaType(
+  descriptor: CanonicalFunctionTypeNode,
+  context: 'root' | 'generic' = 'root',
+): string {
+  if (descriptor.type === 'nullable') {
+    return toJavaType(descriptor.value, 'generic');
   }
 
-  return toJavaScalarType(descriptor.type);
+  if (descriptor.type === 'array') {
+    if (context === 'root' && isScalarNode(descriptor.items)) {
+      return `${toJavaScalarType(descriptor.items.type, false)}[]`;
+    }
+
+    return `List<${toJavaType(descriptor.items, 'generic')}>`;
+  }
+
+  return toJavaScalarType(descriptor.type, context === 'generic');
 }
 
 function toPythonScalarType(typeName: FunctionScalarType): string {
   switch (typeName) {
     case 'integer':
       return 'int';
+    case 'number':
+      return 'float';
     case 'boolean':
       return 'bool';
     case 'string':
@@ -166,22 +212,32 @@ function toPythonScalarType(typeName: FunctionScalarType): string {
   }
 }
 
-function toPythonTypeHint(descriptor: FunctionTypeNode): string {
+function toPythonTypeHint(descriptor: CanonicalFunctionTypeNode): string {
+  if (descriptor.type === 'nullable') {
+    return `Optional[${toPythonTypeHint(descriptor.value)}]`;
+  }
+
   if (descriptor.type === 'array') {
-    return `List[${toPythonScalarType(descriptor.items)}]`;
+    return `List[${toPythonTypeHint(descriptor.items)}]`;
   }
 
   return toPythonScalarType(descriptor.type);
 }
 
-function defaultCppReturn(descriptor: FunctionTypeNode): string {
+function defaultCppReturn(descriptor: CanonicalFunctionTypeNode): string {
   if (descriptor.type === 'array') {
     return '{}';
+  }
+
+  if (descriptor.type === 'nullable') {
+    return 'std::nullopt';
   }
 
   switch (descriptor.type) {
     case 'integer':
       return '0';
+    case 'number':
+      return '0.0';
     case 'boolean':
       return 'false';
     case 'string':
@@ -189,14 +245,16 @@ function defaultCppReturn(descriptor: FunctionTypeNode): string {
   }
 }
 
-function defaultJavaReturn(descriptor: FunctionTypeNode): string {
-  if (descriptor.type === 'array') {
+function defaultJavaReturn(descriptor: CanonicalFunctionTypeNode): string {
+  if (descriptor.type === 'array' || descriptor.type === 'nullable') {
     return 'null';
   }
 
   switch (descriptor.type) {
     case 'integer':
       return '0';
+    case 'number':
+      return '0.0';
     case 'boolean':
       return 'false';
     case 'string':
@@ -204,14 +262,20 @@ function defaultJavaReturn(descriptor: FunctionTypeNode): string {
   }
 }
 
-function defaultPythonReturn(descriptor: FunctionTypeNode): string {
+function defaultPythonReturn(descriptor: CanonicalFunctionTypeNode): string {
   if (descriptor.type === 'array') {
     return '[]';
+  }
+
+  if (descriptor.type === 'nullable') {
+    return 'None';
   }
 
   switch (descriptor.type) {
     case 'integer':
       return '0';
+    case 'number':
+      return '0.0';
     case 'boolean':
       return 'False';
     case 'string':
@@ -219,27 +283,23 @@ function defaultPythonReturn(descriptor: FunctionTypeNode): string {
   }
 }
 
-function toCppParameterType(argument: FunctionSignature['args'][number]): string {
-  const descriptor: FunctionTypeNode =
-    argument.type === 'array'
-      ? { type: 'array', items: argument.items as FunctionScalarType }
-      : { type: argument.type };
-
-  if (descriptor.type === 'array') {
-    return `${toCppType(descriptor)}&`;
+function toCppParameterType(descriptor: CanonicalFunctionTypeNode): string {
+  if (descriptor.type === 'array' || descriptor.type === 'nullable') {
+    return `const ${toCppType(descriptor)}&`;
   }
 
   return toCppType(descriptor);
 }
 
-function buildCppStarterCode(signature: FunctionSignature): string {
+function buildCppStarterCode(signature: CanonicalFunctionSignature): string {
   const parameters = signature.args
-    .map(argument => `${toCppParameterType(argument)} ${argument.name}`)
+    .map(argument => `${toCppParameterType(argument.type)} ${argument.name}`)
     .join(', ');
 
   return [
     '#include <vector>',
     '#include <string>',
+    '#include <optional>',
     '',
     'class Solution {',
     'public:',
@@ -251,18 +311,14 @@ function buildCppStarterCode(signature: FunctionSignature): string {
   ].join('\n');
 }
 
-function buildJavaStarterCode(signature: FunctionSignature): string {
+function buildJavaStarterCode(signature: CanonicalFunctionSignature): string {
   const parameters = signature.args
-    .map(argument => {
-      const descriptor: FunctionTypeNode =
-        argument.type === 'array'
-          ? { type: 'array', items: argument.items as FunctionScalarType }
-          : { type: argument.type };
-      return `${toJavaType(descriptor)} ${argument.name}`;
-    })
+    .map(argument => `${toJavaType(argument.type)} ${argument.name}`)
     .join(', ');
 
   return [
+    'import java.util.List;',
+    '',
     'class Solution {',
     `    public ${toJavaType(signature.returnType)} ${signature.name}(${parameters}) {`,
     '        ',
@@ -272,21 +328,15 @@ function buildJavaStarterCode(signature: FunctionSignature): string {
   ].join('\n');
 }
 
-function buildPythonStarterCode(signature: FunctionSignature): string {
+function buildPythonStarterCode(signature: CanonicalFunctionSignature): string {
   const parameters = signature.args
-    .map(argument => {
-      const descriptor: FunctionTypeNode =
-        argument.type === 'array'
-          ? { type: 'array', items: argument.items as FunctionScalarType }
-          : { type: argument.type };
-      return `${argument.name}: ${toPythonTypeHint(descriptor)}`;
-    })
+    .map(argument => `${argument.name}: ${toPythonTypeHint(argument.type)}`)
     .join(', ');
 
   const parameterList = parameters ? `self, ${parameters}` : 'self';
 
   return [
-    'from typing import List',
+    'from typing import List, Optional',
     '',
     'class Solution:',
     `    def ${signature.name}(${parameterList}) -> ${toPythonTypeHint(signature.returnType)}:`,
@@ -295,22 +345,26 @@ function buildPythonStarterCode(signature: FunctionSignature): string {
   ].join('\n');
 }
 
+/** Builds starter code for one language from either legacy or canonical signature metadata. */
 export function buildStarterCode(
   language: SupportedFunctionLanguage,
-  signature: FunctionSignature
+  signature: FunctionSignature,
 ): string {
+  const normalizedSignature = normalizeFunctionSignature(signature);
+
   switch (language) {
     case 'cpp':
-      return buildCppStarterCode(signature);
+      return buildCppStarterCode(normalizedSignature);
     case 'java':
-      return buildJavaStarterCode(signature);
+      return buildJavaStarterCode(normalizedSignature);
     case 'python':
-      return buildPythonStarterCode(signature);
+      return buildPythonStarterCode(normalizedSignature);
   }
 }
 
+/** Builds starter code for all supported languages from the normalized signature. */
 export function buildStarterCodeByLanguage(
-  signature: FunctionSignature
+  signature: FunctionSignature,
 ): FunctionStarterCodeByLanguage {
   return {
     cpp: buildStarterCode('cpp', signature),
