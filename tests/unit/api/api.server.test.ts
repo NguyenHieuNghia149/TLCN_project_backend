@@ -11,6 +11,7 @@ describe('api server bootstrap factories', () => {
     const config = jest.fn();
     const connect = jest.fn();
     const runMigrations = jest.fn();
+    const registerDatabaseProcessHandlers = jest.fn();
     const queueConnect = jest.fn();
     const getJudgeQueueService = jest.fn(() => ({ connect: queueConnect }));
     const initializeWebSocket = jest.fn();
@@ -33,6 +34,7 @@ describe('api server bootstrap factories', () => {
     jest.doMock('http', () => ({ ...jest.requireActual('http'), createServer }));
     jest.doMock('@backend/shared/db/connection', () => ({
       DatabaseService: { connect, runMigrations },
+      registerDatabaseProcessHandlers,
     }));
     jest.doMock('@backend/shared/runtime/judge-queue', () => ({ getJudgeQueueService }));
     jest.doMock('../../../apps/api/src/routes', () => ({ registerRoutes }));
@@ -54,6 +56,7 @@ describe('api server bootstrap factories', () => {
 
     expect(config).not.toHaveBeenCalled();
     expect(createServer).not.toHaveBeenCalled();
+    expect(registerDatabaseProcessHandlers).not.toHaveBeenCalled();
     expect(connect).not.toHaveBeenCalled();
     expect(runMigrations).not.toHaveBeenCalled();
     expect(getJudgeQueueService).not.toHaveBeenCalled();
@@ -100,6 +103,9 @@ describe('api server bootstrap factories', () => {
   it('starts the API server with the expected startup order', async () => {
     const calls: string[] = [];
     const config = jest.fn();
+    const registerDatabaseProcessHandlers = jest.fn(() => {
+      calls.push('db-handlers');
+    });
     const connect = jest.fn(async () => {
       calls.push('connect');
     });
@@ -155,6 +161,7 @@ describe('api server bootstrap factories', () => {
     jest.doMock('http', () => ({ ...jest.requireActual('http'), createServer }));
     jest.doMock('@backend/shared/db/connection', () => ({
       DatabaseService: { connect, runMigrations },
+      registerDatabaseProcessHandlers,
     }));
     jest.doMock('@backend/shared/runtime/judge-queue', () => ({ getJudgeQueueService }));
     jest.doMock('../../../apps/api/src/routes', () => ({ registerRoutes }));
@@ -180,6 +187,7 @@ describe('api server bootstrap factories', () => {
     expect(started.server).toBe(server);
     expect(registerRoutes).toHaveBeenCalledTimes(1);
     expect(createServer).toHaveBeenCalledTimes(1);
+    expect(registerDatabaseProcessHandlers).toHaveBeenCalledTimes(1);
     expect(connect).toHaveBeenCalledTimes(1);
     expect(runMigrations).toHaveBeenCalledTimes(1);
     expect(initializeWebSocket).toHaveBeenCalledTimes(1);
@@ -193,6 +201,7 @@ describe('api server bootstrap factories', () => {
     expect(server.listen).toHaveBeenCalledTimes(1);
     expect(calls).toEqual([
       'routes',
+      'db-handlers',
       'connect',
       'migrate',
       'websocket',

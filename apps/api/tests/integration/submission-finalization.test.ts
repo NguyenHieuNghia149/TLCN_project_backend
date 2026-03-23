@@ -1,4 +1,4 @@
-﻿import crypto from 'crypto';
+import crypto from 'crypto';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { DatabaseService, db } from '@backend/shared/db/connection';
 import { problems, resultSubmissions, submissions, testcases, users } from '@backend/shared/db/schema';
@@ -93,6 +93,7 @@ describe('SubmissionRepository.finalizeSubmissionResult', () => {
     const countValue = Number((result.rows[0] as { count?: number | string } | undefined)?.count ?? 0);
     return countValue === 2;
   }
+
 
   async function createProblemWithTestcases(points: number[]) {
     const [problem] = await db

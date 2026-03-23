@@ -1,4 +1,4 @@
-import { DatabaseService } from '@backend/shared/db/connection';
+import { DatabaseService, registerDatabaseProcessHandlers } from '@backend/shared/db/connection';
 import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
 import { logger } from '@backend/shared/utils';
 import compression from 'compression';
@@ -143,6 +143,8 @@ export async function startApiServer(): Promise<{
   const app = createApiApp();
   const server = createServer(app);
 
+  registerDatabaseProcessHandlers();
+
   logger.info('Connecting to database...');
   await DatabaseService.connect();
 
@@ -194,5 +196,8 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+
+
 
 
