@@ -111,6 +111,7 @@ Thumbs.db
 tmp/
 temp/
 .worktrees/
+workspace/
 
 GEMINI.md
 

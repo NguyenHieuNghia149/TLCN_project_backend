@@ -75,6 +75,30 @@ function resetDatabaseSingletons(): void {
   databasePoolInstance = null;
 }
 
+/** Returns true when the config targets a hosted Supabase pooler while SSL is disabled. */
+function hasHostedPoolerSslMismatch(config: DatabaseConfig): boolean {
+  return Boolean(config.host?.endsWith('.pooler.supabase.com')) && config.ssl === false;
+}
+
+/** Builds a sanitized error payload for pool-level connection failures without leaking client internals. */
+function serializeDatabasePoolError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { message: String(error) };
+  }
+
+  const metadata: Record<string, unknown> = {
+    name: error.name,
+    message: error.message,
+  };
+
+  const errorWithCode = error as Error & { code?: string };
+  if (typeof errorWithCode.code === 'string' && errorWithCode.code.length > 0) {
+    metadata.code = errorWithCode.code;
+  }
+
+  return metadata;
+}
+
 /** Reads database config from the current process environment. */
 export function readDatabaseConfigFromEnv(): DatabaseConfig {
   ensureDatabaseEnvLoaded();
@@ -98,10 +122,17 @@ export function readDatabaseConfigFromEnv(): DatabaseConfig {
 /** Creates a fresh PostgreSQL pool from explicit or environment-backed config. */
 export function createDatabasePool(config?: DatabaseConfig): Pool {
   const resolvedConfig = config ?? readDatabaseConfigFromEnv();
+
+  if (hasHostedPoolerSslMismatch(resolvedConfig)) {
+    logger.warn(
+      'Database SSL is disabled while using a Supabase pooler host. This can cause unexpected disconnects; set DB_SSL=true for this environment.',
+    );
+  }
+
   const pool = new Pool(resolvedConfig);
 
   pool.on('error', error => {
-    logger.error('Database connection pool error:', error);
+    logger.error('Database connection pool error:', serializeDatabasePoolError(error));
   });
 
   return pool;

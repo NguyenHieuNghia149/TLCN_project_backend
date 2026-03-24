@@ -283,6 +283,49 @@ describe('shared db connection bootstrap', () => {
     expect(poolInstances[1]?.config).toEqual(config);
   });
 
+  it('sanitizes pool error logs instead of serializing the raw pg client object', () => {
+    const { connectionModule, logger, poolInstances } = loadConnectionModule();
+
+    connectionModule.createDatabasePool();
+    const errorHandler = poolInstances[0]?.on.mock.calls.find(([event]) => event === 'error')?.[1];
+    expect(errorHandler).toBeDefined();
+
+    const error = Object.assign(new Error('Connection terminated unexpectedly'), {
+      code: '57P01',
+      client: {
+        user: 'postgres',
+        password: 'super-secret',
+        host: 'aws-1-ap-southeast-1.pooler.supabase.com',
+      },
+    });
+
+    errorHandler?.(error);
+
+    expect(logger.error).toHaveBeenCalledWith('Database connection pool error:', {
+      name: 'Error',
+      message: 'Connection terminated unexpectedly',
+      code: '57P01',
+    });
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('super-secret');
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('password');
+  });
+
+  it('warns when ssl is disabled for a Supabase pooler host', () => {
+    const { connectionModule, logger } = loadConnectionModule({
+      env: {
+        DB_HOST: 'aws-1-ap-southeast-1.pooler.supabase.com',
+        DB_PORT: '6543',
+        DB_SSL: 'false',
+      },
+    });
+
+    connectionModule.createDatabasePool();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Database SSL is disabled while using a Supabase pooler host. This can cause unexpected disconnects; set DB_SSL=true for this environment.',
+    );
+  });
+
   it('createDatabaseService delegates connect, healthCheck, disconnect, and runMigrations using injected deps', async () => {
     const injectedPool = createPoolInstance({ totalCount: 2, idleCount: 1, waitingCount: 0 });
     const injectedDb = {
