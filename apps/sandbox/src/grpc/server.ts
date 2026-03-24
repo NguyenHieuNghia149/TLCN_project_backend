@@ -25,6 +25,18 @@ function getJudgeProto(): any {
   return cachedJudgeProto;
 }
 
+
+function looksLikeCompilationFailure(normalized: string): boolean {
+  const sourceCoordinatePattern = /(?:^|\n)(?:wrapper|solution|main)\.(?:c|cc|cpp|cxx|java|kt|py):\d+/;
+
+  return (
+    normalized.includes('compilation') ||
+    normalized.includes('compile') ||
+    normalized.includes('syntaxerror:') ||
+    sourceCoordinatePattern.test(normalized) ||
+    (normalized.includes('error:') && (normalized.includes('note:') || normalized.includes('in function')))
+  );
+}
 function inferTestCaseStatus(result: any): string {
   if (result.isPassed) {
     return 'ACCEPTED';
@@ -40,7 +52,7 @@ function inferTestCaseStatus(result: any): string {
     return 'MEMORY_LIMIT_EXCEEDED';
   }
 
-  if (normalized.includes('compilation') || normalized.includes('compile')) {
+  if (looksLikeCompilationFailure(normalized)) {
     return 'COMPILATION_ERROR';
   }
 
@@ -185,3 +197,4 @@ export function startGrpcServer(
     );
   });
 }
+

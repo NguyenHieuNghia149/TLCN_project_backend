@@ -8,8 +8,16 @@ export const validate =
   (schema: z.ZodSchema, segment: Segments = 'body') =>
   (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req[segment]);
-    logger.info(result);
     if (!result.success) {
+      logger.warn('Request validation failed', {
+        segment,
+        issues: result.error.issues.map(issue => ({
+          path: issue.path.join('.'),
+          code: issue.code,
+          message: issue.message,
+        })),
+      });
+
       res.status(400).json({
         message: 'Validation error',
         errors: result.error.flatten(),
