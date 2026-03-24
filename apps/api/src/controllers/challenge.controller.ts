@@ -185,8 +185,10 @@ export class ChallengeController {
       throw new AppException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
     }
 
-    // Check query parameter to show all testcases (for admin create/edit pages)
-    const showAllTestcases = req.query.showAll === 'true';
+    // Only elevated users can request all testcases on the detail path.
+    const showAllTestcases =
+      req.query.showAll === 'true' &&
+      (req.user?.role === 'teacher' || req.user?.role === 'owner');
 
     const result = await this.challengeService.getChallengeById(
       challengeId as string,
@@ -236,3 +238,4 @@ export {
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
 };
+

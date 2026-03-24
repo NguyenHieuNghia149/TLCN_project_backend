@@ -70,7 +70,11 @@
     "migrate:function-signature:backfill": "ts-node scripts/migrate/backfill-function-signature.ts",
     "check:no-function-signature-archive-dependency": "ts-node scripts/check-no-function-signature-archive-dependency.ts",
     "migrate:function-signature:synthesize": "ts-node scripts/migrate/generate-function-signature-manifest-from-catalog.ts",
-    "migrate:function-signature:quarantine": "ts-node scripts/migrate/quarantine-function-signature-problems.ts"
+    "migrate:function-signature:quarantine": "ts-node scripts/migrate/quarantine-function-signature-problems.ts",
+    "verify:post-migration": "ts-node scripts/verify/post-migration-runtime.ts",
+    "verify:post-migration:smoke": "ts-node scripts/verify/post-migration-runtime.ts --smoke",
+    "verify:http-post-migration": "node .\\node_modules\\jest\\bin\\jest.js --runInBand --runTestsByPath apps\\api\\tests\\integration\\challenge-http.post-migration.test.ts apps\\api\\tests\\integration\\favorite-http.post-migration.test.ts apps\\api\\tests\\integration\\submission-http.post-migration.test.ts apps\\api\\tests\\integration\\sandbox-route-boundary.test.ts apps\\api\\tests\\integration\\submission-finalization.test.ts",
+    "verify:release-smoke": "npm run verify:post-migration && npm run verify:http-post-migration"
   },
   "keywords": [],
   "author": "",
@@ -149,3 +153,4 @@
     "tsconfig-paths": "^4.2.0"
   }
 }
+

@@ -13,7 +13,9 @@ const allowedDirectories = [
   path.join(rootDir, 'scripts', 'archive'),
 ];
 const allowedExactFiles = new Set<string>([
-  path.join(rootDir, 'scripts', 'migrate', 'audit-post-drop.ts'),]);
+  path.join(rootDir, 'scripts', 'migrate', 'audit-post-drop.ts'),
+  path.join(rootDir, 'scripts', 'verify', 'post-migration-runtime.shared.ts'),
+]);
 const fileExtensions = new Set(['.ts', '.js']);
 const persistenceFiles = new Set<string>([
   path.join(rootDir, 'apps', 'api', 'src', 'repositories', 'problem.repository.ts'),

@@ -4,6 +4,7 @@ import { ProblemRepository } from '../../../apps/api/src/repositories/problem.re
 import { TestcaseRepository } from '../../../apps/api/src/repositories/testcase.repository';
 import { SubmissionRepository } from '../../../apps/api/src/repositories/submission.repository';
 import { LessonRepository } from '../../../apps/api/src/repositories/lesson.repository';
+import { ProblemVisibility } from '@backend/shared/types';
 
 /** Builds a dependency bag for FavoriteService tests with optional overrides. */
 function createFavoriteDependencies(overrides: Partial<any> = {}) {
@@ -42,6 +43,7 @@ describe('FavoriteService', () => {
         tags: 'array',
         lessonId: null,
         topicId: null,
+        visibility: ProblemVisibility.PUBLIC,
         createdAt: new Date(),
         updatedAt: new Date(),
         functionSignature: {
@@ -74,6 +76,202 @@ describe('FavoriteService', () => {
     expect(testcaseRepository.sumPointsByProblemIds).toHaveBeenCalledWith(['problem-1']);
     expect(submissionRepository.getAcceptedProblemIdsByUser).toHaveBeenCalledWith('user-1', ['problem-1']);
     expect(result.problemId).toBe('problem-1');
+  });
+
+  it('rejects private problems when adding a favorite', async () => {
+    const service = new FavoriteService(
+      createFavoriteDependencies({
+        favoriteRepository: {
+          findByUserAndProblem: jest.fn().mockResolvedValue(null),
+          addFavorite: jest.fn().mockResolvedValue({
+            id: 'favorite-private',
+            problemId: 'problem-private',
+            createdAt: new Date(),
+          }),
+        },
+        testcaseRepository: {
+          sumPointsByProblemIds: jest.fn().mockResolvedValue({ 'problem-private': 0 }),
+        },
+        submissionRepository: {
+          getAcceptedProblemIdsByUser: jest.fn().mockResolvedValue(new Set()),
+        },
+        problemRepository: {
+          findById: jest.fn().mockResolvedValue({
+            id: 'problem-private',
+            title: 'Private',
+            description: 'desc',
+            difficult: 'easy',
+            constraint: null,
+            tags: 'tree',
+            lessonId: null,
+            topicId: null,
+            visibility: ProblemVisibility.PRIVATE,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            functionSignature: {
+              name: 'inorderTraversal',
+              args: [
+                {
+                  name: 'root',
+                  type: {
+                    type: 'array',
+                    items: {
+                      type: 'nullable',
+                      value: { type: 'integer' },
+                    },
+                  },
+                },
+              ],
+              returnType: {
+                type: 'array',
+                items: { type: 'integer' },
+              },
+            },
+          }),
+        },
+      }),
+    );
+
+    await expect(service.addFavorite('user-1', 'problem-private')).rejects.toThrow('Challenge not found');
+  });
+
+  it('filters private problems out of listUserFavorites', async () => {
+    const favoriteRepository = {
+      listFavoritesByUser: jest.fn().mockResolvedValue([
+        {
+          favorite: {
+            id: 'favorite-public',
+            problemId: 'problem-public',
+            createdAt: new Date('2026-03-23T00:00:00.000Z'),
+          },
+          problem: {
+            id: 'problem-public',
+            title: 'Median of Two Sorted Arrays',
+            description: 'desc',
+            difficult: 'hard',
+            constraint: null,
+            tags: 'array,binary-search',
+            lessonId: null,
+            topicId: null,
+            visibility: ProblemVisibility.PUBLIC,
+            createdAt: new Date('2026-03-23T00:00:00.000Z'),
+            updatedAt: new Date('2026-03-23T00:00:00.000Z'),
+            functionSignature: {
+              name: 'findMedianSortedArrays',
+              args: [
+                { name: 'nums1', type: 'array', items: 'integer' },
+                { name: 'nums2', type: 'array', items: 'integer' },
+              ],
+              returnType: { type: 'number' },
+            },
+          },
+        },
+        {
+          favorite: {
+            id: 'favorite-private',
+            problemId: 'problem-private',
+            createdAt: new Date('2026-03-23T00:00:00.000Z'),
+          },
+          problem: {
+            id: 'problem-private',
+            title: 'Private',
+            description: 'desc',
+            difficult: 'easy',
+            constraint: null,
+            tags: 'private-only',
+            lessonId: null,
+            topicId: null,
+            visibility: ProblemVisibility.PRIVATE,
+            createdAt: new Date('2026-03-23T00:00:00.000Z'),
+            updatedAt: new Date('2026-03-23T00:00:00.000Z'),
+            functionSignature: {
+              name: 'twoSum',
+              args: [],
+              returnType: { type: 'array', items: 'integer' },
+            },
+          },
+        },
+      ]),
+    } as any;
+    const testcaseRepository = {
+      sumPointsByProblemIds: jest.fn().mockResolvedValue({ 'problem-public': 20 }),
+    } as any;
+    const submissionRepository = {
+      getAcceptedProblemIdsByUser: jest.fn().mockResolvedValue(new Set(['problem-public'])),
+    } as any;
+    const service = new FavoriteService(
+      createFavoriteDependencies({ favoriteRepository, testcaseRepository, submissionRepository }),
+    );
+
+    const result = await service.listUserFavorites('user-1');
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.problemId).toBe('problem-public');
+    expect(result[0]?.problem?.functionSignature).toEqual({
+      name: 'findMedianSortedArrays',
+      args: [
+        {
+          name: 'nums1',
+          type: {
+            type: 'array',
+            items: { type: 'integer' },
+          },
+        },
+        {
+          name: 'nums2',
+          type: {
+            type: 'array',
+            items: { type: 'integer' },
+          },
+        },
+      ],
+      returnType: { type: 'number' },
+    });
+    expect(testcaseRepository.sumPointsByProblemIds).toHaveBeenCalledWith(['problem-public']);
+    expect(submissionRepository.getAcceptedProblemIdsByUser).toHaveBeenCalledWith('user-1', ['problem-public']);
+  });
+
+  it('rejects private problems when toggling a favorite', async () => {
+    const service = new FavoriteService(
+      createFavoriteDependencies({
+        favoriteRepository: {
+          findByUserAndProblem: jest.fn().mockResolvedValue(null),
+          addFavorite: jest.fn().mockResolvedValue({
+            id: 'favorite-private',
+            problemId: 'problem-private',
+            createdAt: new Date(),
+          }),
+        },
+        testcaseRepository: {
+          sumPointsByProblemIds: jest.fn().mockResolvedValue({ 'problem-private': 0 }),
+        },
+        submissionRepository: {
+          getAcceptedProblemIdsByUser: jest.fn().mockResolvedValue(new Set()),
+        },
+        problemRepository: {
+          findById: jest.fn().mockResolvedValue({
+            id: 'problem-private',
+            title: 'Private',
+            description: 'desc',
+            difficult: 'easy',
+            constraint: null,
+            tags: 'tree',
+            lessonId: null,
+            topicId: null,
+            visibility: ProblemVisibility.PRIVATE,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            functionSignature: {
+              name: 'inorderTraversal',
+              args: [],
+              returnType: { type: 'array', items: 'integer' },
+            },
+          }),
+        },
+      }),
+    );
+
+    await expect(service.toggleFavorite('user-1', 'problem-private')).rejects.toThrow('Challenge not found');
   });
 
   it('uses injected repositories when removing a favorite', async () => {
@@ -132,5 +330,3 @@ describe('FavoriteService', () => {
     expect((service as any).lessonRepository).toBeInstanceOf(LessonRepository);
   });
 });
-
-

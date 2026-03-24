@@ -21,7 +21,7 @@ import {
 } from '@backend/shared/validations/problem.validation';
 import { LessonEntity } from '@backend/shared/db/schema';
 import { buildStarterCodeByLanguage, logger, normalizeFunctionSignature } from '@backend/shared/utils';
-import { FunctionSignature } from '@backend/shared/types';
+import { FunctionSignature, ProblemVisibility } from '@backend/shared/types';
 
 type FavoriteServiceDependencies = {
   favoriteRepository: FavoriteRepository;
@@ -38,6 +38,13 @@ export class FavoriteService {
   private readonly submissionRepository: SubmissionRepository;
   private readonly lessonRepository: LessonRepository;
 
+  private assertProblemIsPublic<T extends { visibility?: string | null }>(
+    problem: T | null,
+  ): asserts problem is T & { visibility: ProblemVisibility.PUBLIC } {
+    if (!problem || problem.visibility !== ProblemVisibility.PUBLIC) {
+      throw new NotFoundException('Challenge not found');
+    }
+  }
   constructor(deps: FavoriteServiceDependencies) {
     this.favoriteRepository = deps.favoriteRepository;
     this.problemRepository = deps.problemRepository;
@@ -48,9 +55,7 @@ export class FavoriteService {
 
   async addFavorite(userId: string, problemId: string): Promise<FavoriteResponse> {
     const problem = await this.problemRepository.findById(problemId);
-    if (!problem) {
-      throw new NotFoundException('Challenge not found');
-    }
+    this.assertProblemIsPublic(problem);
 
     const existing = await this.favoriteRepository.findByUserAndProblem(userId, problemId);
     if (existing) {
@@ -79,7 +84,9 @@ export class FavoriteService {
   }
 
   async listUserFavorites(userId: string): Promise<FavoriteResponse[]> {
-    const favorites = await this.favoriteRepository.listFavoritesByUser(userId);
+    const favorites = (await this.favoriteRepository.listFavoritesByUser(userId)).filter((row: any) =>
+      row.problem?.visibility === ProblemVisibility.PUBLIC
+    );
 
     const problemIds = favorites
       .map((row: any) => row.favorite.problemId)
@@ -109,9 +116,7 @@ export class FavoriteService {
   async toggleFavorite(userId: string, problemId: string): Promise<ToggleFavoriteResponse> {
     // Validate problem exists
     const problem = await this.problemRepository.findById(problemId);
-    if (!problem) {
-      throw new NotFoundException('Challenge not found');
-    }
+    this.assertProblemIsPublic(problem);
 
     // Check if already favorited
     const existing = await this.favoriteRepository.findByUserAndProblem(userId, problemId);

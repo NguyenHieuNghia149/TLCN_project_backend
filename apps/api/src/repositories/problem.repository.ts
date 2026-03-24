@@ -121,7 +121,7 @@ export class ProblemRepository extends BaseRepository<
   }
 
   getProblemsByTopicId(topicId: string): Promise<ProblemEntity[]> {
-    return this.db.select().from(problems).where(eq(problems.topicId, topicId));
+    return this.db.select().from(problems).where(and(eq(problems.topicId, topicId), eq(problems.visibility, ProblemVisibility.PUBLIC)));
   }
 
   async findByTopicWithCursor(params: {
@@ -171,7 +171,7 @@ export class ProblemRepository extends BaseRepository<
     const rows = await this.db
       .select({ tags: problems.tags })
       .from(problems)
-      .where(eq(problems.topicId, topicId));
+      .where(and(eq(problems.topicId, topicId), eq(problems.visibility, ProblemVisibility.PUBLIC)));
 
     const tagSet = new Set<string>();
     for (const row of rows) {
@@ -186,7 +186,10 @@ export class ProblemRepository extends BaseRepository<
   }
 
   async getAllTags(): Promise<string[]> {
-    const rows = await this.db.select({ tags: problems.tags }).from(problems);
+    const rows = await this.db
+      .select({ tags: problems.tags })
+      .from(problems)
+      .where(eq(problems.visibility, ProblemVisibility.PUBLIC));
 
     const tagSet = new Set<string>();
     for (const row of rows) {

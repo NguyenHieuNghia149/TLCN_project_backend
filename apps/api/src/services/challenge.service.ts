@@ -14,6 +14,7 @@ import { SubmissionRepository } from '../repositories/submission.repository';
 import { SolutionApproachRepository } from '../repositories/solutionApproach.repository';
 import { SolutionResponse } from '@backend/shared/validations/solution.validation';
 import { FavoriteRepository } from '../repositories/favorite.repository';
+import { ProblemVisibility } from '@backend/shared/types';
 
 type ChallengeServiceDependencies = {
   topicRepository: TopicRepository;
@@ -407,6 +408,10 @@ export class ChallengeService {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
     }
 
+
+    if (problem.visibility !== ProblemVisibility.PUBLIC && !options?.showAllTestcases) {
+      throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
+    }
     // Admin/Teacher can view all testcases, regular users see only public testcases
     const testcases = options?.showAllTestcases
       ? await this.testcaseRepository.findByProblemId(challengeId)

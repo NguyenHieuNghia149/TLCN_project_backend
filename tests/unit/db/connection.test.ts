@@ -230,6 +230,10 @@ describe('shared db connection bootstrap', () => {
   it('reads database config from env with the expected defaults', () => {
     const { connectionModule } = loadConnectionModule({
       env: {
+        DB_HOST: undefined,
+        DB_NAME: undefined,
+        DB_USER: undefined,
+        DB_PASSWORD: undefined,
         DB_PORT: '6432',
         DB_POOL_MIN: '4',
         DB_POOL_MAX: '12',
