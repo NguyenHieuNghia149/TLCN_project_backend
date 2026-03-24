@@ -1,38 +1,40 @@
 {
-    "name": "@backend/shared",
-    "version": "1.0.0",
-    "private": true,
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-        ".": "./dist/index.js",
-        "./db": "./dist/db/index.js",
-        "./db/connection": "./dist/db/connection.js",
-        "./db/schema": "./dist/db/schema/index.js",
-        "./db/utils": "./dist/db/utils.js",
-        "./runtime": "./dist/runtime/index.js",
-        "./runtime/*": "./dist/runtime/*.js",
-        "./types": "./dist/types/index.js",
-        "./types/*": "./dist/types/*.js",
-        "./utils": "./dist/utils/index.js",
-        "./utils/*": "./dist/utils/*.js",
-        "./proto": "./proto/sandbox.proto",
-        "./proto/*": "./proto/*",
-        "./validations": "./dist/validations/index.js",
-        "./validations/*": "./dist/validations/*.js"
-    },
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "description": "",
-    "dependencies": {
-        "drizzle-orm": "^0.44.5",
-        "drizzle-zod": "^0.8.3",
-        "winston": "^3.19.0",
-        "winston-daily-rotate-file": "^5.0.0",
-        "zod": "^4.1.11"
-    }
+  "name": "@backend/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./db": "./dist/db/index.js",
+    "./db/connection": "./dist/db/connection.js",
+    "./db/schema": "./dist/db/schema/index.js",
+    "./db/utils": "./dist/db/utils.js",
+    "./http": "./dist/http/index.js",
+    "./http/*": "./dist/http/*.js",
+    "./runtime": "./dist/runtime/index.js",
+    "./runtime/*": "./dist/runtime/*.js",
+    "./types": "./dist/types/index.js",
+    "./types/*": "./dist/types/*.js",
+    "./utils": "./dist/utils/index.js",
+    "./utils/*": "./dist/utils/*.js",
+    "./proto": "./proto/sandbox.proto",
+    "./proto/*": "./proto/*",
+    "./validations": "./dist/validations/index.js",
+    "./validations/*": "./dist/validations/*.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "drizzle-orm": "^0.44.5",
+    "drizzle-zod": "^0.8.3",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
+    "zod": "^4.1.11"
+  }
 }

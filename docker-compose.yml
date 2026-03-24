@@ -1,4 +1,4 @@
-services:
+﻿services:
   # Redis for BullMQ Queue (DB dedicated instance)
   redis-queue:
     image: redis:7-alpine
@@ -36,6 +36,8 @@ services:
       dockerfile: docker/Dockerfile.api
     expose:
       - '3001'
+    ports:
+      - '3001:3001'
     environment:
       - NODE_ENV=${NODE_ENV}
       - PORT=${PORT}
@@ -67,7 +69,6 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./.env:/app/.env
-
   # Sandbox Service (Isolated)
   sandbox:
     build:
@@ -147,3 +148,5 @@ services:
 volumes:
   redis_queue_data:
   redis_cache_data:
+
+

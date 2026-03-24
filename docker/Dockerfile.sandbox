@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     gcc \
     g++ \
+    nlohmann-json3-dev \
     openjdk-17-jdk \
     git \
     libprotobuf-dev \
@@ -88,3 +89,4 @@ ENV WORKSPACE_DIR=/app/workspace
 
 # Default command
 CMD ["npm", "run", "start:sandbox"]
+

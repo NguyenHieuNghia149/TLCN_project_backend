@@ -73,9 +73,19 @@ export function createApiApp(): Express {
       level: 6,
       threshold: 1024,
       filter: (req, res) => {
-        if (req.headers['cache-control'] && req.headers['cache-control'].includes('no-transform')) {
+        const acceptHeader = req.headers.accept;
+        if (
+          (typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream')) ||
+          req.path.includes('/stream/')
+        ) {
           return false;
         }
+
+        const cacheControlHeader = req.headers['cache-control'];
+        if (typeof cacheControlHeader === 'string' && cacheControlHeader.includes('no-transform')) {
+          return false;
+        }
+
         return compression.filter(req, res);
       },
     })

@@ -12,11 +12,11 @@
     "dev:worker": "npm run dev:worker --workspace=@backend/worker",
     "dev:sandbox": "npm run dev:sandbox --workspace=@backend/sandbox",
     "dev:all": "concurrently \"npm run dev:api\" \"npm run dev:worker\" \"npm run dev:sandbox\"",
-    "start:all": "ts-node scripts/start-all.ts",
+    "start:all": "concurrently \"npm run start:api\" \"npm run start:worker\" \"npm run start:sandbox\"",
     "test:security": "ts-node scripts/test-security.ts",
     "test:sandbox": "ts-node scripts/test-sandbox.ts",
     "test:debug": "ts-node scripts/test-debug-fibonacci.ts",
-    "start:test": "ts-node scripts/start-and-test.ts",
+    "start:test": "npm run verify:full-pipeline:e2e",
     "build": "tsc -p apps/api/tsconfig.json && tsc -p apps/worker/tsconfig.json && tsc -p apps/sandbox/tsconfig.json",
     "start:api": "npm run start --workspace=@backend/api",
     "start:worker": "npm run start:worker --workspace=@backend/worker",
@@ -74,7 +74,9 @@
     "verify:post-migration": "ts-node scripts/verify/post-migration-runtime.ts",
     "verify:post-migration:smoke": "ts-node scripts/verify/post-migration-runtime.ts --smoke",
     "verify:http-post-migration": "node .\\node_modules\\jest\\bin\\jest.js --runInBand --runTestsByPath apps\\api\\tests\\integration\\challenge-http.post-migration.test.ts apps\\api\\tests\\integration\\favorite-http.post-migration.test.ts apps\\api\\tests\\integration\\submission-http.post-migration.test.ts apps\\api\\tests\\integration\\sandbox-route-boundary.test.ts apps\\api\\tests\\integration\\submission-finalization.test.ts",
-    "verify:release-smoke": "npm run verify:post-migration && npm run verify:http-post-migration"
+    "verify:release-smoke": "npm run verify:post-migration && npm run verify:http-post-migration",
+    "verify:pre-merge-gate": "ts-node scripts/verify/pre-merge-gate.ts",
+    "verify:full-pipeline:e2e": "ts-node apps/api/tests/e2e/full_pipeline.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -153,4 +155,3 @@
     "tsconfig-paths": "^4.2.0"
   }
 }
-
