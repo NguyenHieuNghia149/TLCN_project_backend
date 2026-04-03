@@ -1,10 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { index, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
-import { users } from './user';
-import { examParticipations } from './examParticipations';
-import { problems } from './problem';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
+
+import { examParticipations } from './examParticipations';
+import { languages } from './languages';
+import { problems } from './problem';
+import { users } from './user';
 import { ESubmissionStatus } from '@backend/shared/types/submissionStatus.enum';
 
 export const submissions = pgTable(
@@ -13,7 +15,9 @@ export const submissions = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     sourceCode: text('source_code').notNull(),
     status: varchar('status', { length: 50 }).notNull().default(ESubmissionStatus.PENDING.toString()),
-    language: varchar('language', { length: 50 }).notNull(),
+    languageId: uuid('language_id')
+      .references(() => languages.id)
+      .notNull(),
     submittedAt: timestamp('submitted_at').defaultNow().notNull(),
     judgedAt: timestamp('judged_at'),
     userId: uuid('user_id')
@@ -29,6 +33,8 @@ export const submissions = pgTable(
     index('idx_submissions_problem_submitted_at').on(table.problemId, table.submittedAt),
     index('idx_submissions_status_submitted_at').on(table.status, table.submittedAt),
     index('idx_submissions_user_problem_submitted_at').on(table.userId, table.problemId, table.submittedAt),
+    index('idx_submissions_language_id').on(table.languageId),
+    index('idx_submissions_language_id_submitted_at').on(table.languageId, table.submittedAt),
     index('idx_submissions_accepted_solved_lookup')
       .on(table.userId, table.problemId)
       .where(sql`${table.status} = 'ACCEPTED' AND ${table.examParticipationId} IS NULL`),
@@ -53,7 +59,7 @@ export const insertSubmissionSchema = createInsertSchema(submissions, {
       'SYSTEM_ERROR',
     ])
     .default('PENDING'),
-  language: z.string().min(1),
+  languageId: z.string().uuid(),
   submittedAt: z.string().optional(),
   judgedAt: z.string().optional(),
   userId: z.string().uuid(),

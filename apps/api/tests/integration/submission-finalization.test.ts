@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { eq, inArray } from 'drizzle-orm';
 import { DatabaseService, db } from '@backend/shared/db/connection';
-import { problems, resultSubmissions, submissions, testcases, users } from '@backend/shared/db/schema';
+import { languages, problems, resultSubmissions, submissions, testcases, users } from '@backend/shared/db/schema';
 import {
   ESubmissionStatus,
   FunctionSignature,
@@ -129,11 +129,21 @@ describe('SubmissionRepository.finalizeSubmissionResult', () => {
     status?: ESubmissionStatus;
     examParticipationId?: string | null;
   }) {
+    const [pythonLanguage] = await db
+      .select({ id: languages.id })
+      .from(languages)
+      .where(eq(languages.key, 'python'))
+      .limit(1);
+
+    if (!pythonLanguage) {
+      throw new Error('Missing seeded language row for python');
+    }
+
     const [submission] = await db
       .insert(submissions)
       .values({
         sourceCode: 'print(1)',
-        language: 'python',
+        languageId: pythonLanguage.id,
         problemId: input.problemId,
         userId: input.userId,
         status: input.status ?? ESubmissionStatus.PENDING,

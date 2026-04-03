@@ -23,6 +23,7 @@ function createSubmissionDependencies(overrides: Partial<any> = {}) {
     userRepository: {} as any,
     examParticipationRepository: {} as any,
     examRepository: {} as any,
+    supportedLanguageRepository: {} as any,
     getQueueService: () => ({
       addJob: jest.fn(),
       getQueueLength: jest.fn().mockResolvedValue(0),
@@ -157,5 +158,119 @@ describe('SubmissionService JSON-first queue payload', () => {
 
     expect((service as any).getQueueService()).toBe(queueService);
     expect(getQueueService).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists only canonical languageId while keeping queue jobs keyed by the public language', async () => {
+    const submissionRepository = {
+      create: jest.fn().mockResolvedValue({
+        id: 'submission-1',
+        languageId: 'lang-python',
+        sourceCode: 'print(1)',
+        problemId: 'problem-1',
+        userId: 'user-1',
+        status: 'PENDING',
+        submittedAt: new Date(),
+      }),
+    } as any;
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue({
+        id: 'lang-python',
+        key: 'python',
+        isActive: true,
+      }),
+    } as any;
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn().mockResolvedValue(undefined),
+      getQueueLength: jest.fn().mockResolvedValue(0),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 0, isHealthy: true }),
+    };
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        submissionRepository,
+        problemRepository,
+        testcaseRepository,
+        supportedLanguageRepository,
+        getQueueService: () => queueService,
+      }),
+    );
+
+    await service.submitCode({
+      sourceCode: 'print(1)',
+      language: 'python',
+      problemId: 'problem-1',
+      userId: 'user-1',
+    });
+
+    expect(supportedLanguageRepository.findActiveExecutableLanguageByKey).toHaveBeenCalledWith(
+      'python',
+    );
+    const createInput = submissionRepository.create.mock.calls[0]?.[0];
+    expect(createInput.languageId).toBe('lang-python');
+    expect(createInput).not.toHaveProperty('language');
+    expect(queueService.addJob).toHaveBeenCalledWith(
+      expect.objectContaining({ language: 'python' }),
+    );
+  });
+
+  it('rejects submitCode when the language is not active in the catalog', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue(null),
+    } as any;
+    const submissionRepository = {
+      create: jest.fn(),
+    } as any;
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        supportedLanguageRepository,
+      }),
+    );
+
+    await expect(
+      service.submitCode({
+        sourceCode: 'print(1)',
+        language: 'python',
+        problemId: 'problem-1',
+        userId: 'user-1',
+      }),
+    ).rejects.toThrow('Language python is inactive or unsupported.');
+
+    expect(submissionRepository.create).not.toHaveBeenCalled();
   });
 });

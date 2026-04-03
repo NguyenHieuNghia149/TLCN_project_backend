@@ -2,24 +2,93 @@ import {
   ProblemEntity,
   ProblemInsert,
   problems,
+  SolutionApproachEntity,
+  solutionApproachCodeVariants,
+  solutionApproaches,
   SolutionEntity,
   solutions,
   TestcaseEntity,
   testcases,
+  languages,
+  topics,
 } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
 import { ProblemInput } from '@backend/shared/validations/problem.validation';
-import { SolutionApproachEntity, solutionApproaches } from '@backend/shared/db/schema';
-import { and, desc, eq, gt, ilike, lt, or, inArray, sql, count } from 'drizzle-orm';
+import { normalizeSolutionApproachCodeVariants } from '@backend/shared/validations/solution.validation';
+import { and, count, desc, eq, gt, ilike, inArray, lt, or, sql } from 'drizzle-orm';
 import { ProblemVisibility } from '@backend/shared/types';
 import { normalizeFunctionSignature } from '@backend/shared/utils';
-import { topics } from '@backend/shared/db/schema';
 
 export type ChallengeCreationResult = {
   problem: ProblemEntity;
   testcases: TestcaseEntity[];
   solution: (SolutionEntity & { solutionApproaches: SolutionApproachEntity[] }) | null;
 };
+
+function toSolutionApproachPersistenceValues(solutionId: string, approach: any) {
+  return {
+    solutionId,
+    title: approach.title,
+    description: approach.description,
+    timeComplexity: approach.timeComplexity,
+    spaceComplexity: approach.spaceComplexity,
+    explanation: approach.explanation,
+    order: approach.order,
+  };
+}
+
+async function resolveLanguageIdByKeyForApproaches(tx: any, approaches: any[]): Promise<Map<string, string>> {
+  const languageKeys = Array.from(
+    new Set(
+      approaches.flatMap((approach: any) =>
+        normalizeSolutionApproachCodeVariants(approach).map(variant => variant.language),
+      ),
+    ),
+  );
+
+  if (languageKeys.length === 0) {
+    return new Map<string, string>();
+  }
+
+  const rows = await tx
+    .select({ id: languages.id, key: languages.key })
+    .from(languages)
+    .where(inArray(languages.key, languageKeys));
+
+  const languageIdByKey = new Map<string, string>(rows.map((row: any) => [row.key, row.id]));
+  const missingKeys = languageKeys.filter(key => !languageIdByKey.has(key));
+
+  if (missingKeys.length > 0) {
+    throw new Error(`Missing language catalog rows for keys: ${missingKeys.join(', ')}`);
+  }
+
+  return languageIdByKey;
+}
+
+function toSolutionApproachCodeVariantPersistenceValues(
+  createdApproaches: SolutionApproachEntity[],
+  inputApproaches: any[],
+  languageIdByKey: Map<string, string>,
+) {
+  return createdApproaches.flatMap((createdApproach, index) => {
+    const inputApproach = inputApproaches[index] ?? { codeVariants: [] };
+    const codeVariants = normalizeSolutionApproachCodeVariants(inputApproach);
+
+    return codeVariants.map(variant => {
+      const languageId = languageIdByKey.get(variant.language);
+      if (!languageId) {
+        throw new Error(`Missing language catalog row for key: ${variant.language}`);
+      }
+
+      return {
+        approachId: createdApproach.id,
+        languageId,
+        sourceCode: variant.sourceCode,
+      };
+    });
+  });
+}
+
 export class ProblemRepository extends BaseRepository<
   typeof problems,
   ProblemEntity,
@@ -92,22 +161,33 @@ export class ProblemRepository extends BaseRepository<
       createdSolution = s;
 
       if (solution.solutionApproaches && solution.solutionApproaches.length > 0) {
+        const languageIdByKey = await resolveLanguageIdByKeyForApproaches(
+          tx,
+          solution.solutionApproaches,
+        );
+
         createdApproaches = await tx
           .insert(solutionApproaches)
           .values(
-            solution.solutionApproaches.map(ap => ({
-              solutionId: s.id,
-              title: ap.title,
-              description: ap.description,
-              sourceCode: ap.sourceCode,
-              language: ap.language,
-              timeComplexity: ap.timeComplexity,
-              spaceComplexity: ap.spaceComplexity,
-              explanation: ap.explanation,
-              order: ap.order,
-            }))
+            solution.solutionApproaches.map(ap =>
+              toSolutionApproachPersistenceValues(s.id, ap),
+            )
           )
           .returning();
+
+        const variantRows = toSolutionApproachCodeVariantPersistenceValues(
+          createdApproaches,
+          solution.solutionApproaches,
+          languageIdByKey,
+        );
+        if (variantRows.length > 0) {
+          await tx.insert(solutionApproachCodeVariants).values(variantRows);
+        }
+
+        createdApproaches = createdApproaches.map((approach, index) => ({
+          ...approach,
+          codeVariants: normalizeSolutionApproachCodeVariants(solution.solutionApproaches?.[index] ?? { codeVariants: [] }),
+        })) as SolutionApproachEntity[];
       }
     }
 
@@ -383,23 +463,33 @@ export class ProblemRepository extends BaseRepository<
         solutionId = newSolution.id;
       }
 
-      // 2. Handle approaches: Delete all existing and insert new ones
-      await tx.delete(solutionApproaches).where(eq(solutionApproaches.solutionId, solutionId));
+      // 2. Handle approaches only when they are explicitly part of the update payload.
+      if (solutionData.solutionApproaches !== undefined) {
+        await tx.delete(solutionApproaches).where(eq(solutionApproaches.solutionId, solutionId));
 
-      if (solutionData.solutionApproaches && solutionData.solutionApproaches.length > 0) {
-        await tx.insert(solutionApproaches).values(
-          solutionData.solutionApproaches.map((ap: any) => ({
-            solutionId,
-            title: ap.title,
-            description: ap.description,
-            sourceCode: ap.sourceCode,
-            language: ap.language,
-            timeComplexity: ap.timeComplexity,
-            spaceComplexity: ap.spaceComplexity,
-            explanation: ap.explanation,
-            order: ap.order,
-          })) as any
-        );
+        if (solutionData.solutionApproaches.length > 0) {
+          const languageIdByKey = await resolveLanguageIdByKeyForApproaches(
+            tx,
+            solutionData.solutionApproaches,
+          );
+          const createdApproaches = await tx
+            .insert(solutionApproaches)
+            .values(
+              solutionData.solutionApproaches.map((ap: any) =>
+                toSolutionApproachPersistenceValues(solutionId, ap),
+              ) as any
+            )
+            .returning();
+
+          const variantRows = toSolutionApproachCodeVariantPersistenceValues(
+            createdApproaches,
+            solutionData.solutionApproaches,
+            languageIdByKey,
+          );
+          if (variantRows.length > 0) {
+            await tx.insert(solutionApproachCodeVariants).values(variantRows as any);
+          }
+        }
       }
     });
   }
@@ -429,6 +519,16 @@ export class ProblemRepository extends BaseRepository<
       .limit(limit);
   }
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

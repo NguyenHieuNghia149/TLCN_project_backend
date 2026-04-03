@@ -7,6 +7,8 @@ export * from './problem';
 export * from './testcase';
 export * from './solution';
 export * from './solutionApproaches';
+export * from './solutionApproachCodeVariants';
+export * from './languages';
 export * from './submission';
 export * from './resultSubmission';
 export * from './favorite';
@@ -19,23 +21,25 @@ export * from './notification';
 
 // Relations
 import { relations } from 'drizzle-orm';
-import { users } from './user';
-import { refreshTokens } from './token';
-import { topics } from './topic';
-import { lessons } from './lesson';
-import { problems } from './problem';
-import { testcases } from './testcase';
-import { solutions } from './solution';
-import { solutionApproaches } from './solutionApproaches';
-import { submissions } from './submission';
-import { resultSubmissions } from './resultSubmission';
-import { favorite } from './favorite';
 import { comments } from './comment';
 import { learnedLessons } from './completed_lesson';
-import { examToProblems } from './examsToProblems';
-import { examParticipations } from './examParticipations';
 import { exam } from './exam';
+import { examParticipations } from './examParticipations';
+import { examToProblems } from './examsToProblems';
+import { favorite } from './favorite';
+import { languages } from './languages';
+import { lessons } from './lesson';
 import { notifications } from './notification';
+import { problems } from './problem';
+import { resultSubmissions } from './resultSubmission';
+import { solutions } from './solution';
+import { solutionApproachCodeVariants } from './solutionApproachCodeVariants';
+import { solutionApproaches } from './solutionApproaches';
+import { submissions } from './submission';
+import { testcases } from './testcase';
+import { refreshTokens } from './token';
+import { topics } from './topic';
+import { users } from './user';
 
 export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
@@ -77,7 +81,6 @@ export const problemsRelations = relations(problems, ({ one, many }) => ({
   testcases: many(testcases),
   solutions: one(solutions),
   submissions: many(submissions),
-
   examToProblems: many(examToProblems),
 }));
 
@@ -96,11 +99,31 @@ export const solutionsRelations = relations(solutions, ({ one, many }) => ({
   approaches: many(solutionApproaches),
 }));
 
-export const solutionApproachesRelations = relations(solutionApproaches, ({ one }) => ({
+export const solutionApproachesRelations = relations(solutionApproaches, ({ one, many }) => ({
   solution: one(solutions, {
     fields: [solutionApproaches.solutionId],
     references: [solutions.id],
   }),
+  codeVariantRows: many(solutionApproachCodeVariants),
+}));
+
+export const solutionApproachCodeVariantsRelations = relations(
+  solutionApproachCodeVariants,
+  ({ one }) => ({
+    approach: one(solutionApproaches, {
+      fields: [solutionApproachCodeVariants.approachId],
+      references: [solutionApproaches.id],
+    }),
+    languageCatalogEntry: one(languages, {
+      fields: [solutionApproachCodeVariants.languageId],
+      references: [languages.id],
+    }),
+  }),
+);
+
+export const languagesRelations = relations(languages, ({ many }) => ({
+  submissions: many(submissions),
+  solutionApproachCodeVariants: many(solutionApproachCodeVariants),
 }));
 
 export const submissionsRelations = relations(submissions, ({ one, many }) => ({
@@ -111,6 +134,10 @@ export const submissionsRelations = relations(submissions, ({ one, many }) => ({
   problem: one(problems, {
     fields: [submissions.problemId],
     references: [problems.id],
+  }),
+  languageCatalogEntry: one(languages, {
+    fields: [submissions.languageId],
+    references: [languages.id],
   }),
   results: many(resultSubmissions),
 }));

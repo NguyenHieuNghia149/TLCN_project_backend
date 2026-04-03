@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isIntegratedExecutableLanguageKey } from '@backend/shared/utils';
+
 export interface ExecutionResult {
   stdout: string;
   stderr: string;
@@ -22,13 +24,13 @@ export interface ExecutionConfig {
   memoryLimit: string;
 }
 
-const supportedLanguages = ['cpp', 'python', 'java'] as const;
-
 export const CreateSubmissionSchema = z.object({
   sourceCode: z.string().min(1, 'Source code is required').max(50000, 'Code too long (max 50KB)'),
-  language: z.enum(supportedLanguages, {
-    message: 'Unsupported language. Supported: cpp, python, java',
-  }),
+  language: z
+    .string()
+    .refine(isIntegratedExecutableLanguageKey, {
+      message: 'Unsupported language. Supported: cpp, java, python',
+    }),
   problemId: z.string().uuid('Invalid problem ID'),
   participationId: z.string().uuid().optional(),
 });

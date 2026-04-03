@@ -5,14 +5,14 @@ import {
   FunctionSignature,
   FunctionStarterCodeByLanguage,
   FunctionTypeNode,
+  IntegratedExecutableLanguageKey,
 } from '@backend/shared/types';
 
 import {
   normalizeFunctionSignature,
   normalizeFunctionTypeNode,
 } from './function-signature-normalizer';
-
-export type SupportedFunctionLanguage = 'cpp' | 'java' | 'python';
+import { getIntegratedExecutableLanguageKeys } from './supported-languages';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -347,7 +347,7 @@ function buildPythonStarterCode(signature: CanonicalFunctionSignature): string {
 
 /** Builds starter code for one language from either legacy or canonical signature metadata. */
 export function buildStarterCode(
-  language: SupportedFunctionLanguage,
+  language: IntegratedExecutableLanguageKey,
   signature: FunctionSignature,
 ): string {
   const normalizedSignature = normalizeFunctionSignature(signature);
@@ -366,9 +366,8 @@ export function buildStarterCode(
 export function buildStarterCodeByLanguage(
   signature: FunctionSignature,
 ): FunctionStarterCodeByLanguage {
-  return {
-    cpp: buildStarterCode('cpp', signature),
-    java: buildStarterCode('java', signature),
-    python: buildStarterCode('python', signature),
-  };
+  return getIntegratedExecutableLanguageKeys().reduce<FunctionStarterCodeByLanguage>((acc, language) => {
+    acc[language] = buildStarterCode(language, signature);
+    return acc;
+  }, {});
 }

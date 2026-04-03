@@ -13,3 +13,5 @@ export * from './auth.validation';
 export * from './learningprocess.validation';
 export * from './lesson.validation';
 export * from './profile.validation';
+export * from './supportedLanguage.validation';
+

@@ -1,4 +1,4 @@
-import { JudgeUtils, logger, buildTestcaseDisplay, normalizeFunctionSignature } from '@backend/shared/utils';
+import { JudgeUtils, logger, buildTestcaseDisplay, isIntegratedExecutableLanguageKey, normalizeFunctionSignature } from '@backend/shared/utils';
 import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
 import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
 import type { QueueJob } from '@backend/shared/runtime/judge-queue';
@@ -16,6 +16,7 @@ import { ProblemRepository } from '../repositories/problem.repository';
 import { UserRepository } from '../repositories/user.repository';
 import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
 import { createExamRepository, ExamRepository } from '../repositories/exam.repository';
+import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
 // Removed direct schema entity imports - using validation types instead
 import { PaginationOptions } from '../repositories/base.repository';
 import axios from 'axios';
@@ -43,6 +44,7 @@ type SubmissionServiceDependencies = {
   userRepository: UserRepository;
   examParticipationRepository: ExamParticipationRepository;
   examRepository: ExamRepository;
+  supportedLanguageRepository: SupportedLanguageRepository;
   getQueueService: () => ISubmissionQueueService;
 }
 
@@ -54,6 +56,7 @@ export class SubmissionService {
   private userRepository: UserRepository;
   private examParticipationRepository: ExamParticipationRepository;
   private examRepository: ExamRepository;
+  private supportedLanguageRepository: SupportedLanguageRepository;
   private readonly queueServiceFactory: () => ISubmissionQueueService;
 
   constructor(deps: SubmissionServiceDependencies) {
@@ -64,6 +67,7 @@ export class SubmissionService {
     this.userRepository = deps.userRepository;
     this.examParticipationRepository = deps.examParticipationRepository;
     this.examRepository = deps.examRepository;
+    this.supportedLanguageRepository = deps.supportedLanguageRepository;
     this.queueServiceFactory = deps.getQueueService;
   }
 
@@ -79,6 +83,7 @@ export class SubmissionService {
   }> {
     const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
     this.assertFunctionSignatureLanguage(problem, input.language);
+    const activeLanguage = await this.requireActiveExecutableLanguage(input.language);
 
     let examParticipationId: string | undefined = undefined;
     if ((input as any).participationId) {
@@ -90,7 +95,7 @@ export class SubmissionService {
 
     const submission = await this.submissionRepository.create({
       sourceCode: input.sourceCode,
-      language: input.language,
+      languageId: activeLanguage.id,
       problemId: input.problemId,
       userId: input.userId,
       status: ESubmissionStatus.PENDING,
@@ -100,7 +105,7 @@ export class SubmissionService {
     const queueLength = await this.getQueueLengthSafely();
     const estimatedWaitTime = queueLength * 30;
 
-    const job = this.prepareQueueJob(submission, problem, testcases);
+    const job = this.prepareQueueJob({ ...submission, language: input.language }, problem, testcases);
 
     const enqueued = await this.addJobToQueueSafely(job);
 
@@ -118,6 +123,7 @@ export class SubmissionService {
   ) {
     const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
     this.assertFunctionSignatureLanguage(problem, input.language);
+    await this.requireActiveExecutableLanguage(input.language);
 
     const submissionId = crypto.randomUUID();
 
@@ -143,6 +149,22 @@ export class SubmissionService {
     };
   }
 
+  private async requireActiveExecutableLanguage(language: string) {
+    const activeLanguage = await this.supportedLanguageRepository.findActiveExecutableLanguageByKey(
+      language,
+    );
+
+    if (!activeLanguage) {
+      throw new BaseException(
+        `Language ${language} is inactive or unsupported.`,
+        400,
+        'LANGUAGE_NOT_ACTIVE',
+      );
+    }
+
+    return activeLanguage;
+  }
+
   private assertFunctionSignatureLanguage(problem: any, language: string): void {
     if (!problem?.functionSignature) {
       throw new BaseException(
@@ -152,7 +174,7 @@ export class SubmissionService {
       );
     }
 
-    if (!['cpp', 'java', 'python'].includes(language)) {
+    if (!isIntegratedExecutableLanguageKey(language)) {
       throw new BaseException(
         `Language ${language} is not supported for function-signature problems`,
         400,
@@ -740,9 +762,17 @@ export function createSubmissionService(): SubmissionService {
     userRepository: new UserRepository(),
     examParticipationRepository: new ExamParticipationRepository(),
     examRepository: createExamRepository(),
+    supportedLanguageRepository: new SupportedLanguageRepository(),
     getQueueService: getJudgeQueueService,
   });
 }
+
+
+
+
+
+
+
 
 
 
