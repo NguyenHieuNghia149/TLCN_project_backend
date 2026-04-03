@@ -1,19 +1,23 @@
 import { logger } from '@backend/shared/utils';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { ChallengeHasSubmissionsException } from '../exceptions/challenge.exceptions';
-import { BaseException } from '../exceptions/auth.exceptions';
+import { BaseException, ValidationException } from '../exceptions/auth.exceptions';
 import { ProblemRepository } from '../repositories/problem.repository';
 import { SolutionRepository } from '../repositories/solution.repository';
 import { TestcaseRepository } from '../repositories/testcase.repository';
 import { TopicRepository } from '../repositories/topic.repository';
 import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
-import { buildStarterCodeByLanguage, buildTestcaseDisplay, normalizeFunctionSignature } from '@backend/shared/utils';
+import { buildStarterCodeByLanguage, buildTestcaseDisplay, getIntegratedExecutableLanguageKeys, normalizeFunctionSignature } from '@backend/shared/utils';
 import { ChallengeResponse, ProblemInput } from '@backend/shared/validations/problem.validation';
 import { LessonRepository } from '../repositories/lesson.repository';
 import { SubmissionRepository } from '../repositories/submission.repository';
 import { SolutionApproachRepository } from '../repositories/solutionApproach.repository';
-import { SolutionResponse } from '@backend/shared/validations/solution.validation';
+import {
+  normalizeSolutionApproachCodeVariants,
+  SolutionResponse,
+} from '@backend/shared/validations/solution.validation';
 import { FavoriteRepository } from '../repositories/favorite.repository';
+import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
 import { ProblemVisibility } from '@backend/shared/types';
 
 type ChallengeServiceDependencies = {
@@ -25,6 +29,7 @@ type ChallengeServiceDependencies = {
   solutionApproachRepository: SolutionApproachRepository;
   submissionRepository: SubmissionRepository;
   favoriteRepository: FavoriteRepository;
+  supportedLanguageRepository: SupportedLanguageRepository;
 };
 
 export class ChallengeService {
@@ -36,6 +41,7 @@ export class ChallengeService {
   private solutionApproachRepository: SolutionApproachRepository;
   private submissionRepository: SubmissionRepository;
   private favoriteRepository: FavoriteRepository;
+  private supportedLanguageRepository: SupportedLanguageRepository;
 
   constructor(deps: ChallengeServiceDependencies) {
     this.topicRepository = deps.topicRepository;
@@ -46,6 +52,7 @@ export class ChallengeService {
     this.solutionApproachRepository = deps.solutionApproachRepository;
     this.submissionRepository = deps.submissionRepository;
     this.favoriteRepository = deps.favoriteRepository;
+    this.supportedLanguageRepository = deps.supportedLanguageRepository;
   }
 
   async createChallenge(challengeData: ProblemInput): Promise<ChallengeResponse> {
@@ -53,6 +60,7 @@ export class ChallengeService {
 
     // Validate topic and lesson existence
     await this.validateTopicAndLesson(problemData.topicId, problemData.lessonId);
+    await this.validateSolutionLanguageCoverage(solution);
 
     // Create challenge using repository
     const result = await this.problemRepository.createProblemTransactional(challengeData);
@@ -77,6 +85,66 @@ export class ChallengeService {
     }
   }
 
+  private buildEmptyStarterCodeByLanguage(): Record<string, string> {
+    return getIntegratedExecutableLanguageKeys().reduce<Record<string, string>>((acc, language) => {
+      acc[language] = '';
+      return acc;
+    }, {});
+  }
+
+  private async validateSolutionLanguageCoverage(
+    solution?: ProblemInput['solution'],
+  ): Promise<void> {
+    if (!solution?.solutionApproaches) {
+      return;
+    }
+
+    const activeLanguageKeys = (
+      await this.supportedLanguageRepository.findActiveExecutableLanguages()
+    ).map(language => language.key);
+
+    if (activeLanguageKeys.length === 0) {
+      return;
+    }
+
+    for (const approach of solution.solutionApproaches) {
+      const codeVariants = normalizeSolutionApproachCodeVariants(approach);
+      const seenLanguages = new Set<string>();
+      const duplicateLanguages = new Set<string>();
+
+      for (const variant of codeVariants) {
+        if (seenLanguages.has(variant.language)) {
+          duplicateLanguages.add(variant.language);
+        }
+        seenLanguages.add(variant.language);
+      }
+
+      if (duplicateLanguages.size > 0) {
+        throw new ValidationException(
+          `Duplicate solution code variants: ${Array.from(duplicateLanguages).join(', ')}`,
+        );
+      }
+
+      const unsupportedLanguages = codeVariants
+        .map(variant => variant.language)
+        .filter(language => !activeLanguageKeys.includes(language));
+      if (unsupportedLanguages.length > 0) {
+        throw new ValidationException(
+          `Solution code contains inactive or unsupported languages: ${Array.from(new Set(unsupportedLanguages)).join(', ')}`,
+        );
+      }
+
+      const missingLanguages = activeLanguageKeys.filter(
+        language => !codeVariants.some(variant => variant.language === language),
+      );
+      if (missingLanguages.length > 0) {
+        throw new ValidationException(
+          `Missing solution code for active languages: ${missingLanguages.join(', ')}`,
+        );
+      }
+    }
+  }
+
   private requireNormalizedFunctionSignature(problemId: string, functionSignature: unknown) {
     try {
       return normalizeFunctionSignature(functionSignature);
@@ -92,7 +160,7 @@ export class ChallengeService {
 
   private buildStarterCodeByLanguageSafe(functionSignature: any) {
     if (!functionSignature) {
-      return { cpp: '', java: '', python: '' };
+      return this.buildEmptyStarterCodeByLanguage();
     }
 
     try {
@@ -102,7 +170,7 @@ export class ChallengeService {
         error,
         functionSignature,
       });
-      return { cpp: '', java: '', python: '' };
+      return this.buildEmptyStarterCodeByLanguage();
     }
   }
 
@@ -167,19 +235,22 @@ export class ChallengeService {
       videoUrl: solution.videoUrl ?? '',
       imageUrl: solution.imageUrl ?? '',
       isVisible: solution.isVisible,
-      solutionApproaches: (solution.solutionApproaches ?? []).map((ap: any) => ({
-        id: ap.id,
-        title: ap.title,
-        description: ap.description ?? '',
-        sourceCode: ap.sourceCode,
-        language: ap.language,
-        timeComplexity: ap.timeComplexity ?? '',
-        spaceComplexity: ap.spaceComplexity ?? '',
-        explanation: ap.explanation ?? '',
-        order: ap.order,
-        createdAt: ap.createdAt?.toISOString?.() ?? String(ap.createdAt),
-        updatedAt: ap.updatedAt?.toISOString?.() ?? String(ap.updatedAt),
-      })),
+      solutionApproaches: (solution.solutionApproaches ?? []).map((ap: any) => {
+        const codeVariants = normalizeSolutionApproachCodeVariants(ap);
+
+        return {
+          id: ap.id,
+          title: ap.title,
+          description: ap.description ?? '',
+          codeVariants,
+          timeComplexity: ap.timeComplexity ?? '',
+          spaceComplexity: ap.spaceComplexity ?? '',
+          explanation: ap.explanation ?? '',
+          order: ap.order,
+          createdAt: ap.createdAt?.toISOString?.() ?? String(ap.createdAt),
+          updatedAt: ap.updatedAt?.toISOString?.() ?? String(ap.updatedAt),
+        };
+      }),
       createdAt: solution.createdAt?.toISOString?.() ?? String(solution.createdAt),
       updatedAt: solution.updatedAt?.toISOString?.() ?? String(solution.updatedAt),
     };
@@ -467,6 +538,10 @@ export class ChallengeService {
       await this.validateTopicAndLesson(updateData.topicId, updateData.lessonId);
     }
 
+    if (updateData.solution?.solutionApproaches !== undefined) {
+      await this.validateSolutionLanguageCoverage(updateData.solution);
+    }
+
     const effectiveFunctionSignature =
       updateData.functionSignature !== undefined
         ? updateData.functionSignature
@@ -565,6 +640,8 @@ export function createChallengeService(): ChallengeService {
     solutionApproachRepository: new SolutionApproachRepository(),
     submissionRepository: new SubmissionRepository(),
     favoriteRepository: new FavoriteRepository(),
+    supportedLanguageRepository: new SupportedLanguageRepository(),
   });
 }
+
 

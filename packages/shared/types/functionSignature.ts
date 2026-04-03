@@ -36,4 +36,4 @@ export type FunctionTypeNode = CanonicalFunctionTypeNode | LegacyFunctionTypeNod
 export type FunctionArgument = CanonicalFunctionArgument | LegacyFunctionArgument;
 export type FunctionSignature = CanonicalFunctionSignature | LegacyFunctionSignature;
 
-export type FunctionStarterCodeByLanguage = Partial<Record<'cpp' | 'java' | 'python', string>>;
+export type FunctionStarterCodeByLanguage = Record<string, string>;

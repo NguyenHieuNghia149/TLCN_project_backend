@@ -77,6 +77,7 @@ describe('API route factory smoke tests', () => {
     jest.isolateModules(() => {
       const factories = [
         require('@backend/api/routes/auth.routes').createAuthRouter,
+        require('@backend/api/routes/supportedLanguage.routes').createSupportedLanguageRouter,
         require('@backend/api/routes/challenge.routes').createChallengeRouter,
         require('@backend/api/routes/comment.routes').createCommentRouter,
         require('@backend/api/routes/exam.routes').createExamRouter,

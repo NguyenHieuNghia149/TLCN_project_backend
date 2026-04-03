@@ -3,6 +3,7 @@ import {
   buildStarterCodeByLanguage,
   buildTestcaseDisplay,
   canonicalizeStructuredValue,
+  getIntegratedExecutableLanguageKeys,
 } from '@backend/shared/utils';
 import { FunctionSignature } from '@backend/shared/types';
 
@@ -89,7 +90,7 @@ describe('function-signature display helpers', () => {
     });
   });
 
-  it('generates starter code for recursive array and number signatures', () => {
+  it('generates starter code for every integrated executable language', () => {
     const signatureWithNestedOutput: FunctionSignature = {
       name: 'groupAnagrams',
       args: [
@@ -133,6 +134,7 @@ describe('function-signature display helpers', () => {
     const groupAnagramsStarter = buildStarterCodeByLanguage(signatureWithNestedOutput);
     const medianStarter = buildStarterCodeByLanguage(medianSignature);
 
+    expect(Object.keys(groupAnagramsStarter)).toEqual(getIntegratedExecutableLanguageKeys());
     expect(groupAnagramsStarter.cpp).toContain('std::vector<std::vector<std::string>>');
     expect(groupAnagramsStarter.java).toContain('List<List<String>>');
     expect(groupAnagramsStarter.python).toContain('List[List[str]]');

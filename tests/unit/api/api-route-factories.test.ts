@@ -14,6 +14,7 @@ describe('API route registrar', () => {
   it('mounts routes in the same order as the previous registrar', () => {
     const generalLimiter = jest.fn();
     const createAuthRouter = createFactoryMock();
+    const createSupportedLanguageRouter = createFactoryMock();
     const createChallengeRouter = createFactoryMock();
     const createFavoriteRouter = createFactoryMock();
     const createTopicRouter = createFactoryMock();
@@ -37,6 +38,9 @@ describe('API route registrar', () => {
       generalLimiter,
     }));
     jest.doMock('../../../apps/api/src/routes/auth.routes', () => ({ createAuthRouter }));
+    jest.doMock('../../../apps/api/src/routes/supportedLanguage.routes', () => ({
+      createSupportedLanguageRouter,
+    }));
     jest.doMock('../../../apps/api/src/routes/challenge.routes', () => ({ createChallengeRouter }));
     jest.doMock('../../../apps/api/src/routes/favorite.routes', () => ({ createFavoriteRouter }));
     jest.doMock('../../../apps/api/src/routes/topic.routes', () => ({ createTopicRouter }));
@@ -93,6 +97,7 @@ describe('API route registrar', () => {
     expect(app.use.mock.calls.map((call: any[]) => call[0])).toEqual([
       '/api',
       '/api/auth',
+      '/api',
       '/api/challenges',
       '/api/favorites',
       '/api/topics',

@@ -3,6 +3,7 @@ import { DatabaseUtils } from '@backend/shared/db/utils';
 import { generalLimiter } from '../middlewares/ratelimit.middleware';
 import { createAuthRouter } from './auth.routes';
 import { createChallengeRouter } from './challenge.routes';
+import { createSupportedLanguageRouter } from './supportedLanguage.routes';
 import { createTopicRouter } from './topic.routes';
 import { createSubmissionRouter } from './submission.routes';
 import { createSecurityRouter } from './security.routes';
@@ -26,6 +27,7 @@ export function registerRoutes(app: Application): void {
   app.use('/api', generalLimiter);
 
   app.use('/api/auth', createAuthRouter());
+  app.use('/api', createSupportedLanguageRouter());
   app.use('/api/challenges', createChallengeRouter());
   app.use('/api/favorites', createFavoriteRouter());
   app.use('/api/topics', createTopicRouter());

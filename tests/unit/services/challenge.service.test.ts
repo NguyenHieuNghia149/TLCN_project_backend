@@ -20,6 +20,9 @@ function createChallengeDependencies(overrides: Partial<any> = {}) {
     solutionApproachRepository: {} as any,
     submissionRepository: {} as any,
     favoriteRepository: {} as any,
+    supportedLanguageRepository: {
+      findActiveExecutableLanguages: jest.fn().mockResolvedValue([]),
+    } as any,
     ...overrides,
   };
 }
@@ -384,3 +387,194 @@ describe('ChallengeService derived testcase display', () => {
     expect((service as any).favoriteRepository).toBeInstanceOf(FavoriteRepository);
   });
 });
+
+describe('ChallengeService multilingual solution approach support', () => {
+  const baseSignature: FunctionSignature = {
+    name: 'twoSum',
+    args: [
+      { name: 'nums', type: 'array', items: 'integer' },
+      { name: 'target', type: 'integer' },
+    ],
+    returnType: { type: 'array', items: 'integer' },
+  };
+
+  const baseChallengeInput = {
+    title: 'Two Sum',
+    description: 'desc',
+    difficulty: 'easy',
+    constraint: 'constraint',
+    tags: ['array'],
+    functionSignature: baseSignature,
+    testcases: [
+      {
+        inputJson: { nums: [2, 7, 11, 15], target: 9 },
+        outputJson: [0, 1],
+        isPublic: true,
+        point: 10,
+      },
+    ],
+  } as any;
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('rejects challenge creation when an approach is missing active executable languages', async () => {
+    const topicRepository = { findById: jest.fn() } as any;
+    const lessonRepository = { findById: jest.fn() } as any;
+    const problemRepository = {
+      createProblemTransactional: jest.fn(),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguages: jest.fn().mockResolvedValue([
+        { key: 'cpp' },
+        { key: 'java' },
+        { key: 'python' },
+      ]),
+    } as any;
+    const service = new ChallengeService({
+      ...createChallengeDependencies({ topicRepository, lessonRepository, problemRepository }),
+      supportedLanguageRepository,
+    } as any);
+
+    await expect(
+      service.createChallenge({
+        ...baseChallengeInput,
+        solution: {
+          title: 'Reference Solution',
+          solutionApproaches: [
+            {
+              title: 'Brute Force',
+              description: 'shared explanation',
+              codeVariants: [{ language: 'cpp', sourceCode: 'cpp code' }],
+              order: 1,
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('Missing solution code for active languages: java, python');
+
+    expect(problemRepository.createProblemTransactional).not.toHaveBeenCalled();
+  });
+
+  it('maps multilingual codeVariants into the challenge response', () => {
+    const service = new ChallengeService(createChallengeDependencies() as any);
+    const response = (service as any).mapToChallengeResponse({
+      problem: {
+        id: 'problem-1',
+        title: 'Two Sum',
+        description: 'desc',
+        difficult: 'easy',
+        constraint: null,
+        tags: 'array,hash-table',
+        lessonId: null,
+        topicId: null,
+        isSolved: false,
+        isFavorite: false,
+        functionSignature: baseSignature,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      testcases: [],
+      solution: {
+        id: 'solution-1',
+        title: 'Reference Solution',
+        description: 'shared explanation',
+        videoUrl: null,
+        imageUrl: null,
+        isVisible: true,
+        solutionApproaches: [
+          {
+            id: 'approach-1',
+            title: 'Brute Force',
+            description: 'shared explanation',
+            codeVariants: [
+              { language: 'cpp', sourceCode: 'cpp code' },
+              { language: 'java', sourceCode: 'java code' },
+            ],
+            timeComplexity: 'O(n^2)',
+            spaceComplexity: 'O(1)',
+            explanation: 'details',
+            order: 1,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    expect(response.solution?.solutionApproaches[0]).toMatchObject({
+      codeVariants: [
+        { language: 'cpp', sourceCode: 'cpp code' },
+        { language: 'java', sourceCode: 'java code' },
+      ],
+    });
+    expect(response.solution?.solutionApproaches[0]).not.toHaveProperty('language');
+    expect(response.solution?.solutionApproaches[0]).not.toHaveProperty('sourceCode');
+  });
+
+  it('does not require language coverage when updating solution metadata without solutionApproaches', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        title: 'Two Sum',
+        description: 'desc',
+        difficult: 'easy',
+        constraint: 'constraint',
+        tags: 'array',
+        lessonId: null,
+        topicId: null,
+        visibility: ProblemVisibility.PUBLIC,
+        functionSignature: baseSignature,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+      update: jest.fn().mockResolvedValue({ id: 'problem-1' }),
+      updateSolutionTransactional: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const submissionRepository = {
+      findByProblemId: jest.fn().mockResolvedValue({ data: [] }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const solutionRepository = {
+      findByProblemId: jest.fn().mockResolvedValue(null),
+    } as any;
+    const favoriteRepository = { isFavorite: jest.fn().mockResolvedValue(false) } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguages: jest.fn(),
+    } as any;
+    const service = new ChallengeService({
+      ...createChallengeDependencies({
+        problemRepository,
+        submissionRepository,
+        testcaseRepository,
+        solutionRepository,
+        favoriteRepository,
+      }),
+      supportedLanguageRepository,
+    } as any);
+    jest.spyOn(service as any, 'getChallengeById').mockResolvedValue({ problem: {}, testcases: [], solution: null });
+
+    await service.updateChallenge('problem-1', {
+      solution: {
+        title: 'Updated title',
+        description: 'Updated description',
+        isVisible: true,
+      },
+    } as any);
+
+    expect(supportedLanguageRepository.findActiveExecutableLanguages).not.toHaveBeenCalled();
+    expect(problemRepository.updateSolutionTransactional).toHaveBeenCalledWith('problem-1', {
+      title: 'Updated title',
+      description: 'Updated description',
+      isVisible: true,
+    });
+  });
+});
+
+
