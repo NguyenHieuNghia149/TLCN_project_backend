@@ -1140,6 +1140,19 @@ export class ExamAccessService {
       throw new ExamParticipationNotFoundException('Participation not found');
     }
 
+    if (`${participation.status}`.toUpperCase() === 'REVOKED') {
+      throw new AuthorizationException('Participant access has been revoked');
+    }
+
+    if (participation.participantId && this.deps.examParticipantRepository.findById) {
+      const participant = await this.deps.examParticipantRepository.findById(
+        participation.participantId,
+      );
+      if (participant?.accessStatus === 'revoked') {
+        throw new AuthorizationException('Participant access has been revoked');
+      }
+    }
+
     if (participation.status === EExamParticipationStatus.SUBMITTED) {
       return {
         synced: false,

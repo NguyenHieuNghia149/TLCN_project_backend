@@ -905,4 +905,44 @@ describe('ExamAccessService', () => {
     );
     expect(examParticipationRepository.createAttempt).not.toHaveBeenCalled();
   });
+
+  it('rejects sync requests when the participant access status is revoked', async () => {
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        currentAnswers: {
+          challengeA: { code: 'print(1)' },
+        },
+        expiresAt: new Date('2099-05-01T10:30:00.000Z'),
+      }),
+      updateParticipation: jest.fn(),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        accessStatus: 'revoked',
+      }),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examParticipationRepository,
+        examParticipantRepository,
+      }),
+    );
+
+    await expect(
+      service.syncParticipation('user-1', {
+        participationId: 'participation-1',
+        answers: {
+          challengeA: { code: 'print(2)' },
+        },
+      }),
+    ).rejects.toBeInstanceOf(AuthorizationException);
+    expect(examParticipationRepository.updateParticipation).not.toHaveBeenCalled();
+  });
 });
