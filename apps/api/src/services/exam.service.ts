@@ -35,6 +35,7 @@ import {
 import { ESubmissionStatus } from '@backend/shared/types';
 import { ChallengeService, createChallengeService } from './challenge.service';
 import { createNotificationService } from './notification.service';
+import { PasswordUtils } from '@backend/shared/utils';
 
 export interface INotificationPublisher {
   notifyAllUsers(type: string, title: string, message: string, metadata?: unknown): Promise<void>;
@@ -283,13 +284,14 @@ export class ExamService {
 
   async createExam(examData: CreateExamInput): Promise<ExamResponse> {
     const { challenges, ...examFields } = examData;
+    const passwordHash = await PasswordUtils.hashPassword(examFields.password);
 
     // Delegate the full create-with-challenges operation to the repository so
     // the service does not open transactions or interact with the DB directly.
     const createdExamId = await this.examRepository.createExamWithChallenges(
       {
         title: examFields.title,
-        password: examFields.password,
+        passwordHash,
         duration: examFields.duration,
         startDate: new Date(examFields.startDate),
         endDate: new Date(examFields.endDate),
@@ -335,7 +337,9 @@ export class ExamService {
     // Map frontend fields back to DB columns if necessary
     const dbFields: any = {};
     if (fields.title) dbFields.title = fields.title;
-    if (fields.password) dbFields.password = fields.password;
+    if (fields.password !== undefined) {
+      dbFields.passwordHash = await PasswordUtils.hashPassword(fields.password);
+    }
     if (fields.duration) dbFields.duration = fields.duration;
     if (fields.startDate) dbFields.startDate = new Date(fields.startDate);
     if (fields.endDate) dbFields.endDate = new Date(fields.endDate);
@@ -411,7 +415,7 @@ export class ExamService {
         }
       }
 
-      // If we reach here, it's a safe update (only title, password, visibility changed)
+      // If we reach here, it's a safe update (only title, passwordHash, visibility changed)
       // We can use the simple update method
       await this.examRepository.update(examId, dbFields);
       return this.getExamById(examId);
@@ -467,7 +471,7 @@ export class ExamService {
       return {
         id: examData.id,
         title: examData.title,
-        password: examData.password,
+        password: '',
         duration: examData.duration,
         startDate: examData.startDate.toISOString(),
         endDate: examData.endDate.toISOString(),
@@ -501,7 +505,7 @@ export class ExamService {
     return {
       id: examData.id,
       title: examData.title,
-      password: examData.password,
+      password: '',
       duration: examData.duration,
       startDate: examData.startDate.toISOString(),
       endDate: examData.endDate.toISOString(),
@@ -664,7 +668,7 @@ export class ExamService {
     const examsData: ExamResponse[] = (items || []).map((examData: any) => ({
       id: examData.id,
       title: examData.title,
-      password: examData.password,
+      password: '',
       duration: examData.duration,
       startDate: examData.startDate.toISOString(),
       endDate: examData.endDate.toISOString(),
@@ -702,7 +706,15 @@ export class ExamService {
     }
 
     // Check password
-    if (examData.password !== password) {
+    if (!examData.passwordHash) {
+      throw new InvalidPasswordException();
+    }
+
+    const isPasswordValid = await PasswordUtils.comparePassword(
+      password,
+      examData.passwordHash,
+    );
+    if (!isPasswordValid) {
       throw new InvalidPasswordException();
     }
 

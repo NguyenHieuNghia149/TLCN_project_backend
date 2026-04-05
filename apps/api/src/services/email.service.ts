@@ -55,6 +55,20 @@ export class EMailService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
+  async sendMail(options: {
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+  }): Promise<void> {
+    await this.transporter.sendMail({
+      from: config.email.from,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+    });
+  }
+
   async sendVerificationCode(email: string): Promise<void> {
     try {
       const otp = this.generateOTP();
@@ -124,7 +138,7 @@ export class EMailService {
       throw new ValidationException('Invalid OTP');
     }
 
-    otpStore.set(email, otpData);
+    otpStore.delete(email);
     return isValid;
   }
 }

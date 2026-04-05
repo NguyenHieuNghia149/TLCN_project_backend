@@ -26,7 +26,13 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
   async getExamsPaginated(
     limit = 50,
     offset = 0,
-    options?: { search?: string; createdBy?: string; examIds?: string[]; isVisible?: boolean }
+    options?: {
+      search?: string;
+      createdBy?: string;
+      examIds?: string[];
+      isVisible?: boolean;
+      status?: string;
+    }
   ): Promise<{ items: ExamEntity[]; total: number }> {
     const predicates: any[] = [];
 
@@ -34,7 +40,13 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       predicates.push(eq(exam.isVisible, options.isVisible));
     }
 
-    // Note: createdBy filter not supported because `exam` table does not include creator column
+    if (options?.createdBy) {
+      predicates.push(eq(exam.createdBy, options.createdBy));
+    }
+
+    if (options?.status) {
+      predicates.push(eq(exam.status, options.status));
+    }
 
     if (options?.examIds && options.examIds.length > 0) {
       predicates.push(inArray(exam.id, options.examIds));
@@ -61,6 +73,11 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
     const total = Number((totalRes && totalRes[0] && (totalRes[0] as any).total) || 0);
 
     return { items: items as ExamEntity[], total };
+  }
+
+  async findBySlug(slug: string): Promise<ExamEntity | null> {
+    const [row] = await this.db.select().from(exam).where(eq(exam.slug, slug)).limit(1);
+    return row || null;
   }
 
   /**

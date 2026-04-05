@@ -4,7 +4,7 @@ import {
   examParticipations,
 } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, count } from 'drizzle-orm';
 import { EExamParticipationStatus } from '@backend/shared/types';
 import { db } from '@backend/shared/db/connection';
 import { submissions, users } from '@backend/shared/db/schema';
@@ -49,6 +49,31 @@ export class ExamParticipationRepository extends BaseRepository<
         status: EExamParticipationStatus.IN_PROGRESS,
       })
       .returning();
+  }
+
+  async createAttempt(input: {
+    examId: string;
+    participantId: string;
+    userId: string;
+    startTime: Date;
+    expiresAt: Date;
+    attemptNumber: number;
+  }): Promise<ExamParticipationEntity | null> {
+    const [created] = await this.db
+      .insert(examParticipations)
+      .values({
+        examId: input.examId,
+        participantId: input.participantId,
+        userId: input.userId,
+        startTime: input.startTime,
+        expiresAt: input.expiresAt,
+        attemptNumber: input.attemptNumber,
+        status: EExamParticipationStatus.IN_PROGRESS,
+        scoreStatus: 'pending',
+      })
+      .returning();
+
+    return created || null;
   }
 
   async findByExamAndUser(examId: string, userId: string): Promise<ExamParticipationEntity | null> {
@@ -104,6 +129,34 @@ export class ExamParticipationRepository extends BaseRepository<
       .from(examParticipations)
       .where(eq(examParticipations.examId, examId))
       .orderBy(desc(examParticipations.startTime));
+  }
+
+  async findByParticipantId(participantId: string): Promise<ExamParticipationEntity[]> {
+    return this.db
+      .select()
+      .from(examParticipations)
+      .where(eq(examParticipations.participantId, participantId))
+      .orderBy(desc(examParticipations.startTime));
+  }
+
+  async countAttemptsByParticipant(participantId: string): Promise<number> {
+    const [result] = await this.db
+      .select({ total: count() })
+      .from(examParticipations)
+      .where(eq(examParticipations.participantId, participantId));
+
+    return Number(result?.total || 0);
+  }
+
+  async findLatestByParticipant(participantId: string): Promise<ExamParticipationEntity | null> {
+    const [participation] = await this.db
+      .select()
+      .from(examParticipations)
+      .where(eq(examParticipations.participantId, participantId))
+      .orderBy(desc(examParticipations.startTime))
+      .limit(1);
+
+    return participation || null;
   }
 
   async findByUserId(userId: string): Promise<ExamParticipationEntity[]> {
@@ -163,6 +216,15 @@ export class ExamParticipationRepository extends BaseRepository<
       .returning();
 
     return updated || null;
+  }
+
+  async reassignParticipant(sourceParticipantId: string, targetParticipantId: string): Promise<void> {
+    await this.db
+      .update(examParticipations)
+      .set({
+        participantId: targetParticipantId,
+      })
+      .where(eq(examParticipations.participantId, sourceParticipantId));
   }
 
   // Compatibility wrappers for session-style operations

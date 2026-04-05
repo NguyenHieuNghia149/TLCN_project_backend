@@ -1,4 +1,6 @@
 import { createExamService, ExamService } from '../../../apps/api/src/services/exam.service';
+import { PasswordUtils } from '@backend/shared/utils';
+import { InvalidPasswordException } from '../../../apps/api/src/exceptions/exam.exceptions';
 
 /** Builds a dependency bag for ExamService tests with optional overrides. */
 function createExamDependencies(overrides: Partial<any> = {}) {
@@ -182,5 +184,97 @@ describe('ExamService dependency injection', () => {
     const service = createExamService();
 
     expect(service).toBeInstanceOf(ExamService);
+  });
+});
+
+describe('ExamService exam password storage', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('hashes exam password before persisting exam record', async () => {
+    const examRepository = {
+      createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+    const hashSpy = jest
+      .spyOn(PasswordUtils, 'hashPassword')
+      .mockResolvedValue('hashed-exam-password');
+
+    jest.spyOn(service, 'getExamById').mockResolvedValue({
+      id: 'exam-1',
+      title: 'Exam',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    } as any);
+
+    await service.createExam({
+      title: 'Exam',
+      password: 'plain-password',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+    } as any);
+
+    expect(hashSpy).toHaveBeenCalledWith('plain-password');
+    expect(examRepository.createExamWithChallenges).toHaveBeenCalledWith(
+      expect.objectContaining({
+        passwordHash: 'hashed-exam-password',
+      }),
+      expect.any(Array),
+    );
+    expect(examRepository.createExamWithChallenges).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        password: expect.anything(),
+      }),
+      expect.any(Array),
+    );
+  });
+
+  it('validates exam join password against passwordHash', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        startDate: new Date(Date.now() - 60_000),
+        endDate: new Date(Date.now() + 60 * 60_000),
+        duration: 60,
+        maxAttempts: 2,
+        passwordHash: await PasswordUtils.hashPassword('correct-password'),
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findAllByExamAndUser: jest.fn().mockResolvedValue([]),
+      createExamParticipationWithExpiry: jest.fn().mockResolvedValue([
+        {
+          id: 'participation-1',
+          startTime: new Date('2025-01-01T00:00:00.000Z'),
+          expiresAt: new Date('2025-01-01T01:00:00.000Z'),
+        },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examRepository, examParticipationRepository }),
+    );
+
+    await expect(service.joinExam('exam-1', 'user-1', 'wrong-password')).rejects.toBeInstanceOf(
+      InvalidPasswordException,
+    );
+
+    await expect(
+      service.joinExam('exam-1', 'user-1', 'correct-password'),
+    ).resolves.toMatchObject({
+      participationId: 'participation-1',
+      duration: 60,
+    });
   });
 });
