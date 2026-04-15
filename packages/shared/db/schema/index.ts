@@ -11,6 +11,7 @@ export * from './submission';
 export * from './resultSubmission';
 export * from './favorite';
 export * from './comment';
+export * from './commentLike';
 export * from './completed_lesson';
 export * from './exam';
 export * from './examsToProblems';

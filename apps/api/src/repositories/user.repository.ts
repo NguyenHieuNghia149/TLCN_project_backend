@@ -530,4 +530,59 @@ export class UserRepository extends BaseRepository<typeof users, UserEntity, Use
       .orderBy(desc(users.createdAt))
       .limit(limit);
   }
+
+  // --- Ban/Unban Methods ---
+
+  async banUser(userId: string, banReason: string, bannedByAdminId: string): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        status: 'banned',
+        banReason,
+        bannedAt: new Date(),
+        bannedByAdminId,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async unbanUser(userId: string): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        status: 'active',
+        banReason: null,
+        bannedAt: null,
+        bannedByAdminId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async countBannedUsers(): Promise<number> {
+    const result = await this.db
+      .select({ count: count() })
+      .from(users)
+      .where(eq(users.status, 'banned'));
+    return result[0]?.count || 0;
+  }
+
+  async getBannedUsers(limit: number = 20, offset: number = 0): Promise<UserEntity[]> {
+    return await this.db
+      .select()
+      .from(users)
+      .where(eq(users.status, 'banned'))
+      .orderBy(desc(users.bannedAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getUsersBannedByAdmin(adminId: string, limit: number = 20): Promise<UserEntity[]> {
+    return await this.db
+      .select()
+      .from(users)
+      .where(eq(users.bannedByAdminId, adminId))
+      .orderBy(desc(users.bannedAt))
+      .limit(limit);
+  }
 }

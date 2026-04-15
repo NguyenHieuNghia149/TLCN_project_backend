@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, text, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, text, integer, index, foreignKey } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
@@ -18,11 +18,22 @@ export const users = pgTable('users', {
   passwordChangedAt: timestamp('password_changed_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-// Inferred types from schema
-export type UserEntity = typeof users.$inferSelect;
-export type UserInsert = typeof users.$inferInsert;
+  // Ban/Unban feature columns
+  banReason: text('ban_reason'),
+  bannedAt: timestamp('banned_at'),
+  bannedByAdminId: uuid('banned_by_admin_id'),
+}, (table) => [
+  // Index 1: Speed up "list all banned users" query for admin dashboard
+  index('idx_users_status_banned_at').on(table.status, table.bannedAt),
+  // Index 2: Speed up "find users banned by specific admin" for audit trail
+  index('idx_users_banned_by_admin_id').on(table.bannedByAdminId),
+  // Foreign key constraint
+  foreignKey({
+    columns: [table.bannedByAdminId],
+    foreignColumns: [table.id],
+    name: 'fk_users_banned_by_admin_id',
+  }).onDelete('set null'),
+]);
 
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users, {
@@ -72,3 +83,7 @@ export const resetPasswordSchema = z.object({
       'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
     ),
 });
+
+// Type exports
+export type UserEntity = typeof users.$inferSelect;
+export type UserInsert = typeof users.$inferInsert;
