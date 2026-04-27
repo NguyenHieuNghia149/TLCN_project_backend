@@ -1,4 +1,5 @@
 import { ExamAccessService } from '@backend/api/services/exam-access.service';
+import type { AppException } from '@backend/api/exceptions/base.exception';
 import {
   AuthorizationException,
   RateLimitExceededException,
@@ -99,6 +100,217 @@ describe('ExamAccessService', () => {
       'exam-1',
       expect.objectContaining({ isVisible: false }),
     );
+  });
+
+  it('rejects publishing when exam is no longer in draft status', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'cancelled',
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+      }),
+      publishIfDraft: jest.fn(),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+      }),
+    );
+
+    await expect(service.publishExam('exam-1', 'teacher-1')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'EXAM_STATUS_TRANSITION_INVALID',
+    });
+    expect(examRepository.publishIfDraft).not.toHaveBeenCalled();
+  });
+
+  it('cancels a published exam only when there are no participants', async () => {
+    const examRepository = {
+      findById: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'exam-1',
+          status: 'published',
+          endDate: new Date('2099-05-01T12:00:00.000Z'),
+        })
+        .mockResolvedValueOnce({
+          id: 'exam-1',
+          status: 'cancelled',
+          isVisible: false,
+          endDate: new Date('2099-05-01T12:00:00.000Z'),
+          createdAt: new Date('2099-04-01T00:00:00.000Z'),
+          updatedAt: new Date('2099-04-01T00:00:00.000Z'),
+          title: 'Exam',
+          slug: 'exam',
+          duration: 90,
+          maxAttempts: 1,
+          accessMode: 'open_registration',
+          selfRegistrationApprovalMode: 'auto',
+          selfRegistrationPasswordRequired: false,
+          allowExternalCandidates: false,
+          registrationOpenAt: null,
+          registrationCloseAt: null,
+        }),
+      countActiveParticipants: jest.fn().mockResolvedValue(0),
+      cancelIfPublishedWithoutParticipants: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'cancelled',
+        isVisible: false,
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examToProblemsRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    const result = await service.cancelExam('exam-1', 'teacher-1');
+
+    expect(examRepository.cancelIfPublishedWithoutParticipants).toHaveBeenCalledWith('exam-1');
+    expect(result).toMatchObject({
+      id: 'exam-1',
+      status: 'cancelled',
+      isVisible: false,
+    });
+  });
+
+  it('rejects cancelling an exam when participants already exist', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'published',
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+      }),
+      countActiveParticipants: jest.fn().mockResolvedValue(2),
+      cancelIfPublishedWithoutParticipants: jest.fn(),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+      }),
+    );
+
+    await expect(service.cancelExam('exam-1', 'teacher-1')).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'EXAM_CANCEL_HAS_PARTICIPANTS',
+    });
+    expect(examRepository.cancelIfPublishedWithoutParticipants).not.toHaveBeenCalled();
+  });
+
+  it('archives a cancelled exam without requiring end date to pass', async () => {
+    const examRepository = {
+      findById: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'exam-1',
+          status: 'cancelled',
+          endDate: new Date('2099-05-01T12:00:00.000Z'),
+        })
+        .mockResolvedValueOnce({
+          id: 'exam-1',
+          status: 'archived',
+          isVisible: false,
+          endDate: new Date('2099-05-01T12:00:00.000Z'),
+          createdAt: new Date('2099-04-01T00:00:00.000Z'),
+          updatedAt: new Date('2099-04-01T00:00:00.000Z'),
+          title: 'Exam',
+          slug: 'exam',
+          duration: 90,
+          maxAttempts: 1,
+          accessMode: 'open_registration',
+          selfRegistrationApprovalMode: 'auto',
+          selfRegistrationPasswordRequired: false,
+          allowExternalCandidates: false,
+          registrationOpenAt: null,
+          registrationCloseAt: null,
+        }),
+      archiveCancelled: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'archived',
+        isVisible: false,
+      }),
+      archivePublishedIfEnded: jest.fn(),
+      countActiveParticipants: jest.fn().mockResolvedValue(0),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examToProblemsRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    const result = await service.archiveExam('exam-1', 'teacher-1');
+
+    expect(examRepository.archiveCancelled).toHaveBeenCalledWith('exam-1');
+    expect(examRepository.archivePublishedIfEnded).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      id: 'exam-1',
+      status: 'archived',
+      isVisible: false,
+    });
+  });
+
+  it('rejects archiving a published exam before endDate', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'published',
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+      }),
+      archivePublishedIfEnded: jest.fn(),
+      archiveCancelled: jest.fn(),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+      }),
+    );
+
+    await expect(service.archiveExam('exam-1', 'teacher-1')).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'EXAM_ARCHIVE_NOT_ENDED',
+    });
+    expect(examRepository.archivePublishedIfEnded).not.toHaveBeenCalled();
+  });
+
+  it('blocks invite resolution when exam is not published', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        status: 'cancelled',
+      }),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+      }),
+    );
+
+    await expect(
+      service.resolveInvite('spring-midterm', {
+        inviteToken: 'invite-token',
+        userId: null,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'EXAM_NOT_AVAILABLE',
+    } as Partial<AppException>);
   });
 
   it('returns the existing access state instead of creating a duplicate participant in hybrid mode', async () => {
@@ -524,6 +736,7 @@ describe('ExamAccessService', () => {
     const examRepository = {
       findById: jest.fn().mockResolvedValue({
         id: 'exam-1',
+        status: 'published',
         duration: 90,
         maxAttempts: 1,
         startDate: new Date('2020-05-01T09:00:00.000Z'),
@@ -599,6 +812,7 @@ describe('ExamAccessService', () => {
     const examRepository = {
       findById: jest.fn().mockResolvedValue({
         id: 'exam-1',
+        status: 'published',
         duration: 90,
         maxAttempts: 1,
         startDate: new Date('2020-05-01T09:00:00.000Z'),
@@ -1172,6 +1386,7 @@ describe('ExamAccessService', () => {
     const examRepository = {
       findById: jest.fn().mockResolvedValue({
         id: 'exam-1',
+        status: 'published',
         duration: 90,
         maxAttempts: 1,
         startDate: new Date('2099-05-01T09:00:00.000Z'),

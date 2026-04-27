@@ -1,7 +1,27 @@
-import { exam, ExamEntity, ExamInsert, problems, examToProblems, examParticipations } from '@backend/shared/db/schema';
+import {
+  exam,
+  ExamEntity,
+  ExamInsert,
+  problems,
+  examToProblems,
+  examParticipations,
+  examParticipants,
+} from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
 import { ProblemRepository } from './problem.repository';
-import { desc, eq, count, and, inArray, sql, ne } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  not,
+  sql,
+} from 'drizzle-orm';
 
 type ExamRepositoryDependencies = {
   problemRepository: ProblemRepository;
@@ -83,6 +103,93 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
   async findBySlug(slug: string): Promise<ExamEntity | null> {
     const [row] = await this.db.select().from(exam).where(eq(exam.slug, slug)).limit(1);
     return row || null;
+  }
+
+  async countActiveParticipants(examId: string): Promise<number> {
+    const [result] = await this.db
+      .select({ total: count() })
+      .from(examParticipants)
+      .where(
+        and(
+          eq(examParticipants.examId, examId),
+          isNull(examParticipants.mergedIntoParticipantId),
+        ),
+      );
+
+    return Number(result?.total ?? 0);
+  }
+
+  async publishIfDraft(examId: string): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'published',
+        isVisible: true,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'draft')))
+      .returning();
+
+    return updated || null;
+  }
+
+  async cancelIfPublishedWithoutParticipants(examId: string): Promise<ExamEntity | null> {
+    const activeParticipantSubquery = this.db
+      .select({ id: examParticipants.id })
+      .from(examParticipants)
+      .where(
+        and(
+          eq(examParticipants.examId, examId),
+          isNull(examParticipants.mergedIntoParticipantId),
+        ),
+      )
+      .limit(1);
+
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'cancelled',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(exam.id, examId),
+          eq(exam.status, 'published'),
+          not(exists(activeParticipantSubquery)),
+        ),
+      )
+      .returning();
+
+    return updated || null;
+  }
+
+  async archivePublishedIfEnded(examId: string, now: Date): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'archived',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'published'), lt(exam.endDate, now)))
+      .returning();
+
+    return updated || null;
+  }
+
+  async archiveCancelled(examId: string): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'archived',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'cancelled')))
+      .returning();
+
+    return updated || null;
   }
 
   /**

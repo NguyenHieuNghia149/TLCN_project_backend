@@ -191,6 +191,30 @@ export class ExamAccessService {
       throw new ExamNotFoundException();
     }
 
+    const now = new Date();
+    const nextEndDate =
+      input.endDate === undefined ? new Date(currentExam.endDate) : new Date(input.endDate);
+
+    if (input.isVisible === true && currentExam.status !== 'published') {
+      throw new AppException('Only published exams can be visible', 409, 'EXAM_STATUS_TRANSITION_INVALID', {
+        action: 'set_visible',
+        currentStatus: currentExam.status,
+        requiredStatus: 'published',
+      });
+    }
+
+    if (input.isVisible === true && now > nextEndDate) {
+      throw new AppException(
+        'Cannot make an exam visible after it has ended',
+        422,
+        'EXAM_VISIBILITY_EXPIRED',
+        {
+          examId,
+          endDate: this.asIsoString(nextEndDate),
+        },
+      );
+    }
+
     const resolvedAccessMode = input.accessMode ?? currentExam.accessMode;
     const resolvedSelfRegistrationApprovalMode =
       input.selfRegistrationApprovalMode === undefined
@@ -307,13 +331,75 @@ export class ExamAccessService {
   }
 
   async publishExam(examId: string, actorId: string) {
-    const updated = await this.deps.examRepository.update(examId, {
-      status: 'published',
-      isVisible: true,
-    });
+    const exam = await this.deps.examRepository.findById(examId);
+    if (!exam) {
+      throw new ExamNotFoundException();
+    }
+
+    if (exam.status !== 'draft') {
+      throw new AppException(
+        `Exam cannot be published from status "${exam.status}"`,
+        409,
+        'EXAM_STATUS_TRANSITION_INVALID',
+        {
+          action: 'publish',
+          currentStatus: exam.status,
+          allowedFrom: ['draft'],
+          targetStatus: 'published',
+        },
+      );
+    }
+
+    const now = new Date();
+    if (now > new Date(exam.endDate)) {
+      throw new AppException(
+        'Cannot publish an exam that has already ended',
+        422,
+        'EXAM_VISIBILITY_EXPIRED',
+        {
+          examId,
+          endDate: this.asIsoString(exam.endDate),
+        },
+      );
+    }
+
+    const updated = await this.deps.examRepository.publishIfDraft(examId);
 
     if (!updated) {
-      throw new ExamNotFoundException();
+      const latestExam = await this.deps.examRepository.findById(examId);
+      if (!latestExam) {
+        throw new ExamNotFoundException();
+      }
+
+      if (latestExam.status !== 'draft') {
+        throw new AppException(
+          `Exam cannot be published from status "${latestExam.status}"`,
+          409,
+          'EXAM_STATUS_TRANSITION_INVALID',
+          {
+            action: 'publish',
+            currentStatus: latestExam.status,
+            allowedFrom: ['draft'],
+            targetStatus: 'published',
+          },
+        );
+      }
+
+      if (now > new Date(latestExam.endDate)) {
+        throw new AppException(
+          'Cannot publish an exam that has already ended',
+          422,
+          'EXAM_VISIBILITY_EXPIRED',
+          {
+            examId,
+            endDate: this.asIsoString(latestExam.endDate),
+          },
+        );
+      }
+
+      throw new AppException('Failed to publish exam due to concurrent updates', 409, 'EXAM_CONFLICT', {
+        examId,
+      });
     }
 
     await this.writeAuditLog({
@@ -323,7 +409,186 @@ export class ExamAccessService {
       action: 'publish_exam',
       targetType: 'exam',
       targetId: examId,
-      metadata: null,
+      metadata: {
+        prevStatus: exam.status,
+        newStatus: 'published',
+      },
+    });
+
+    return this.mapAdminExam(updated);
+  }
+
+  async cancelExam(examId: string, actorId: string) {
+    const exam = await this.deps.examRepository.findById(examId);
+    if (!exam) {
+      throw new ExamNotFoundException();
+    }
+
+    if (exam.status !== 'published') {
+      throw new AppException(
+        `Exam cannot be cancelled from status "${exam.status}"`,
+        409,
+        'EXAM_STATUS_TRANSITION_INVALID',
+        {
+          action: 'cancel',
+          currentStatus: exam.status,
+          allowedFrom: ['published'],
+          targetStatus: 'cancelled',
+        },
+      );
+    }
+
+    const participantCount = await this.deps.examRepository.countActiveParticipants(examId);
+    if (participantCount > 0) {
+      throw new AppException(
+        'Cannot cancel an exam that already has participants',
+        422,
+        'EXAM_CANCEL_HAS_PARTICIPANTS',
+        {
+          examId,
+          participantCount,
+        },
+      );
+    }
+
+    const updated = await this.deps.examRepository.cancelIfPublishedWithoutParticipants(examId);
+    if (!updated) {
+      const latestExam = await this.deps.examRepository.findById(examId);
+      if (!latestExam) {
+        throw new ExamNotFoundException();
+      }
+
+      const latestParticipantCount =
+        await this.deps.examRepository.countActiveParticipants(examId);
+
+      if (latestParticipantCount > 0) {
+        throw new AppException(
+          'Cannot cancel an exam that already has participants',
+          422,
+          'EXAM_CANCEL_HAS_PARTICIPANTS',
+          {
+            examId,
+            participantCount: latestParticipantCount,
+          },
+        );
+      }
+
+      throw new AppException(
+        `Exam cannot be cancelled from status "${latestExam.status}"`,
+        409,
+        'EXAM_STATUS_TRANSITION_INVALID',
+        {
+          action: 'cancel',
+          currentStatus: latestExam.status,
+          allowedFrom: ['published'],
+          targetStatus: 'cancelled',
+        },
+      );
+    }
+
+    await this.writeAuditLog({
+      examId,
+      actorType: 'user',
+      actorId,
+      action: 'cancel_exam',
+      targetType: 'exam',
+      targetId: examId,
+      metadata: {
+        prevStatus: exam.status,
+        newStatus: 'cancelled',
+        participantCount,
+        endDate: this.asIsoString(exam.endDate),
+        reason: null,
+      },
+    });
+
+    return this.mapAdminExam(updated);
+  }
+
+  async archiveExam(examId: string, actorId: string) {
+    const exam = await this.deps.examRepository.findById(examId);
+    if (!exam) {
+      throw new ExamNotFoundException();
+    }
+
+    const now = new Date();
+    let updated = null;
+
+    if (exam.status === 'published') {
+      if (now <= new Date(exam.endDate)) {
+        throw new AppException(
+          'Published exams can be archived only after the end time',
+          422,
+          'EXAM_ARCHIVE_NOT_ENDED',
+          {
+            examId,
+            endDate: this.asIsoString(exam.endDate),
+          },
+        );
+      }
+      updated = await this.deps.examRepository.archivePublishedIfEnded(examId, now);
+    } else if (exam.status === 'cancelled') {
+      updated = await this.deps.examRepository.archiveCancelled(examId);
+    } else {
+      throw new AppException(
+        `Exam cannot be archived from status "${exam.status}"`,
+        409,
+        'EXAM_STATUS_TRANSITION_INVALID',
+        {
+          action: 'archive',
+          currentStatus: exam.status,
+          allowedFrom: ['published', 'cancelled'],
+          targetStatus: 'archived',
+        },
+      );
+    }
+
+    if (!updated) {
+      const latestExam = await this.deps.examRepository.findById(examId);
+      if (!latestExam) {
+        throw new ExamNotFoundException();
+      }
+
+      if (latestExam.status === 'published' && now <= new Date(latestExam.endDate)) {
+        throw new AppException(
+          'Published exams can be archived only after the end time',
+          422,
+          'EXAM_ARCHIVE_NOT_ENDED',
+          {
+            examId,
+            endDate: this.asIsoString(latestExam.endDate),
+          },
+        );
+      }
+
+      throw new AppException(
+        `Exam cannot be archived from status "${latestExam.status}"`,
+        409,
+        'EXAM_STATUS_TRANSITION_INVALID',
+        {
+          action: 'archive',
+          currentStatus: latestExam.status,
+          allowedFrom: ['published', 'cancelled'],
+          targetStatus: 'archived',
+        },
+      );
+    }
+
+    const participantCount = await this.deps.examRepository.countActiveParticipants(examId);
+    await this.writeAuditLog({
+      examId,
+      actorType: 'user',
+      actorId,
+      action: 'archive_exam',
+      targetType: 'exam',
+      targetId: examId,
+      metadata: {
+        prevStatus: exam.status,
+        newStatus: 'archived',
+        participantCount,
+        endDate: this.asIsoString(exam.endDate),
+        reason: null,
+      },
     });
 
     return this.mapAdminExam(updated);
@@ -701,6 +966,7 @@ export class ExamAccessService {
 
   async registerForExam(slug: string, input: RegisterForExamInput) {
     const exam = await this.requireExamBySlug(slug);
+    this.assertExamPublishedForAccess(exam, 'register');
     if (exam.accessMode === 'invite_only') {
       throw new AuthorizationException('Registration not available for this exam');
     }
@@ -813,6 +1079,7 @@ export class ExamAccessService {
     input: { inviteToken: string; userId?: string | null },
   ): Promise<Record<string, unknown>> {
     const exam = await this.requireExamBySlug(slug);
+    this.assertExamPublishedForAccess(exam, 'resolve_invite');
     const tokenHash = this.hashOpaqueToken(input.inviteToken);
     const invite = await this.deps.examInviteRepository.findByTokenHash(tokenHash);
 
@@ -901,6 +1168,7 @@ export class ExamAccessService {
 
   async sendOtp(slug: string, input: { email: string; ipAddress?: string | null }) {
     const exam = await this.requireExamBySlug(slug);
+    this.assertExamPublishedForAccess(exam, 'send_otp');
     const normalizedEmail = SanitizationUtils.sanitizeEmail(input.email);
     const participant = await this.deps.examParticipantRepository.findByExamAndIdentity(exam.id, {
       normalizedEmail,
@@ -939,6 +1207,7 @@ export class ExamAccessService {
 
   async verifyOtp(slug: string, input: VerifyOtpInput) {
     const exam = await this.requireExamBySlug(slug);
+    this.assertExamPublishedForAccess(exam, 'verify_otp');
     const normalizedEmail = SanitizationUtils.sanitizeEmail(input.email);
 
     await this.deps.emailService.verifyOTP(normalizedEmail, input.otp);
@@ -1020,6 +1289,7 @@ export class ExamAccessService {
 
   async getAccessState(slug: string, userId: string | null | undefined) {
     const exam = await this.requireExamBySlug(slug);
+    this.assertExamPublishedForAccess(exam, 'get_access_state');
     if (!userId) {
       return this.emptyAccessState(exam);
     }
@@ -1088,6 +1358,7 @@ export class ExamAccessService {
     if (!exam) {
       throw new ExamNotFoundException();
     }
+    this.assertExamPublishedForAccess(exam, 'start_entry_session');
 
     const activeParticipation = await this.findActiveParticipationForUser(
       session.examId,
@@ -1559,6 +1830,18 @@ export class ExamAccessService {
     }
 
     return exam;
+  }
+
+  private assertExamPublishedForAccess(exam: any, action: string) {
+    if (exam.status === 'published') {
+      return;
+    }
+
+    throw new AppException('Exam is not available for access', 403, 'EXAM_NOT_AVAILABLE', {
+      action,
+      examId: exam.id,
+      currentStatus: exam.status,
+    });
   }
 
   private async assertUniqueSlug(slug: string) {

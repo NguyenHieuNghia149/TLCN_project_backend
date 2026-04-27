@@ -40,6 +40,16 @@ export function createAdminExamRouter(): Router {
     validate(ExamIdParamsSchema, 'params'),
     controller.publishExam.bind(controller),
   );
+  router.post(
+    '/:id/cancel',
+    validate(ExamIdParamsSchema, 'params'),
+    controller.cancelExam.bind(controller),
+  );
+  router.post(
+    '/:id/archive',
+    validate(ExamIdParamsSchema, 'params'),
+    controller.archiveExam.bind(controller),
+  );
   router.get(
     '/:id/participants',
     validate(ExamIdParamsSchema, 'params'),

@@ -57,6 +57,30 @@ export class AdminExamController {
     res.status(200).json(result);
   }
 
+  async cancelExam(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    const actorId = req.user?.userId;
+    if (!actorId) {
+      res.status(401).json({ message: 'Authentication required' });
+      return;
+    }
+
+    const { id } = req.params as { id: string };
+    const result = await this.examAccessService.cancelExam(id, actorId);
+    res.status(200).json(result);
+  }
+
+  async archiveExam(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    const actorId = req.user?.userId;
+    if (!actorId) {
+      res.status(401).json({ message: 'Authentication required' });
+      return;
+    }
+
+    const { id } = req.params as { id: string };
+    const result = await this.examAccessService.archiveExam(id, actorId);
+    res.status(200).json(result);
+  }
+
   async getParticipants(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     const { id } = req.params as { id: string };
     const result = await this.examAccessService.listAdminExamParticipants(id);

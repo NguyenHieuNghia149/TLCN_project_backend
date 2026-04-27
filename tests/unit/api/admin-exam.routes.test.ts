@@ -281,6 +281,86 @@ describe('Admin exam HTTP routes', () => {
     });
   });
 
+  it('forwards cancel requests with the authenticated teacher actorId', async () => {
+    const cancelExam = jest.fn().mockResolvedValue({
+      id: 'exam-1',
+      status: 'cancelled',
+      isVisible: false,
+    });
+    const { app } = await createAdminExamApp({
+      listAdminExams: jest.fn(),
+      getAdminExamById: jest.fn(),
+      createAdminExam: jest.fn(),
+      updateAdminExam: jest.fn(),
+      publishExam: jest.fn(),
+      cancelExam,
+      archiveExam: jest.fn(),
+      listAdminExamParticipants: jest.fn(),
+      addAdminExamParticipants: jest.fn(),
+      approveParticipant: jest.fn(),
+      rejectParticipant: jest.fn(),
+      revokeParticipant: jest.fn(),
+      resendInvite: jest.fn(),
+      bindParticipantAccount: jest.fn(),
+      mergeParticipants: jest.fn(),
+    });
+
+    const response = await request(app)
+      .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/cancel')
+      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+
+    expect(response.status).toBe(200);
+    expect(cancelExam).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'teacher-1',
+    );
+    expect(response.body).toMatchObject({
+      id: 'exam-1',
+      status: 'cancelled',
+      isVisible: false,
+    });
+  });
+
+  it('forwards archive requests with the authenticated teacher actorId', async () => {
+    const archiveExam = jest.fn().mockResolvedValue({
+      id: 'exam-1',
+      status: 'archived',
+      isVisible: false,
+    });
+    const { app } = await createAdminExamApp({
+      listAdminExams: jest.fn(),
+      getAdminExamById: jest.fn(),
+      createAdminExam: jest.fn(),
+      updateAdminExam: jest.fn(),
+      publishExam: jest.fn(),
+      cancelExam: jest.fn(),
+      archiveExam,
+      listAdminExamParticipants: jest.fn(),
+      addAdminExamParticipants: jest.fn(),
+      approveParticipant: jest.fn(),
+      rejectParticipant: jest.fn(),
+      revokeParticipant: jest.fn(),
+      resendInvite: jest.fn(),
+      bindParticipantAccount: jest.fn(),
+      mergeParticipants: jest.fn(),
+    });
+
+    const response = await request(app)
+      .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/archive')
+      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+
+    expect(response.status).toBe(200);
+    expect(archiveExam).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'teacher-1',
+    );
+    expect(response.body).toMatchObject({
+      id: 'exam-1',
+      status: 'archived',
+      isVisible: false,
+    });
+  });
+
   it('forwards participant approval with the authenticated actorId', async () => {
     const approveParticipant = jest.fn().mockResolvedValue({
       id: 'participant-1',
