@@ -85,6 +85,7 @@ export class ExamController {
     const filterType = (req.query.filterType as any) || 'all';
     // try to extract userId from authenticated request if present
     const userId = (req as any).user?.userId || undefined;
+    const userRole = (req as any).user?.role || undefined;
 
     let isVisible: boolean | undefined = undefined;
     if (req.query.isVisible !== undefined) {
@@ -97,7 +98,8 @@ export class ExamController {
       search,
       filterType,
       userId,
-      isVisible
+      isVisible,
+      userRole
     );
 
     res.status(200).json({
@@ -107,17 +109,26 @@ export class ExamController {
   }
 
   async getExamChallenge(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void | Response> {
     const { examId, challengeId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw new UserNotFoundException();
+    }
 
     if (!examId || !challengeId) {
       throw new ExamIdRequiredException();
     }
 
-    const result = await this.examService.getExamChallenge(examId as string, challengeId as string);
+    const result = await this.examService.getExamChallenge(
+      examId as string,
+      challengeId as string,
+      userId
+    );
 
     res.status(200).json(result);
   }

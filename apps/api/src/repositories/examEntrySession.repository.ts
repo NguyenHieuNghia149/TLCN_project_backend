@@ -28,6 +28,19 @@ export class ExamEntrySessionRepository extends BaseRepository<
     return session || null;
   }
 
+  async findByParticipationId(
+    participationId: string,
+  ): Promise<ExamEntrySessionEntity | null> {
+    const [session] = await this.db
+      .select()
+      .from(examEntrySessions)
+      .where(eq(examEntrySessions.participationId, participationId))
+      .orderBy(desc(examEntrySessions.updatedAt))
+      .limit(1);
+
+    return session || null;
+  }
+
   async findActiveVerifiedSessionByParticipant(
     participantId: string,
   ): Promise<ExamEntrySessionEntity | null> {

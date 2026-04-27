@@ -1,6 +1,8 @@
 import {
+  AdminExamListQuerySchema,
   CreateAdminExamSchema,
   ExamSessionSyncSchema,
+  UpdateAdminExamSchema,
 } from '@backend/shared/validations/exam-access.validation';
 
 describe('exam access validation', () => {
@@ -86,5 +88,30 @@ describe('exam access validation', () => {
     ).toMatchObject({
       sessionId: 'legacy-session-1',
     });
+  });
+
+  it('accepts the admin exam list batch size used by the admin UI', () => {
+    expect(
+      AdminExamListQuerySchema.parse({
+        limit: '500',
+        offset: '0',
+      }),
+    ).toMatchObject({
+      limit: 500,
+      offset: 0,
+    });
+  });
+
+  it('does not inject self-registration defaults when admin only toggles visibility', () => {
+    const parsed = UpdateAdminExamSchema.parse({
+      isVisible: false,
+    });
+
+    expect(parsed).toEqual({
+      isVisible: false,
+    });
+    expect(Object.prototype.hasOwnProperty.call(parsed, 'selfRegistrationApprovalMode')).toBe(
+      false,
+    );
   });
 });

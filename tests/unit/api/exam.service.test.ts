@@ -124,10 +124,13 @@ describe('ExamService dependency injection', () => {
       createExamDependencies({ examToProblemsRepository, challengeService }),
     );
 
-    const result = await service.getExamChallenge('exam-1', 'challenge-1');
+    const result = await service.getExamChallenge('exam-1', 'challenge-1', 'user-1');
 
     expect(examToProblemsRepository.findByExamId).toHaveBeenCalledWith('exam-1');
-    expect(challengeService.getChallengeById).toHaveBeenCalledWith('challenge-1');
+    expect(challengeService.getChallengeById).toHaveBeenCalledWith('challenge-1', 'user-1', {
+      allowPrivateVisibility: true,
+      showAllTestcases: false,
+    });
     expect(result).toMatchObject({
       id: 'challenge-1',
       title: 'Two Sum',
@@ -184,6 +187,104 @@ describe('ExamService dependency injection', () => {
     const service = createExamService();
 
     expect(service).toBeInstanceOf(ExamService);
+  });
+
+  it('returns slug in legacy getExamById payload for frontend slug routing', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        duration: 60,
+        startDate: new Date('2025-01-01T00:00:00.000Z'),
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+        isVisible: true,
+        maxAttempts: 1,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examRepository, examToProblemsRepository }),
+    );
+
+    const result = await service.getExamById('exam-1');
+
+    expect(result.slug).toBe('spring-midterm');
+  });
+
+  it('returns slug in legacy getExams list payload for learner links', async () => {
+    const examRepository = {
+      getExamsPaginated: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'exam-1',
+            slug: 'spring-midterm',
+            title: 'Spring Midterm',
+            duration: 60,
+            startDate: new Date('2025-01-01T00:00:00.000Z'),
+            endDate: new Date('2025-01-01T01:00:00.000Z'),
+            isVisible: true,
+            maxAttempts: 1,
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+          },
+        ],
+        total: 1,
+      }),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    const result = await service.getExams(10, 0, undefined, 'all', undefined, true);
+
+    expect(result.total).toBe(1);
+    expect(result.data[0]?.slug).toBe('spring-midterm');
+  });
+
+  it('returns null from getMyParticipation when user has no in-progress participation', async () => {
+    const examParticipationRepository = {
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examParticipationRepository }),
+    );
+
+    const result = await service.getMyParticipation('exam-1', 'user-1');
+
+    expect(examParticipationRepository.findInProgressByExamAndUser).toHaveBeenCalledWith(
+      'exam-1',
+      'user-1',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns active participation from getMyParticipation when status is IN_PROGRESS', async () => {
+    const examParticipationRepository = {
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        startTime: new Date('2025-01-01T00:00:00.000Z'),
+        expiresAt: new Date('2025-01-01T01:00:00.000Z'),
+        endTime: null,
+        status: 'IN_PROGRESS',
+      }),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examParticipationRepository }),
+    );
+
+    const result = await service.getMyParticipation('exam-1', 'user-1');
+
+    expect(result).toMatchObject({
+      id: 'participation-1',
+      examId: 'exam-1',
+      userId: 'user-1',
+      status: 'IN_PROGRESS',
+    });
   });
 });
 

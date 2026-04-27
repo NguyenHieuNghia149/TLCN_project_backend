@@ -168,7 +168,44 @@ export const CreateAdminExamSchema = CreateAdminExamBaseSchema.superRefine((data
   }
 });
 
-export const UpdateAdminExamSchema = CreateAdminExamBaseSchema.partial();
+export const UpdateAdminExamSchema = z.object({
+  title: z.string().min(1, 'Exam title is required.').max(255, 'Exam title is too long.').optional(),
+  slug: z
+    .string()
+    .min(3, 'Exam slug must be at least 3 characters.')
+    .max(255, 'Exam slug is too long.')
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Exam slug must use lowercase letters, numbers, and hyphens only.')
+    .optional(),
+  duration: z
+    .number()
+    .int()
+    .min(1, 'Duration must be at least 1 minute.')
+    .max(1440, 'Duration cannot exceed 1440 minutes (24 hours).')
+    .optional(),
+  startDate: z.string().datetime('Invalid start date format.').optional(),
+  endDate: z.string().datetime('Invalid end date format.').optional(),
+  isVisible: z.boolean().optional(),
+  maxAttempts: z.number().int().min(1, 'Max attempts must be at least 1.').optional(),
+  accessMode: ExamAccessModeSchema.optional(),
+  selfRegistrationApprovalMode: SelfRegistrationApprovalModeSchema.nullable().optional(),
+  selfRegistrationPasswordRequired: z.boolean().optional(),
+  allowExternalCandidates: z.boolean().optional(),
+  registrationOpenAt: z.string().datetime('Invalid registration open time.').nullable().optional(),
+  registrationCloseAt: z
+    .string()
+    .datetime('Invalid registration close time.')
+    .nullable()
+    .optional(),
+  challenges: z
+    .array(
+      z.object({
+        challengeId: z.string().uuid('Invalid challenge ID format.'),
+        orderIndex: z.number().int().min(0, 'Order index must be non-negative.'),
+      }),
+    )
+    .min(1, 'At least one challenge is required for an exam.')
+    .optional(),
+});
 
 export const PublicExamRegisterSchema = z.object({
   email: z.string().email('Invalid email format.'),
@@ -219,7 +256,7 @@ export const ExamParticipantParamsSchema = z.object({
 });
 
 export const AdminExamListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  limit: z.coerce.number().int().min(1).max(500).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
   createdBy: z.string().uuid('Invalid creator ID format.').optional(),
   search: z.string().optional(),

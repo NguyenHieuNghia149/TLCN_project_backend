@@ -1,7 +1,7 @@
 import { exam, ExamEntity, ExamInsert, problems, examToProblems, examParticipations } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
 import { ProblemRepository } from './problem.repository';
-import { desc, eq, count, and, inArray, sql } from 'drizzle-orm';
+import { desc, eq, count, and, inArray, sql, ne } from 'drizzle-orm';
 
 type ExamRepositoryDependencies = {
   problemRepository: ProblemRepository;
@@ -32,6 +32,7 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       examIds?: string[];
       isVisible?: boolean;
       status?: string;
+      excludeInviteOnly?: boolean;
     }
   ): Promise<{ items: ExamEntity[]; total: number }> {
     const predicates: any[] = [];
@@ -46,6 +47,10 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
 
     if (options?.status) {
       predicates.push(eq(exam.status, options.status));
+    }
+
+    if (options?.excludeInviteOnly) {
+      predicates.push(ne(exam.accessMode, 'invite_only'));
     }
 
     if (options?.examIds && options.examIds.length > 0) {

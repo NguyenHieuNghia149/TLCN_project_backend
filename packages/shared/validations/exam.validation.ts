@@ -84,6 +84,7 @@ export const ExamChallengeResponseSchema = z.object({
 
 export const ExamResponseSchema = z.object({
   id: z.string(),
+  slug: z.string().optional(),
   title: z.string(),
   password: z.string(),
   duration: z.number(),

@@ -489,4 +489,35 @@ describe('Exam access HTTP routes', () => {
     expect(submitExam).toHaveBeenCalledWith('participation-legacy-1', 'user-1');
     expect(submitActiveParticipation).not.toHaveBeenCalled();
   });
+
+  it('returns 400 MALFORMED_JSON when request body is invalid JSON', async () => {
+    const registerForExam = jest.fn();
+    const { app } = await createMountedApp({
+      mountPath: '/api/public/exams',
+      routeModulePath: '@backend/api/routes/publicExam.routes',
+      routeFactoryExport: 'createPublicExamRouter',
+      examAccessService: {
+        getPublicExamBySlug: jest.fn(),
+        registerForExam,
+        resolveInvite: jest.fn(),
+        sendOtp: jest.fn(),
+        verifyOtp: jest.fn(),
+      },
+    });
+
+    const response = await request(app)
+      .post('/api/public/exams/spring/register')
+      .set('Content-Type', 'application/json')
+      .send('{\\');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      success: false,
+      data: null,
+      error: {
+        code: 'MALFORMED_JSON',
+      },
+    });
+    expect(registerForExam).not.toHaveBeenCalled();
+  });
 });

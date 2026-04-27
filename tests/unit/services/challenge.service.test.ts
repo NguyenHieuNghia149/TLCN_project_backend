@@ -373,6 +373,82 @@ describe('ChallengeService derived testcase display', () => {
     expect(result.problem.id).toBe('private-problem');
   });
 
+  it('allows exam workspace access to private problems without exposing private testcases', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'private-problem',
+        title: 'Private',
+        description: 'desc',
+        difficult: 'easy',
+        constraint: null,
+        tags: 'tree',
+        lessonId: null,
+        topicId: null,
+        visibility: ProblemVisibility.PRIVATE,
+        functionSignature: treeSignature,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'hidden-case',
+          inputJson: { root: [1] },
+          outputJson: [1],
+          isPublic: false,
+          point: 10,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]),
+      findPublicByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'public-case',
+          inputJson: { root: [1] },
+          outputJson: [1],
+          isPublic: true,
+          point: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]),
+    } as any;
+    const solutionRepository = {
+      findByProblemId: jest.fn().mockResolvedValue(null),
+    } as any;
+    const solutionApproachRepository = {
+      findBySolutionId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const submissionRepository = {
+      getAcceptedProblemIdsByUser: jest.fn().mockResolvedValue(new Set<string>()),
+    } as any;
+    const favoriteRepository = {
+      isFavorite: jest.fn().mockResolvedValue(false),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        problemRepository,
+        testcaseRepository,
+        solutionRepository,
+        solutionApproachRepository,
+        submissionRepository,
+        favoriteRepository,
+      }),
+    );
+
+    const result = await service.getChallengeById('private-problem', 'user-1', {
+      allowPrivateVisibility: true,
+      showAllTestcases: false,
+    });
+
+    expect(testcaseRepository.findPublicByProblemId).toHaveBeenCalledWith('private-problem');
+    expect(testcaseRepository.findByProblemId).not.toHaveBeenCalled();
+    expect(result.problem.id).toBe('private-problem');
+    expect(result.testcases).toHaveLength(1);
+    expect(result.testcases[0]?.id).toBe('public-case');
+  });
+
   it('creates a challenge service wired with concrete repositories', () => {
     const service = createChallengeService();
 

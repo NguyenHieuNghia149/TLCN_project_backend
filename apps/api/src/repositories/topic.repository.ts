@@ -103,7 +103,7 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
     const lessonCounts = this.db
       .select({
         topicId: lessons.topicId,
-        totalLessons: count(),
+        totalLessons: count().as('totalLessons'),
       })
       .from(lessons)
       .groupBy(lessons.topicId)
@@ -112,7 +112,7 @@ export class TopicRepository extends BaseRepository<typeof topics, TopicEntity, 
     const problemCounts = this.db
       .select({
         topicId: problems.topicId,
-        totalProblems: count(),
+        totalProblems: count().as('totalProblems'),
       })
       .from(problems)
       .groupBy(problems.topicId)

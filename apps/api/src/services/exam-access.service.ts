@@ -191,17 +191,28 @@ export class ExamAccessService {
       throw new ExamNotFoundException();
     }
 
+    const resolvedAccessMode = input.accessMode ?? currentExam.accessMode;
+    const resolvedSelfRegistrationApprovalMode =
+      input.selfRegistrationApprovalMode === undefined
+        ? currentExam.selfRegistrationApprovalMode
+        : input.selfRegistrationApprovalMode;
+    const allowLegacySelfRegistrationApprovalMode =
+      input.accessMode === undefined &&
+      input.selfRegistrationApprovalMode === undefined &&
+      resolvedAccessMode !== 'invite_only' &&
+      resolvedSelfRegistrationApprovalMode == null;
+
     this.assertExamConfiguration({
       title: input.title ?? currentExam.title,
       slug: input.slug ?? currentExam.slug,
       duration: input.duration ?? currentExam.duration,
       startDate: input.startDate ?? this.asIsoString(currentExam.startDate),
       endDate: input.endDate ?? this.asIsoString(currentExam.endDate),
-      accessMode: input.accessMode ?? currentExam.accessMode,
+      accessMode: resolvedAccessMode,
       selfRegistrationApprovalMode:
-        input.selfRegistrationApprovalMode === undefined
-          ? currentExam.selfRegistrationApprovalMode
-          : input.selfRegistrationApprovalMode,
+        allowLegacySelfRegistrationApprovalMode
+          ? 'auto'
+          : resolvedSelfRegistrationApprovalMode,
       selfRegistrationPasswordRequired:
         input.selfRegistrationPasswordRequired ?? currentExam.selfRegistrationPasswordRequired,
       allowExternalCandidates:
@@ -1021,18 +1032,28 @@ export class ExamAccessService {
       return this.emptyAccessState(exam);
     }
 
+    const participation = await this.findPreferredParticipation(
+      exam.id,
+      participant.id,
+      userId,
+    );
     let entrySession = await this.deps.examEntrySessionRepository.findLatestByParticipant(
       participant.id,
     );
     entrySession = await this.persistExpiredEntrySessionIfNeeded(exam, entrySession);
 
-    if (this.shouldAutoResumeEntrySession(exam, participant)) {
+    if (this.shouldAutoResumeEntrySession(exam, participant, participation)) {
       entrySession = await this.ensureVerifiedEntrySession(exam, participant, 'account_login');
     }
 
-    const participation = await this.deps.examParticipationRepository.findLatestByParticipant(
-      participant.id,
-    );
+    if (this.isParticipationInProgress(participation) && participation?.id) {
+      const linkedStartedSession = this.deps.examEntrySessionRepository.findByParticipationId
+        ? await this.deps.examEntrySessionRepository.findByParticipationId(participation.id)
+        : null;
+      if (linkedStartedSession) {
+        entrySession = await this.persistExpiredEntrySessionIfNeeded(exam, linkedStartedSession);
+      }
+    }
 
     return this.buildAccessState(exam, participant, entrySession, participation, userId);
   }
@@ -1066,6 +1087,28 @@ export class ExamAccessService {
     const exam = await this.deps.examRepository.findById(session.examId);
     if (!exam) {
       throw new ExamNotFoundException();
+    }
+
+    const activeParticipation = await this.findActiveParticipationForUser(
+      session.examId,
+      participant.id,
+      userId,
+    );
+    if (activeParticipation) {
+      await this.deps.examEntrySessionRepository.markStarted(
+        session.id,
+        activeParticipation.id,
+        new Date(),
+      );
+      if (this.deps.examParticipantRepository.updateAccessStatus) {
+        await this.deps.examParticipantRepository.updateAccessStatus(participant.id, 'active');
+      }
+
+      return {
+        participationId: activeParticipation.id,
+        expiresAt: this.asIsoString(activeParticipation.expiresAt),
+        firstChallengeId: await this.findFirstChallengeId(activeParticipation.examId),
+      };
     }
 
     if (this.isEntrySessionExpired(session, exam.endDate)) {
@@ -1657,13 +1700,26 @@ export class ExamAccessService {
     return participant?.source === 'self_registration';
   }
 
-  private shouldAutoResumeEntrySession(exam: any, participant: any) {
+  private shouldAutoResumeEntrySession(exam: any, participant: any, participation: any) {
     return (
       participant?.approvalStatus === 'approved' &&
       participant?.accessStatus !== 'completed' &&
       participant?.accessStatus !== 'revoked' &&
       new Date() <= new Date(exam.endDate) &&
+      !this.isParticipationInProgress(participation) &&
       !this.participantRequiresInviteFlow(exam, participant)
+    );
+  }
+
+  private isParticipationInProgress(participation: any) {
+    if (!participation) {
+      return false;
+    }
+
+    const normalizedStatus = `${participation.status ?? ''}`.toUpperCase();
+    return (
+      normalizedStatus === `${EExamParticipationStatus.IN_PROGRESS}`.toUpperCase() ||
+      normalizedStatus === 'STARTED'
     );
   }
 
@@ -1688,6 +1744,46 @@ export class ExamAccessService {
     });
 
     return expiredSession ?? { ...entrySession, status: 'expired' };
+  }
+
+  private async findActiveParticipationForUser(
+    examId: string,
+    participantId: string,
+    userId: string,
+  ) {
+    const inProgressByExamAndUser = this.deps.examParticipationRepository
+      .findInProgressByExamAndUser
+      ? await this.deps.examParticipationRepository.findInProgressByExamAndUser(examId, userId)
+      : null;
+
+    if (inProgressByExamAndUser && `${inProgressByExamAndUser.participantId}` === `${participantId}`) {
+      return inProgressByExamAndUser;
+    }
+
+    const latestByParticipant = this.deps.examParticipationRepository.findLatestByParticipant
+      ? await this.deps.examParticipationRepository.findLatestByParticipant(participantId)
+      : null;
+
+    return this.isParticipationInProgress(latestByParticipant) ? latestByParticipant : null;
+  }
+
+  private async findPreferredParticipation(
+    examId: string,
+    participantId: string,
+    userId: string,
+  ) {
+    const activeParticipation = await this.findActiveParticipationForUser(
+      examId,
+      participantId,
+      userId,
+    );
+    if (activeParticipation) {
+      return activeParticipation;
+    }
+
+    return this.deps.examParticipationRepository.findLatestByParticipant
+      ? this.deps.examParticipationRepository.findLatestByParticipant(participantId)
+      : null;
   }
 
   private async requireOpenedInviteEntrySession(exam: any, participant: any) {

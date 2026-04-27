@@ -470,6 +470,7 @@ export class ExamService {
     if (problemIds.length === 0) {
       return {
         id: examData.id,
+        slug: examData.slug ?? undefined,
         title: examData.title,
         password: '',
         duration: examData.duration,
@@ -504,6 +505,7 @@ export class ExamService {
 
     return {
       id: examData.id,
+      slug: examData.slug ?? undefined,
       title: examData.title,
       password: '',
       duration: examData.duration,
@@ -521,7 +523,7 @@ export class ExamService {
    * Get detailed information about a specific challenge in an exam
    * Call this when user switches to a different challenge to avoid loading all challenges at once
    */
-  async getExamChallenge(examId: string, challengeId: string): Promise<any> {
+  async getExamChallenge(examId: string, challengeId: string, userId: string): Promise<any> {
     // Verify exam exists and challenge is part of this exam
     const examToProblems = await this.examToProblemsRepository.findByExamId(examId);
     const challengeInExam = examToProblems.find((etp: any) => etp.problemId === challengeId);
@@ -531,7 +533,10 @@ export class ExamService {
     }
 
     // Get full challenge details from ChallengeService
-    const challengeResponse = await this.challengeService.getChallengeById(challengeId);
+    const challengeResponse = await this.challengeService.getChallengeById(challengeId, userId, {
+      allowPrivateVisibility: true,
+      showAllTestcases: false,
+    });
 
     // Return challenge with orderIndex from exam
     return {
@@ -607,12 +612,12 @@ export class ExamService {
     endTime?: Date | null;
     status: string;
   } | null> {
-    // Get latest participation regardless of status
-    const participations = await this.examParticipationRepository.findAllByExamAndUser(
+    // Return active participation only.
+    // Completed/submitted attempts must not be resumed in workspace.
+    const participation = await this.examParticipationRepository.findInProgressByExamAndUser(
       examId,
       userId
     );
-    const participation = participations[0];
 
     if (!participation) {
       return null;
@@ -643,12 +648,17 @@ export class ExamService {
     search?: string,
     filterType?: 'all' | 'my' | 'participated',
     userId?: string,
-    isVisible?: boolean
+    isVisible?: boolean,
+    userRole?: string
   ): Promise<{ data: ExamResponse[]; total: number }> {
     // Build options for repository
     const options: any = {};
     if (search) options.search = search;
     if (isVisible !== undefined) options.isVisible = isVisible;
+    const canManageExamList = userRole === 'teacher' || userRole === 'owner' || userRole === 'admin';
+    if (!canManageExamList) {
+      options.excludeInviteOnly = true;
+    }
 
     // If filterType is 'participated' and userId provided, get exam ids participated by user
     if (filterType === 'participated' && userId) {
@@ -667,13 +677,27 @@ export class ExamService {
 
     const examsData: ExamResponse[] = (items || []).map((examData: any) => ({
       id: examData.id,
+      slug: examData.slug ?? undefined,
       title: examData.title,
       password: '',
       duration: examData.duration,
       startDate: examData.startDate.toISOString(),
       endDate: examData.endDate.toISOString(),
+      createdBy: examData.createdBy ?? undefined,
       isVisible: examData.isVisible,
       maxAttempts: examData.maxAttempts,
+      status: examData.status ?? undefined,
+      accessMode: examData.accessMode ?? undefined,
+      selfRegistrationApprovalMode: examData.selfRegistrationApprovalMode ?? null,
+      selfRegistrationPasswordRequired:
+        examData.selfRegistrationPasswordRequired ?? undefined,
+      allowExternalCandidates: examData.allowExternalCandidates ?? undefined,
+      registrationOpenAt: examData.registrationOpenAt
+        ? new Date(examData.registrationOpenAt).toISOString()
+        : null,
+      registrationCloseAt: examData.registrationCloseAt
+        ? new Date(examData.registrationCloseAt).toISOString()
+        : null,
       challenges: [], // Don't fetch full challenge details for list view
       createdAt: examData.createdAt.toISOString(),
       updatedAt: examData.updatedAt.toISOString(),
