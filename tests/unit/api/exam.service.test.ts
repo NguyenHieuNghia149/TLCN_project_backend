@@ -244,6 +244,27 @@ describe('ExamService dependency injection', () => {
     expect(result.data[0]?.slug).toBe('spring-midterm');
   });
 
+  it('limits visible learner exam lists to published exams', async () => {
+    const examRepository = {
+      getExamsPaginated: jest.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+      }),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    await service.getExams(10, 0, undefined, 'all', undefined, true, 'user');
+
+    expect(examRepository.getExamsPaginated).toHaveBeenCalledWith(
+      10,
+      0,
+      expect.objectContaining({
+        isVisible: true,
+        status: 'published',
+      }),
+    );
+  });
+
   it('returns null from getMyParticipation when user has no in-progress participation', async () => {
     const examParticipationRepository = {
       findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),

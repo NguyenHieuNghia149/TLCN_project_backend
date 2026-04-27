@@ -39,7 +39,7 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
     return this.db
       .select()
       .from(exam)
-      .where(eq(exam.isVisible, true))
+      .where(and(eq(exam.isVisible, true), eq(exam.status, 'published')))
       .orderBy(desc(exam.createdAt));
   }
 

@@ -313,6 +313,42 @@ describe('ExamAccessService', () => {
     } as Partial<AppException>);
   });
 
+  it('blocks public exam landing when a draft exam is visible from legacy data', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        status: 'draft',
+        isVisible: true,
+        accessMode: 'open_registration',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        registrationOpenAt: null,
+        registrationCloseAt: null,
+        allowExternalCandidates: true,
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: false,
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examToProblemsRepository,
+      }),
+    );
+
+    await expect(service.getPublicExamBySlug('spring-midterm')).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'EXAM_NOT_AVAILABLE',
+    } as Partial<AppException>);
+  });
+
   it('returns the existing access state instead of creating a duplicate participant in hybrid mode', async () => {
     const examRepository = {
       findBySlug: jest.fn().mockResolvedValue({

@@ -658,6 +658,7 @@ export class ExamService {
     const canManageExamList = userRole === 'teacher' || userRole === 'owner' || userRole === 'admin';
     if (!canManageExamList) {
       options.excludeInviteOnly = true;
+      options.status = 'published';
     }
 
     // If filterType is 'participated' and userId provided, get exam ids participated by user

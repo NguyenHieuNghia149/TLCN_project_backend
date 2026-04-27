@@ -935,6 +935,7 @@ export class ExamAccessService {
 
   async getPublicExamBySlug(slug: string) {
     const exam = await this.requireExamBySlug(slug);
+    this.assertExamPublishedForAccess(exam, 'public_landing');
     const challengeLinks = await this.deps.examToProblemsRepository.findByExamId(exam.id);
     const now = new Date();
     const registrationOpen = !exam.registrationOpenAt || now >= new Date(exam.registrationOpenAt);
