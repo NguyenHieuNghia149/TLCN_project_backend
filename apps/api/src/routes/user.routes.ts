@@ -1,6 +1,14 @@
 import { Router } from 'express';
+import { authenticationToken } from '@backend/api/middlewares/auth.middleware';
+import UserRoadmapSelectionController from '@backend/api/controllers/user/userRoadmapSelection.controller';
 
-/** Creates the currently-unused user router without introducing import-time side effects. */
 export function createUserRouter(): Router {
-  return Router();
+  const router = Router();
+  const controller = new UserRoadmapSelectionController();
+
+  router.get('/roadmap-selection', authenticationToken, controller.getUserSelection);
+  router.post('/roadmap-selection', authenticationToken, controller.selectRoadmap);
+
+  return router;
 }
+

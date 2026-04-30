@@ -16,6 +16,7 @@
     "test:security": "ts-node scripts/test-security.ts",
     "test:sandbox": "ts-node scripts/test-sandbox.ts",
     "test:debug": "ts-node scripts/test-debug-fibonacci.ts",
+    "seed:roadmaps": "ts-node -r tsconfig-paths/register scripts/seed-roadmaps.ts",
     "start:test": "npm run verify:full-pipeline:e2e",
     "build": "tsc -p apps/api/tsconfig.json && tsc -p apps/worker/tsconfig.json && tsc -p apps/sandbox/tsconfig.json",
     "start:api": "npm run start --workspace=@backend/api",

@@ -94,7 +94,8 @@ export function createApiApp(): Express {
   app.use(
     cors({
       origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow localhost:3000 for development
+        if (!origin || origin === 'http://localhost:3000' || allowedOrigins.includes(origin)) {
           callback(null, true);
         } else {
           logger.info('Blocked by CORS:', origin);
@@ -104,21 +105,11 @@ export function createApiApp(): Express {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      maxAge: 86400, // 24 hours
+      preflightContinue: false,
     })
   );
 
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,PATCH,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
-
-    if (req.method === 'OPTIONS') {
-      res.sendStatus(200);
-      return;
-    }
-    next();
-  });
   app.set('trust proxy', 1);
 
   app.use(cookieParser());

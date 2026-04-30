@@ -1,8 +1,8 @@
-﻿import '../utils/load-env';
+import '../utils/load-env';
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, TransactionType } from '../db/connection';
-import { resultSubmissions, submissions, testcases, users } from '../db/schema';
+import { resultSubmissions, submissions, testcases, users, roadmapItems, roadmapProgress } from '../db/schema';
 import { ESubmissionStatus } from '../types';
 import { SubmissionResult } from '../validations/submission.validation';
 
@@ -126,6 +126,39 @@ async function replaceResultSubmissions(
   );
 }
 
+async function updateRoadmapProgressForProblem(
+  userId: string,
+  problemId: string,
+  executor: TransactionType
+): Promise<void> {
+  const items = await executor
+    .select({ id: roadmapItems.id, roadmapId: roadmapItems.roadmapId })
+    .from(roadmapItems)
+    .where(and(eq(roadmapItems.itemId, problemId), eq(roadmapItems.itemType, 'problem')));
+
+  if (items.length === 0) return;
+
+  const roadmapIds = items.map(i => i.roadmapId);
+  const progresses = await executor
+    .select()
+    .from(roadmapProgress)
+    .where(and(eq(roadmapProgress.userId, userId), inArray(roadmapProgress.roadmapId, roadmapIds)));
+
+  for (const prog of progresses) {
+    const rItem = items.find(i => i.roadmapId === prog.roadmapId);
+    if (rItem) {
+      const current = (prog.completedItemIds ?? []) as string[];
+      if (!current.includes(rItem.id)) {
+        const next = [...current, rItem.id];
+        await executor
+          .update(roadmapProgress)
+          .set({ completedItemIds: next, updatedAt: new Date() })
+          .where(eq(roadmapProgress.id, prog.id));
+      }
+    }
+  }
+}
+
 export async function finalizeSubmissionResult(
   input: FinalizeSubmissionInput
 ): Promise<FinalizeSubmissionResponse> {
@@ -164,6 +197,14 @@ export async function finalizeSubmissionResult(
 
     if (!submission) {
       return null;
+    }
+
+    if (input.status === ESubmissionStatus.ACCEPTED && !submissionBeforeUpdate.examParticipationId) {
+      await updateRoadmapProgressForProblem(
+        submissionBeforeUpdate.userId,
+        submissionBeforeUpdate.problemId,
+        tx
+      );
     }
 
     await incrementRankingPoint(submissionBeforeUpdate.userId, rankPointsToAdd, tx);

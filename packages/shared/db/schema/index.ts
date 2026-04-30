@@ -17,6 +17,9 @@ export * from './exam';
 export * from './examsToProblems';
 export * from './examParticipations';
 export * from './notification';
+export * from './roadmap';
+export * from './roadmapItem';
+export * from './roadmapProgress';
 
 // Relations
 import { relations } from 'drizzle-orm';
@@ -37,6 +40,9 @@ import { examToProblems } from './examsToProblems';
 import { examParticipations } from './examParticipations';
 import { exam } from './exam';
 import { notifications } from './notification';
+import { roadmaps } from './roadmap';
+import { roadmapItems } from './roadmapItem';
+import { roadmapProgress } from './roadmapProgress';
 
 export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
@@ -198,6 +204,33 @@ export const examToProblemsRelations = relations(examToProblems, ({ one }) => ({
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, {
     fields: [notifications.userId],
+    references: [users.id],
+  }),
+}));
+
+export const roadmapsRelations = relations(roadmaps, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [roadmaps.createdBy],
+    references: [users.id],
+  }),
+  items: many(roadmapItems),
+  progress: many(roadmapProgress),
+}));
+
+export const roadmapItemsRelations = relations(roadmapItems, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapItems.roadmapId],
+    references: [roadmaps.id],
+  }),
+}));
+
+export const roadmapProgressRelations = relations(roadmapProgress, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapProgress.roadmapId],
+    references: [roadmaps.id],
+  }),
+  user: one(users, {
+    fields: [roadmapProgress.userId],
     references: [users.id],
   }),
 }));

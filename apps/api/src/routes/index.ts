@@ -20,6 +20,9 @@ import { createLearnedLessonRouter } from './learned-lesson.routes';
 import { createLeaderboardRouter } from './leaderboard.routes';
 import { createExamRouter } from './exam.routes';
 import { createNotificationRouter } from './notification.routes';
+import { createRoadmapRouter } from './roadmap.routes';
+import { createAdminRoadmapRouter } from './admin/adminRoadmap.routes';
+import { createUserRouter } from './user.routes';
 
 /** Mounts all API routes in the existing middleware order. */
 export function registerRoutes(app: Application): void {
@@ -38,12 +41,15 @@ export function registerRoutes(app: Application): void {
   app.use('/api/admin/lessons', createAdminLessonRouter());
   app.use('/api/admin/topics', createAdminTopicRouter());
   app.use('/api/admin/dashboard', createDashboardRouter());
+  app.use('/api/admin/roadmaps', createAdminRoadmapRouter());
+  app.use('/api/user', createUserRouter());
   app.use('/api/comments', createCommentRouter());
   app.use('/api/learningprocess', createLearningProcessRouter());
   app.use('/api/learned-lessons', createLearnedLessonRouter());
   app.use('/api/exams', createExamRouter());
   app.use('/api/leaderboard', createLeaderboardRouter());
   app.use('/api/notifications', createNotificationRouter());
+  app.use('/api', createRoadmapRouter());
 
   app.use('/api/health', async (req, res) => {
     const dbHealth = await DatabaseUtils.getHealthInfo();
