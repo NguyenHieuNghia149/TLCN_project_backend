@@ -1,5 +1,4 @@
 import { createExamService, ExamService } from '../../../apps/api/src/services/exam.service';
-import { PasswordUtils } from '@backend/shared/utils';
 import { InvalidPasswordException } from '../../../apps/api/src/exceptions/exam.exceptions';
 
 /** Builds a dependency bag for ExamService tests with optional overrides. */
@@ -265,6 +264,52 @@ describe('ExamService dependency injection', () => {
     );
   });
 
+  it('includes learner participation state in getExams list payload', async () => {
+    const examRepository = {
+      getExamsPaginated: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'exam-1',
+            slug: 'spring-midterm',
+            title: 'Spring Midterm',
+            duration: 60,
+            startDate: new Date('2025-01-01T00:00:00.000Z'),
+            endDate: new Date('2025-01-01T01:00:00.000Z'),
+            isVisible: true,
+            maxAttempts: 2,
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+          },
+        ],
+        total: 1,
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findByUserId: jest.fn().mockResolvedValue([
+        {
+          id: 'participation-1',
+          examId: 'exam-1',
+          status: 'SUBMITTED',
+          startTime: new Date('2025-01-01T00:10:00.000Z'),
+          endTime: new Date('2025-01-01T00:40:00.000Z'),
+        },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examRepository, examParticipationRepository }),
+    );
+
+    const result = await service.getExams(10, 0, undefined, 'all', 'user-1', true, 'user');
+
+    expect(examParticipationRepository.findByUserId).toHaveBeenCalledWith('user-1');
+    expect(result.data[0]).toMatchObject({
+      attemptsUsed: 1,
+      latestParticipationStatus: 'SUBMITTED',
+      hasInProgressParticipation: false,
+      hasCompletedParticipation: true,
+    });
+  });
+
   it('returns null from getMyParticipation when user has no in-progress participation', async () => {
     const examParticipationRepository = {
       findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
@@ -315,14 +360,11 @@ describe('ExamService exam password storage', () => {
     jest.restoreAllMocks();
   });
 
-  it('hashes exam password before persisting exam record', async () => {
+  it('stores the exam password as registrationPassword when creating an exam', async () => {
     const examRepository = {
       createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
     } as any;
     const service = new ExamService(createExamDependencies({ examRepository }));
-    const hashSpy = jest
-      .spyOn(PasswordUtils, 'hashPassword')
-      .mockResolvedValue('hashed-exam-password');
 
     jest.spyOn(service, 'getExamById').mockResolvedValue({
       id: 'exam-1',
@@ -348,22 +390,22 @@ describe('ExamService exam password storage', () => {
       challenges: [],
     } as any);
 
-    expect(hashSpy).toHaveBeenCalledWith('plain-password');
     expect(examRepository.createExamWithChallenges).toHaveBeenCalledWith(
       expect.objectContaining({
-        passwordHash: 'hashed-exam-password',
+        registrationPassword: 'plain-password',
       }),
       expect.any(Array),
     );
     expect(examRepository.createExamWithChallenges).toHaveBeenCalledWith(
       expect.not.objectContaining({
         password: expect.anything(),
+        passwordHash: expect.anything(),
       }),
       expect.any(Array),
     );
   });
 
-  it('validates exam join password against passwordHash', async () => {
+  it('validates exam join password against registrationPassword', async () => {
     const examRepository = {
       findById: jest.fn().mockResolvedValue({
         id: 'exam-1',
@@ -371,7 +413,7 @@ describe('ExamService exam password storage', () => {
         endDate: new Date(Date.now() + 60 * 60_000),
         duration: 60,
         maxAttempts: 2,
-        passwordHash: await PasswordUtils.hashPassword('correct-password'),
+        registrationPassword: 'correct-password',
       }),
     } as any;
     const examParticipationRepository = {

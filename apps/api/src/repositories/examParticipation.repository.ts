@@ -7,7 +7,7 @@ import { BaseRepository } from './base.repository';
 import { eq, and, desc, inArray, count } from 'drizzle-orm';
 import { EExamParticipationStatus } from '@backend/shared/types';
 import { db } from '@backend/shared/db/connection';
-import { submissions, users } from '@backend/shared/db/schema';
+import { submissions, users, examParticipants } from '@backend/shared/db/schema';
 
 export class ExamParticipationRepository extends BaseRepository<
   typeof examParticipations,
@@ -256,6 +256,8 @@ export class ExamParticipationRepository extends BaseRepository<
       userFirstName: string | null;
       userLastName: string | null;
       email: string | null;
+      fullName?: string | null;
+      normalizedEmail?: string | null;
       // totalScore: number;
       submittedAt: Date | null;
       startTime: Date | null;
@@ -270,11 +272,14 @@ export class ExamParticipationRepository extends BaseRepository<
         userFirstName: users.firstName,
         userLastName: users.lastName,
         email: users.email,
+        fullName: examParticipants.fullName,
+        normalizedEmail: examParticipants.normalizedEmail,
         // totalScore: submissions.id, // placeholder - will be computed by service
         submittedAt: examParticipations.endTime,
       })
       .from(examParticipations)
       .innerJoin(users, eq(examParticipations.userId, users.id))
+      .leftJoin(examParticipants, eq(examParticipations.participantId, examParticipants.id))
       // .leftJoin(submissions, and(eq(submissions.userId, examParticipations.userId)))
       .where(
         and(

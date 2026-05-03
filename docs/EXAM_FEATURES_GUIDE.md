@@ -49,7 +49,7 @@ Field quan trọng:
 - `allowExternalCandidates`
 - `registrationOpenAt`
 - `registrationCloseAt`
-- `passwordHash`
+- `registrationPassword`
 
 ### `exam_participants`
 

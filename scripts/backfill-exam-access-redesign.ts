@@ -2,6 +2,10 @@ import dotenv from 'dotenv';
 import { Client } from 'pg';
 
 import { logger } from '@backend/shared/utils';
+import {
+  invalidRegistrationWindowCountSql,
+  invalidRegistrationWindowRemediationSql,
+} from './exam-access-redesign-data';
 
 dotenv.config();
 
@@ -36,7 +40,21 @@ async function main(): Promise<void> {
       FROM information_schema.columns
       WHERE table_schema = 'public'
         AND (
-          (table_name = 'exam' AND column_name IN ('slug', 'password_hash'))
+          (
+            table_name = 'exam'
+            AND column_name IN (
+              'slug',
+              'registration_password',
+              'access_mode',
+              'self_registration_approval_mode',
+              'self_registration_password_required',
+              'registration_open_at',
+              'registration_close_at',
+              'start_date',
+              'status',
+              'is_visible'
+            )
+          )
           OR (table_name = 'exam_participations' AND column_name IN ('participant_id', 'attempt_number'))
           OR (table_name = 'users' AND column_name = 'is_shadow_account')
         )
@@ -45,8 +63,22 @@ async function main(): Promise<void> {
     const hasExamSlug = schemaPrerequisites.rows.some(
       row => row.table_name === 'exam' && row.column_name === 'slug',
     );
-    const hasExamPasswordHash = schemaPrerequisites.rows.some(
-      row => row.table_name === 'exam' && row.column_name === 'password_hash',
+    const hasExamRegistrationPassword = schemaPrerequisites.rows.some(
+      row => row.table_name === 'exam' && row.column_name === 'registration_password',
+    );
+    const hasExamRegistrationWindowColumns = [
+      'access_mode',
+      'self_registration_approval_mode',
+      'self_registration_password_required',
+      'registration_open_at',
+      'registration_close_at',
+      'start_date',
+      'status',
+      'is_visible',
+    ].every(columnName =>
+      schemaPrerequisites.rows.some(
+        row => row.table_name === 'exam' && row.column_name === columnName,
+      ),
     );
     const hasParticipationId = schemaPrerequisites.rows.some(
       row => row.table_name === 'exam_participations' && row.column_name === 'participant_id',
@@ -58,7 +90,14 @@ async function main(): Promise<void> {
       row => row.table_name === 'users' && row.column_name === 'is_shadow_account',
     );
 
-    if (!hasExamSlug || !hasExamPasswordHash || !hasParticipationId || !hasAttemptNumber || !hasShadowAccount) {
+    if (
+      !hasExamSlug ||
+      !hasExamRegistrationPassword ||
+      !hasExamRegistrationWindowColumns ||
+      !hasParticipationId ||
+      !hasAttemptNumber ||
+      !hasShadowAccount
+    ) {
       console.log(
         JSON.stringify(
           {
@@ -74,12 +113,16 @@ async function main(): Promise<void> {
       return;
     }
 
-    const examsNeedingPasswordHash = await client.query<{ count: string }>(`
+    const examsNeedingRegistrationPassword = await client.query<{ count: string }>(`
       SELECT COUNT(*)::text AS count
       FROM exam
       WHERE self_registration_password_required = true
-        AND password_hash IS NULL
+        AND registration_password IS NULL
     `);
+
+    const examsWithInvalidRegistrationWindows = await client.query<{ count: string }>(
+      invalidRegistrationWindowCountSql,
+    );
 
     const examsNeedingSlug = await client.query<{
       id: string;
@@ -133,7 +176,12 @@ async function main(): Promise<void> {
 
     const dryRunPayload = {
       mode: apply ? 'apply' : 'dry-run',
-      examsNeedingPasswordHash: Number(examsNeedingPasswordHash.rows[0]?.count ?? '0'),
+      examsNeedingRegistrationPassword: Number(
+        examsNeedingRegistrationPassword.rows[0]?.count ?? '0',
+      ),
+      examsWithInvalidRegistrationWindows: Number(
+        examsWithInvalidRegistrationWindows.rows[0]?.count ?? '0',
+      ),
       examsNeedingSlug: examsNeedingSlug.rowCount,
       participantsToCreate: participantCandidates.rowCount,
       participationsMissingParticipantId: Number(participationBackfillCount.rows[0]?.count ?? '0'),
@@ -147,7 +195,22 @@ async function main(): Promise<void> {
 
     await client.query('BEGIN');
 
-    const hashedPasswords = 0;
+    const passwordPolicyUpdate = await client.query(`
+      UPDATE exam
+      SET self_registration_password_required = false,
+          is_visible = false,
+          status = CASE
+            WHEN status = 'published' THEN 'draft'
+            ELSE status
+          END,
+          updated_at = NOW()
+      WHERE self_registration_password_required = true
+        AND registration_password IS NULL
+    `);
+
+    const registrationWindowPolicyUpdate = await client.query(
+      invalidRegistrationWindowRemediationSql,
+    );
 
     let slugUpdates = 0;
     for (const row of examsNeedingSlug.rows) {
@@ -263,7 +326,8 @@ async function main(): Promise<void> {
       JSON.stringify(
         {
           ...dryRunPayload,
-          hashedPasswords,
+          passwordPolicyUpdates: passwordPolicyUpdate.rowCount ?? 0,
+          registrationWindowPolicyUpdates: registrationWindowPolicyUpdate.rowCount ?? 0,
           slugUpdates,
           insertedParticipants,
           updatedParticipationsWithParticipantId: participationIdUpdate.rowCount ?? 0,

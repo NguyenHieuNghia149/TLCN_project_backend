@@ -124,10 +124,6 @@ export class ExamAccessService {
     this.assertExamConfiguration(input);
     await this.assertUniqueSlug(input.slug);
 
-    const passwordHash = input.examPassword
-      ? await PasswordUtils.hashPassword(input.examPassword)
-      : null;
-
     const createdExamId = await this.deps.examRepository.createExamWithChallenges(
       {
         title: input.title,
@@ -147,7 +143,7 @@ export class ExamAccessService {
         registrationCloseAt: input.registrationCloseAt
           ? new Date(input.registrationCloseAt)
           : null,
-        passwordHash,
+        registrationPassword: input.examPassword || null,
       },
       input.challenges,
     );
@@ -253,6 +249,9 @@ export class ExamAccessService {
             ? this.asIsoString(currentExam.registrationCloseAt)
             : null
           : input.registrationCloseAt,
+      registrationPassword:
+        input.examPassword === undefined ? currentExam.registrationPassword : input.examPassword,
+      allowMissingRegistrationWindow: allowLegacySelfRegistrationApprovalMode,
     });
 
     if (input.slug && input.slug !== currentExam.slug) {
@@ -289,9 +288,7 @@ export class ExamAccessService {
     };
 
     if (input.examPassword !== undefined) {
-      patch.passwordHash = input.examPassword
-        ? await PasswordUtils.hashPassword(input.examPassword)
-        : null;
+      patch.registrationPassword = input.examPassword || null;
     }
 
     if (input.challenges) {
@@ -702,7 +699,12 @@ export class ExamAccessService {
     });
 
     if (updated) {
-      await this.sendParticipantDecisionEmail(exam, updated, 'approved');
+      await this.sendParticipantDecisionEmail(
+        exam,
+        updated,
+        'approved',
+        this.getRegistrationPasswordForEmail(exam),
+      );
       return this.mapParticipantSummary(exam, updated);
     }
 
@@ -938,9 +940,6 @@ export class ExamAccessService {
     this.assertExamPublishedForAccess(exam, 'public_landing');
     const challengeLinks = await this.deps.examToProblemsRepository.findByExamId(exam.id);
     const now = new Date();
-    const registrationOpen = !exam.registrationOpenAt || now >= new Date(exam.registrationOpenAt);
-    const registrationNotClosed =
-      !exam.registrationCloseAt || now <= new Date(exam.registrationCloseAt);
 
     return {
       id: exam.id,
@@ -960,7 +959,7 @@ export class ExamAccessService {
       allowExternalCandidates: exam.allowExternalCandidates,
       selfRegistrationApprovalMode: exam.selfRegistrationApprovalMode ?? null,
       selfRegistrationPasswordRequired: exam.selfRegistrationPasswordRequired,
-      isRegistrationOpen: registrationOpen && registrationNotClosed,
+      isRegistrationOpen: this.isRegistrationWindowOpen(exam, now),
       canUseInviteLink: exam.accessMode !== 'open_registration',
     };
   }
@@ -984,21 +983,6 @@ export class ExamAccessService {
         .trim() ||
       normalizedEmail;
 
-    const existingParticipant = await this.deps.examParticipantRepository.findByExamAndIdentity(
-      exam.id,
-      {
-        normalizedEmail,
-        userId: input.userId ?? null,
-      },
-    );
-
-    if (existingParticipant) {
-      return {
-        ...(await this.buildAccessState(exam, existingParticipant, null, null, input.userId ?? null)),
-        created: false,
-      };
-    }
-
     if (!input.userId && !exam.allowExternalCandidates) {
       throw new AuthorizationException('External candidates are not allowed for this exam');
     }
@@ -1015,15 +999,26 @@ export class ExamAccessService {
     this.enforceRegistrationRateLimit(exam.id, normalizedEmail);
     await this.assertRegistrationWindow(exam);
 
-    if (exam.selfRegistrationPasswordRequired && exam.passwordHash) {
-      const passwordMatches = await PasswordUtils.comparePassword(
-        input.examPassword || '',
-        exam.passwordHash,
-      );
-
-      if (!passwordMatches) {
+    if (exam.selfRegistrationPasswordRequired) {
+      const registrationPassword = this.getRegistrationPasswordForEmail(exam);
+      if (!registrationPassword || input.examPassword !== registrationPassword) {
         throw new InvalidPasswordException('Incorrect exam password');
       }
+    }
+
+    const existingParticipant = await this.deps.examParticipantRepository.findByExamAndIdentity(
+      exam.id,
+      {
+        normalizedEmail,
+        userId: input.userId ?? null,
+      },
+    );
+
+    if (existingParticipant) {
+      return {
+        ...(await this.buildAccessState(exam, existingParticipant, null, null, input.userId ?? null)),
+        created: false,
+      };
     }
 
     const approvalStatus =
@@ -1049,7 +1044,11 @@ export class ExamAccessService {
       metadata: { source: 'self_registration' },
     });
 
-    await this.sendRegistrationReceivedEmail(exam, createdParticipant);
+    await this.sendRegistrationReceivedEmail(
+      exam,
+      createdParticipant,
+      approvalStatus === 'approved' ? this.getRegistrationPasswordForEmail(exam) : null,
+    );
 
     let entrySession = null;
     if (input.userId && approvalStatus === 'approved') {
@@ -1571,6 +1570,9 @@ export class ExamAccessService {
     endDate: string;
     registrationOpenAt?: string | Date | null;
     registrationCloseAt?: string | Date | null;
+    examPassword?: string | null;
+    registrationPassword?: string | null;
+    allowMissingRegistrationWindow?: boolean;
   }) {
     const startDate = new Date(input.startDate);
     const endDate = new Date(input.endDate);
@@ -1590,6 +1592,17 @@ export class ExamAccessService {
       throw new ValidationException('Self-registration exams must declare an approval mode');
     }
 
+    if (
+      input.accessMode !== 'invite_only' &&
+      input.selfRegistrationApprovalMode != null &&
+      !input.allowMissingRegistrationWindow &&
+      (!input.registrationOpenAt || !input.registrationCloseAt)
+    ) {
+      throw new ValidationException(
+        'Self-registration exams must configure registration open and close times.',
+      );
+    }
+
     if (input.registrationOpenAt) {
       const registrationOpenAt = new Date(input.registrationOpenAt);
       if (registrationOpenAt >= startDate) {
@@ -1599,10 +1612,8 @@ export class ExamAccessService {
 
     if (input.registrationCloseAt) {
       const registrationCloseAt = new Date(input.registrationCloseAt);
-      if (registrationCloseAt > endDate) {
-        throw new ValidationException(
-          'Registration close time must be before or equal to the exam end time',
-        );
+      if (registrationCloseAt >= startDate) {
+        throw new ValidationException('Registration close time must be before the exam start time');
       }
     }
 
@@ -1611,6 +1622,15 @@ export class ExamAccessService {
       const registrationCloseAt = new Date(input.registrationCloseAt);
       if (registrationCloseAt <= registrationOpenAt) {
         throw new ValidationException('Registration close time must be after registration open time');
+      }
+    }
+
+    if (input.selfRegistrationPasswordRequired) {
+      const registrationPassword = input.examPassword ?? input.registrationPassword;
+      if (typeof registrationPassword !== 'string' || !registrationPassword.trim()) {
+        throw new ValidationException(
+          'Exam password is required when registration password is enabled.',
+        );
       }
     }
   }
@@ -1733,32 +1753,26 @@ export class ExamAccessService {
     const participants = await this.deps.examParticipantRepository.findByExamId(examId);
     await Promise.all(
       participants.map((participant: any) =>
-        this.sendEmailIfPossible({
+        this.deps.emailService?.sendExamRescheduledEmail?.({
           to: participant.normalizedEmail,
-          subject: `Exam rescheduled: ${exam.title}`,
-          html: `
-            <p>The exam <strong>${exam.title}</strong> has been rescheduled.</p>
-            <p>Start: ${this.asIsoString(exam.startDate)}</p>
-            <p>End: ${this.asIsoString(exam.endDate)}</p>
-            <p>Access link: <a href="${this.buildExamLandingUrl(exam.slug)}">${this.buildExamLandingUrl(exam.slug)}</a></p>
-          `,
+          examTitle: exam.title,
+          examSlug: exam.slug,
+          startDate: exam.startDate,
+          endDate: exam.endDate,
         }),
       ),
     );
   }
 
   private async sendParticipantInviteEmail(exam: any, participant: any, inviteToken: string) {
-    await this.sendEmailIfPossible({
+    await this.deps.emailService?.sendExamParticipantInviteEmail?.({
       to: participant.normalizedEmail,
-      subject: `Invitation to exam: ${exam.title}`,
-      html: `
-        <p>Hello ${participant.fullName},</p>
-        <p>You have been invited to the exam <strong>${exam.title}</strong>.</p>
-        <p>Start: ${this.asIsoString(exam.startDate)}</p>
-        <p>End: ${this.asIsoString(exam.endDate)}</p>
-        <p>Access your exam here:</p>
-        <p><a href="${this.buildInviteUrl(exam.slug, inviteToken)}">${this.buildInviteUrl(exam.slug, inviteToken)}</a></p>
-      `,
+      fullName: participant.fullName,
+      examTitle: exam.title,
+      examSlug: exam.slug,
+      inviteToken,
+      startDate: exam.startDate,
+      endDate: exam.endDate,
     });
   }
 
@@ -1766,62 +1780,39 @@ export class ExamAccessService {
     exam: any,
     participant: any,
     decision: 'approved' | 'rejected',
+    registrationPassword?: string | null,
   ) {
-    const subject =
-      decision === 'approved'
-        ? `Registration approved: ${exam.title}`
-        : `Registration rejected: ${exam.title}`;
-    const html =
-      decision === 'approved'
-        ? `
-          <p>Hello ${participant.fullName},</p>
-          <p>Your registration for <strong>${exam.title}</strong> has been approved.</p>
-          <p>You can access the exam from: <a href="${this.buildExamLandingUrl(exam.slug)}">${this.buildExamLandingUrl(exam.slug)}</a></p>
-        `
-        : `
-          <p>Hello ${participant.fullName},</p>
-          <p>Your registration for <strong>${exam.title}</strong> has been rejected.</p>
-        `;
-
-    await this.sendEmailIfPossible({
+    await this.deps.emailService?.sendExamParticipantDecisionEmail?.({
       to: participant.normalizedEmail,
-      subject,
-      html,
+      fullName: participant.fullName,
+      examTitle: exam.title,
+      examSlug: exam.slug,
+      decision,
+      registrationPassword,
     });
   }
 
-  private async sendRegistrationReceivedEmail(exam: any, participant: any) {
-    await this.sendEmailIfPossible({
+  private async sendRegistrationReceivedEmail(
+    exam: any,
+    participant: any,
+    registrationPassword?: string | null,
+  ) {
+    await this.deps.emailService?.sendExamRegistrationReceivedEmail?.({
       to: participant.normalizedEmail,
-      subject: `Registration received: ${exam.title}`,
-      html: `
-        <p>Hello ${participant.fullName},</p>
-        <p>Your registration for <strong>${exam.title}</strong> has been received.</p>
-        <p>Status: <strong>${participant.approvalStatus}</strong></p>
-        <p>You can track access from: <a href="${this.buildExamLandingUrl(exam.slug)}">${this.buildExamLandingUrl(exam.slug)}</a></p>
-      `,
+      fullName: participant.fullName,
+      examTitle: exam.title,
+      examSlug: exam.slug,
+      approvalStatus: participant.approvalStatus,
+      registrationPassword,
     });
   }
 
-  private async sendEmailIfPossible(input: {
-    to: string;
-    subject: string;
-    html: string;
-  }) {
-    if (!this.deps.emailService?.sendMail) {
-      return;
+  private getRegistrationPasswordForEmail(exam: any): string | null {
+    if (!exam.selfRegistrationPasswordRequired || typeof exam.registrationPassword !== 'string') {
+      return null;
     }
 
-    await this.deps.emailService.sendMail(input);
-  }
-
-  private buildExamLandingUrl(slug: string) {
-    const origin = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
-    return `${origin.replace(/\/$/, '')}/exam/${slug}`;
-  }
-
-  private buildInviteUrl(slug: string, inviteToken: string) {
-    return `${this.buildExamLandingUrl(slug)}/entry?invite=${inviteToken}`;
+    return exam.registrationPassword.trim() ? exam.registrationPassword : null;
   }
 
   private async requireExamBySlug(slug: string) {
@@ -1854,13 +1845,48 @@ export class ExamAccessService {
 
   private async assertRegistrationWindow(exam: any) {
     const now = new Date();
-    if (exam.registrationOpenAt && now < new Date(exam.registrationOpenAt)) {
+    const registrationWindow = this.getRegistrationWindow(exam);
+    if (!registrationWindow) {
+      throw new AuthorizationException('Registration window is not configured');
+    }
+
+    if (now < registrationWindow.openAt) {
       throw new AuthorizationException('Registration not open yet');
     }
 
-    if (exam.registrationCloseAt && now > new Date(exam.registrationCloseAt)) {
+    if (now >= registrationWindow.closeAt) {
       throw new AuthorizationException('Registration closed');
     }
+  }
+
+  private isRegistrationWindowOpen(exam: any, now = new Date()) {
+    const registrationWindow = this.getRegistrationWindow(exam);
+    return (
+      !!registrationWindow &&
+      now >= registrationWindow.openAt &&
+      now < registrationWindow.closeAt
+    );
+  }
+
+  private getRegistrationWindow(exam: any): { openAt: Date; closeAt: Date } | null {
+    if (!exam.registrationOpenAt || !exam.registrationCloseAt) {
+      return null;
+    }
+
+    const openAt = new Date(exam.registrationOpenAt);
+    const closeAt = new Date(exam.registrationCloseAt);
+    const startAt = new Date(exam.startDate);
+    if (
+      Number.isNaN(openAt.getTime()) ||
+      Number.isNaN(closeAt.getTime()) ||
+      Number.isNaN(startAt.getTime()) ||
+      closeAt <= openAt ||
+      closeAt >= startAt
+    ) {
+      return null;
+    }
+
+    return { openAt, closeAt };
   }
 
   private async mapAdminExam(exam: any) {

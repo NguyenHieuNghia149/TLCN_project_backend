@@ -17,7 +17,7 @@ export const exam = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).notNull(),
-    passwordHash: text('password_hash'),
+    registrationPassword: text('registration_password'),
     duration: integer('duration').notNull(),
     startDate: timestamp('start_date').notNull(),
     endDate: timestamp('end_date').notNull(),

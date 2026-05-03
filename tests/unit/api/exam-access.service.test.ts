@@ -5,7 +5,10 @@ import {
   RateLimitExceededException,
   ValidationException,
 } from '@backend/api/exceptions/auth.exceptions';
-import { ExamNotStartedException } from '@backend/api/exceptions/exam.exceptions';
+import {
+  ExamNotStartedException,
+  InvalidPasswordException,
+} from '@backend/api/exceptions/exam.exceptions';
 
 function createDependencies(overrides: Partial<any> = {}) {
   return {
@@ -23,10 +26,18 @@ function createDependencies(overrides: Partial<any> = {}) {
   };
 }
 
+function validRegistrationWindow() {
+  return {
+    registrationOpenAt: new Date('2026-01-01T00:00:00.000Z'),
+    registrationCloseAt: new Date('2099-05-01T08:30:00.000Z'),
+  };
+}
+
 describe('ExamAccessService', () => {
   afterEach(() => {
     jest.clearAllMocks();
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it('allows toggling visibility for legacy self-registration exams with null approval mode', async () => {
@@ -122,6 +133,38 @@ describe('ExamAccessService', () => {
       code: 'EXAM_STATUS_TRANSITION_INVALID',
     });
     expect(examRepository.publishIfDraft).not.toHaveBeenCalled();
+  });
+
+  it('rejects enabling registration password when the exam has no password', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        title: 'Spring Midterm',
+        slug: 'spring-midterm',
+        duration: 90,
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        accessMode: 'open_registration',
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: false,
+        registrationPassword: null,
+        allowExternalCandidates: true,
+        status: 'published',
+        isVisible: true,
+        maxAttempts: 1,
+        createdAt: new Date('2099-04-01T00:00:00.000Z'),
+        updatedAt: new Date('2099-04-01T00:00:00.000Z'),
+      }),
+      update: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(createDependencies({ examRepository }));
+
+    await expect(
+      service.updateAdminExam('exam-1', 'teacher-1', {
+        selfRegistrationPasswordRequired: true,
+      }),
+    ).rejects.toBeInstanceOf(ValidationException);
+    expect(examRepository.update).not.toHaveBeenCalled();
   });
 
   it('cancels a published exam only when there are no participants', async () => {
@@ -349,6 +392,40 @@ describe('ExamAccessService', () => {
     } as Partial<AppException>);
   });
 
+  it('reports public registration as closed when the registration window is missing', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        status: 'published',
+        accessMode: 'open_registration',
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: false,
+        allowExternalCandidates: true,
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        registrationOpenAt: null,
+        registrationCloseAt: null,
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examToProblemsRepository,
+      }),
+    );
+
+    await expect(service.getPublicExamBySlug('spring-midterm')).resolves.toMatchObject({
+      isRegistrationOpen: false,
+    });
+  });
+
   it('returns the existing access state instead of creating a duplicate participant in hybrid mode', async () => {
     const examRepository = {
       findBySlug: jest.fn().mockResolvedValue({
@@ -361,10 +438,9 @@ describe('ExamAccessService', () => {
         allowExternalCandidates: true,
         status: 'published',
         duration: 90,
-        startDate: new Date('2026-05-01T09:00:00.000Z'),
-        endDate: new Date('2026-05-01T12:00:00.000Z'),
-        registrationOpenAt: new Date('2026-04-29T09:00:00.000Z'),
-        registrationCloseAt: new Date('2026-05-01T11:00:00.000Z'),
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        ...validRegistrationWindow(),
       }),
     } as any;
     const examParticipantRepository = {
@@ -372,6 +448,9 @@ describe('ExamAccessService', () => {
         id: 'participant-1',
         examId: 'exam-1',
         userId: 'user-1',
+        normalizedEmail: 'student@example.com',
+        fullName: 'Exam Student',
+        source: 'manual_add',
         approvalStatus: 'approved',
         accessStatus: 'invited',
       }),
@@ -406,6 +485,61 @@ describe('ExamAccessService', () => {
       accessStatus: 'invited',
       created: false,
     });
+  });
+
+  it('does not mutate an existing participant before registration password validation', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2099-04-30T09:00:00.000Z'));
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        accessMode: 'open_registration',
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: true,
+        registrationPassword: 'Correct#1234',
+        allowExternalCandidates: true,
+        status: 'published',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        ...validRegistrationWindow(),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: null,
+        normalizedEmail: 'student@example.com',
+        fullName: 'Original Name',
+        source: 'self_registration',
+        approvalStatus: 'approved',
+        accessStatus: 'eligible',
+      }),
+      update: jest.fn(),
+      create: jest.fn(),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        userRepository: {
+          findByEmail: jest.fn().mockResolvedValue(null),
+        },
+      }),
+    );
+
+    await expect(
+      service.registerForExam('spring-midterm', {
+        email: 'student@example.com',
+        fullName: 'Injected Name',
+        examPassword: 'Wrong#1234',
+      }),
+    ).rejects.toBeInstanceOf(InvalidPasswordException);
+    expect(examParticipantRepository.update).not.toHaveBeenCalled();
+    expect(examParticipantRepository.create).not.toHaveBeenCalled();
   });
 
   it('always rejects register path for invite-only exams even when a participant already exists', async () => {
@@ -486,6 +620,7 @@ describe('ExamAccessService', () => {
         maxAttempts: 1,
         startDate: new Date('2099-05-01T09:00:00.000Z'),
         endDate: new Date('2099-05-01T12:00:00.000Z'),
+        ...validRegistrationWindow(),
       }),
     } as any;
     const examParticipantRepository = {
@@ -539,6 +674,227 @@ describe('ExamAccessService', () => {
       accessStatus: 'eligible',
       created: true,
     });
+  });
+
+  it('emails the registration password immediately for auto-approved self-registration exams', async () => {
+    const examPassword = 'Exam#1234';
+    const createdParticipant = {
+      id: 'participant-password-auto',
+      examId: 'exam-1',
+      userId: null,
+      approvalStatus: 'approved',
+      accessStatus: 'eligible',
+      source: 'self_registration',
+      normalizedEmail: 'student@example.com',
+      fullName: 'Exam Student',
+    };
+    const emailService = {
+      sendExamRegistrationReceivedEmail: jest.fn().mockResolvedValue(undefined),
+    };
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        accessMode: 'open_registration',
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: true,
+        registrationPassword: examPassword,
+        allowExternalCandidates: true,
+        status: 'published',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        ...validRegistrationWindow(),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(createdParticipant),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examAuditLogRepository: {
+          create: jest.fn().mockResolvedValue(undefined),
+        },
+        userRepository: {
+          findByEmail: jest.fn().mockResolvedValue(null),
+        },
+        emailService,
+      }),
+    );
+
+    await service.registerForExam('spring-midterm', {
+      email: 'student@example.com',
+      fullName: 'Exam Student',
+      examPassword,
+    });
+
+    expect(emailService.sendExamRegistrationReceivedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'student@example.com',
+        fullName: 'Exam Student',
+        examTitle: 'Spring Midterm',
+        examSlug: 'spring-midterm',
+        approvalStatus: 'approved',
+        registrationPassword: examPassword,
+      }),
+    );
+  });
+
+  it('emails the registration password only after manual self-registration is approved', async () => {
+    const examPassword = 'Manual#1234';
+    const pendingParticipant = {
+      id: 'participant-password-manual',
+      examId: 'exam-1',
+      userId: null,
+      approvalStatus: 'pending',
+      accessStatus: null,
+      source: 'self_registration',
+      normalizedEmail: 'student@example.com',
+      fullName: 'Exam Student',
+    };
+    const approvedParticipant = {
+      ...pendingParticipant,
+      approvalStatus: 'approved',
+      accessStatus: 'eligible',
+      approvedBy: 'teacher-1',
+    };
+    const exam = {
+      id: 'exam-1',
+      slug: 'spring-midterm',
+      title: 'Spring Midterm',
+      accessMode: 'open_registration',
+      selfRegistrationApprovalMode: 'manual',
+      selfRegistrationPasswordRequired: true,
+      registrationPassword: examPassword,
+      allowExternalCandidates: true,
+      status: 'published',
+      duration: 90,
+      maxAttempts: 1,
+      startDate: new Date('2099-05-01T09:00:00.000Z'),
+      endDate: new Date('2099-05-01T12:00:00.000Z'),
+      ...validRegistrationWindow(),
+    };
+    const emailService = {
+      sendExamRegistrationReceivedEmail: jest.fn().mockResolvedValue(undefined),
+      sendExamParticipantDecisionEmail: jest.fn().mockResolvedValue(undefined),
+    };
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue(exam),
+      findById: jest.fn().mockResolvedValue(exam),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(pendingParticipant),
+      findById: jest.fn().mockResolvedValue(pendingParticipant),
+      updateApproval: jest.fn().mockResolvedValue(approvedParticipant),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examAuditLogRepository: {
+          create: jest.fn().mockResolvedValue(undefined),
+        },
+        userRepository: {
+          findByEmail: jest.fn().mockResolvedValue(null),
+        },
+        emailService,
+      }),
+    );
+
+    await service.registerForExam('spring-midterm', {
+      email: 'student@example.com',
+      fullName: 'Exam Student',
+      examPassword,
+    });
+
+    expect(emailService.sendExamRegistrationReceivedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'student@example.com',
+        fullName: 'Exam Student',
+        examTitle: 'Spring Midterm',
+        examSlug: 'spring-midterm',
+        approvalStatus: 'pending',
+        registrationPassword: null,
+      }),
+    );
+
+    emailService.sendExamParticipantDecisionEmail.mockClear();
+
+    await service.approveParticipant('exam-1', 'participant-password-manual', 'teacher-1');
+
+    expect(emailService.sendExamParticipantDecisionEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'student@example.com',
+        fullName: 'Exam Student',
+        examTitle: 'Spring Midterm',
+        examSlug: 'spring-midterm',
+        decision: 'approved',
+        registrationPassword: examPassword,
+      }),
+    );
+  });
+
+  it('rejects self-registration once the exam start time has arrived', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2099-05-01T09:00:00.000Z'));
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        accessMode: 'open_registration',
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: false,
+        allowExternalCandidates: true,
+        status: 'published',
+        duration: 90,
+        startDate: new Date('2099-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        registrationOpenAt: new Date('2099-04-30T09:00:00.000Z'),
+        registrationCloseAt: new Date('2099-05-01T08:30:00.000Z'),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({
+        id: 'participant-after-start',
+        examId: 'exam-1',
+        userId: null,
+        approvalStatus: 'approved',
+        accessStatus: 'eligible',
+        source: 'self_registration',
+        normalizedEmail: 'student@example.com',
+        fullName: 'Exam Student',
+      }),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examAuditLogRepository: {
+          create: jest.fn().mockResolvedValue(undefined),
+        },
+        userRepository: {
+          findByEmail: jest.fn().mockResolvedValue(null),
+        },
+        emailService: {
+          sendMail: jest.fn().mockResolvedValue(undefined),
+        },
+      }),
+    );
+
+    await expect(
+      service.registerForExam('spring-midterm', {
+        email: 'student@example.com',
+        fullName: 'Exam Student',
+      }),
+    ).rejects.toBeInstanceOf(AuthorizationException);
+    expect(examParticipantRepository.create).not.toHaveBeenCalled();
   });
 
   it('rejects self-registration before the registration window opens', async () => {

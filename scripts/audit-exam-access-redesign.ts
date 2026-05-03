@@ -2,6 +2,10 @@ import dotenv from 'dotenv';
 import { Client } from 'pg';
 
 import { logger } from '@backend/shared/utils';
+import {
+  invalidRegistrationWindowSelectSql,
+  type InvalidRegistrationWindowRow,
+} from './exam-access-redesign-data';
 
 dotenv.config();
 
@@ -23,7 +27,21 @@ async function main(): Promise<void> {
       FROM information_schema.columns
       WHERE table_schema = 'public'
         AND (
-          (table_name = 'exam' AND column_name IN ('slug', 'password_hash', 'access_mode'))
+          (
+            table_name = 'exam'
+            AND column_name IN (
+              'slug',
+              'registration_password',
+              'access_mode',
+              'self_registration_approval_mode',
+              'self_registration_password_required',
+              'registration_open_at',
+              'registration_close_at',
+              'start_date',
+              'status',
+              'is_visible'
+            )
+          )
           OR (table_name = 'exam_participations' AND column_name = 'participant_id')
           OR (table_name = 'exam_participants' AND column_name IN ('normalized_email', 'user_id'))
         )
@@ -35,11 +53,34 @@ async function main(): Promise<void> {
     const hasExamSlug = schemaPrerequisites.rows.some(
       row => row.table_name === 'exam' && row.column_name === 'slug',
     );
+    const hasExamRegistrationPassword = schemaPrerequisites.rows.some(
+      row => row.table_name === 'exam' && row.column_name === 'registration_password',
+    );
+    const hasExamRegistrationWindowColumns = [
+      'registration_open_at',
+      'registration_close_at',
+      'start_date',
+      'status',
+      'is_visible',
+      'self_registration_approval_mode',
+      'self_registration_password_required',
+      'access_mode',
+    ].every(columnName =>
+      schemaPrerequisites.rows.some(
+        row => row.table_name === 'exam' && row.column_name === columnName,
+      ),
+    );
     const hasParticipationId = schemaPrerequisites.rows.some(
       row => row.table_name === 'exam_participations' && row.column_name === 'participant_id',
     );
 
-    if (!hasExamParticipants || !hasExamSlug || !hasParticipationId) {
+    if (
+      !hasExamParticipants ||
+      !hasExamSlug ||
+      !hasExamRegistrationPassword ||
+      !hasExamRegistrationWindowColumns ||
+      !hasParticipationId
+    ) {
       console.log(
         JSON.stringify(
           {
@@ -60,7 +101,8 @@ async function main(): Promise<void> {
       duplicateUsers,
       invalidPolicies,
       missingSlugs,
-      missingPasswordHashes,
+      missingRegistrationPasswords,
+      invalidRegistrationWindows,
     ] = await Promise.all([
       client.query<{ count: string }>(`
         SELECT COUNT(*)::text AS count
@@ -109,8 +151,9 @@ async function main(): Promise<void> {
         SELECT COUNT(*)::text AS count
         FROM exam
         WHERE self_registration_password_required = true
-          AND password_hash IS NULL
+          AND registration_password IS NULL
       `),
+      client.query<InvalidRegistrationWindowRow>(invalidRegistrationWindowSelectSql),
     ]);
 
     console.log(
@@ -131,7 +174,21 @@ async function main(): Promise<void> {
           })),
           invalidExamPolicies: invalidPolicies.rows,
           examsMissingSlug: Number(missingSlugs.rows[0]?.count ?? '0'),
-          examsMissingPasswordHash: Number(missingPasswordHashes.rows[0]?.count ?? '0'),
+          examsMissingRegistrationPassword: Number(
+            missingRegistrationPasswords.rows[0]?.count ?? '0',
+          ),
+          invalidRegistrationWindows: invalidRegistrationWindows.rows.map(row => ({
+            examId: row.id,
+            title: row.title,
+            status: row.status,
+            isVisible: row.is_visible,
+            accessMode: row.access_mode,
+            selfRegistrationApprovalMode: row.self_registration_approval_mode,
+            registrationOpenAt: row.registration_open_at,
+            registrationCloseAt: row.registration_close_at,
+            startDate: row.start_date,
+            reason: row.reason,
+          })),
         },
         null,
         2,

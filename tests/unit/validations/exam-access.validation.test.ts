@@ -19,7 +19,8 @@ describe('exam access validation', () => {
     selfRegistrationPasswordRequired: true,
     allowExternalCandidates: true,
     registrationOpenAt: '2026-04-29T09:00:00.000Z',
-    registrationCloseAt: '2026-05-01T11:00:00.000Z',
+    registrationCloseAt: '2026-05-01T08:30:00.000Z',
+    examPassword: 'Exam#1234',
     challenges: [{ type: 'existing' as const, challengeId: '11111111-1111-4111-8111-111111111111' }],
   };
 
@@ -30,7 +31,46 @@ describe('exam access validation', () => {
       accessMode: 'open_registration',
       selfRegistrationApprovalMode: 'auto',
       selfRegistrationPasswordRequired: true,
+      examPassword: 'Exam#1234',
     });
+  });
+
+  it('preserves examPassword on create and update payloads', () => {
+    expect(CreateAdminExamSchema.parse(basePayload)).toMatchObject({
+      examPassword: 'Exam#1234',
+    });
+    expect(
+      UpdateAdminExamSchema.parse({
+        examPassword: 'Changed#1234',
+      }),
+    ).toEqual({
+      examPassword: 'Changed#1234',
+    });
+  });
+
+  it('rejects password-required create payloads without an exam password', () => {
+    expect(() =>
+      CreateAdminExamSchema.parse({
+        ...basePayload,
+        examPassword: null,
+      }),
+    ).toThrow('Exam password is required when registration password is enabled.');
+  });
+
+  it('rejects self-registration create payloads without a full registration window', () => {
+    expect(() =>
+      CreateAdminExamSchema.parse({
+        ...basePayload,
+        registrationOpenAt: null,
+      }),
+    ).toThrow('Self-registration exams must configure registration open and close times.');
+
+    expect(() =>
+      CreateAdminExamSchema.parse({
+        ...basePayload,
+        registrationCloseAt: null,
+      }),
+    ).toThrow('Self-registration exams must configure registration open and close times.');
   });
 
   it('rejects invite_only exams that still configure self-registration approval', () => {
@@ -61,6 +101,15 @@ describe('exam access validation', () => {
         registrationOpenAt: '2026-05-01T09:30:00.000Z',
       }),
     ).toThrow('Registration open time must be before the exam start time.');
+  });
+
+  it('rejects registration windows that close after the exam starts', () => {
+    expect(() =>
+      CreateAdminExamSchema.parse({
+        ...basePayload,
+        registrationCloseAt: '2026-05-01T09:01:00.000Z',
+      }),
+    ).toThrow('Registration close time must be before the exam start time.');
   });
 
   it('accepts the canonical sync payload with participationId', () => {

@@ -84,6 +84,7 @@ const CreateAdminExamBaseSchema = z.object({
   accessMode: ExamAccessModeSchema,
   selfRegistrationApprovalMode: SelfRegistrationApprovalModeSchema.nullable().optional().default(null),
   selfRegistrationPasswordRequired: z.boolean().optional().default(false),
+  examPassword: z.string().max(255, 'Password is too long.').nullable().optional().default(null),
   allowExternalCandidates: z.boolean().optional().default(false),
   registrationOpenAt: z.string().datetime('Invalid registration open time.').nullable().optional().default(null),
   registrationCloseAt: z
@@ -125,11 +126,27 @@ export const CreateAdminExamSchema = CreateAdminExamBaseSchema.superRefine((data
     });
   }
 
+  if (data.selfRegistrationPasswordRequired && !data.examPassword?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['examPassword'],
+      message: 'Exam password is required when registration password is enabled.',
+    });
+  }
+
   if (data.accessMode !== 'invite_only' && data.selfRegistrationApprovalMode === null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['selfRegistrationApprovalMode'],
       message: 'Self-registration exams must declare an approval mode.',
+    });
+  }
+
+  if (data.accessMode !== 'invite_only' && (!data.registrationOpenAt || !data.registrationCloseAt)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['registrationOpenAt'],
+      message: 'Self-registration exams must configure registration open and close times.',
     });
   }
 
@@ -146,11 +163,11 @@ export const CreateAdminExamSchema = CreateAdminExamBaseSchema.superRefine((data
 
   if (data.registrationCloseAt) {
     const registrationCloseAt = new Date(data.registrationCloseAt);
-    if (registrationCloseAt > endDate) {
+    if (registrationCloseAt >= startDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['registrationCloseAt'],
-        message: 'Registration close time must be before or equal to the exam end time.',
+        message: 'Registration close time must be before the exam start time.',
       });
     }
   }
@@ -189,6 +206,7 @@ export const UpdateAdminExamSchema = z.object({
   accessMode: ExamAccessModeSchema.optional(),
   selfRegistrationApprovalMode: SelfRegistrationApprovalModeSchema.nullable().optional(),
   selfRegistrationPasswordRequired: z.boolean().optional(),
+  examPassword: z.string().max(255, 'Password is too long.').nullable().optional(),
   allowExternalCandidates: z.boolean().optional(),
   registrationOpenAt: z.string().datetime('Invalid registration open time.').nullable().optional(),
   registrationCloseAt: z
