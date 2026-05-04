@@ -1,0 +1,3071 @@
+{
+  "info": {
+    "_postman_id": "3c808680-d204-4876-ac53-c96b9e43c7ff",
+    "name": "Exam Flows",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Full backend exam flow collection covering redesigned exam access and legacy compatibility routes.\n\nRun folders in order:\n1. 00 Auth & Bootstrap\n2. 01 Admin - Redesign\n3. 02 Public & Learner - Redesign\n4. 03 Legacy Compatibility\n5. 04 Negative & Edge Cases\n\nManual inputs still required for security-sensitive steps:\n- inviteToken: paste the raw invite token from the invite email or SMTP catcher. The database stores only tokenHash, so the raw token cannot be recovered from DB after creation.\n- openExternalOtpCode, manualOtpCode, inviteOtpCode: paste OTP values from the delivered email or SMTP catcher. OTPs are stored in application memory, not in the database.\n\nCollection-level pre-request script auto-generates:\n- pastStartDate / futureEndDate / rescheduledEndDate\n- unique fallback external emails if corresponding environment variables are blank\n\nThe collection assumes response bodies are wrapped by the API success envelope."
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const now = Date.now();",
+          "pm.collectionVariables.set('pastStartDate', new Date(now - 15 * 60 * 1000).toISOString());",
+          "pm.collectionVariables.set('futureEndDate', new Date(now + 2 * 60 * 60 * 1000).toISOString());",
+          "pm.collectionVariables.set('rescheduledEndDate', new Date(now + 3 * 60 * 60 * 1000).toISOString());",
+          "const seed = String(now);",
+          "const ensureEnv = (key, value) => { if (!pm.environment.get(key)) { pm.environment.set(key, value); } };",
+          "ensureEnv('teacherPassword', 'Password123!');",
+          "ensureEnv('studentPassword', 'Password123!');",
+          "ensureEnv('hybridExamPassword', 'ExamPass123!');",
+          "ensureEnv('legacyExamPassword', 'LegacyPass123!');",
+          "ensureEnv('openExternalEmail', `open.external+${seed}@example.com`);",
+          "ensureEnv('openExternalFullName', 'Open External Candidate');",
+          "ensureEnv('manualExternalEmail', `manual.external+${seed}@example.com`);",
+          "ensureEnv('manualExternalFullName', 'Manual Approval Candidate');",
+          "ensureEnv('rejectedExternalEmail', `rejected.external+${seed}@example.com`);",
+          "ensureEnv('rejectedExternalFullName', 'Rejected Candidate');",
+          "ensureEnv('inviteExternalEmail', `invite.external+${seed}@example.com`);",
+          "ensureEnv('inviteExternalFullName', 'Invite Candidate');",
+          "ensureEnv('bindExternalFullName', 'Bind Candidate');",
+          "ensureEnv('mergeSourceEmail', `merge.source+${seed}@example.com`);",
+          "ensureEnv('mergeSourceName', 'Merge Source');",
+          "ensureEnv('mergeTargetEmail', `merge.target+${seed}@example.com`);",
+          "ensureEnv('mergeTargetName', 'Merge Target');",
+          "ensureEnv('revokeExternalEmail', `revoke.external+${seed}@example.com`);",
+          "ensureEnv('revokeExternalName', 'Revoke Candidate');",
+          "ensureEnv('bulkImportEmailA', `bulk.a+${seed}@example.com`);",
+          "ensureEnv('bulkImportNameA', 'Bulk Import A');",
+          "ensureEnv('bulkImportEmailB', `bulk.b+${seed}@example.com`);",
+          "ensureEnv('bulkImportNameB', 'Bulk Import B');",
+          "ensureEnv('rateLimitExternalEmail', `ratelimit.external+${seed}@example.com`);",
+          "ensureEnv('rateLimitExternalFullName', 'Rate Limit Candidate');"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "pastStartDate",
+      "value": ""
+    },
+    {
+      "key": "futureEndDate",
+      "value": ""
+    },
+    {
+      "key": "rescheduledEndDate",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Auth & Bootstrap",
+      "item": [
+        {
+          "name": "Login Teacher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Authenticate a teacher/admin account for admin exam routes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"{{teacherPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('teacherAccessToken', body.tokens.accessToken);",
+                  "if (body.user && body.user.id) { pm.environment.set('teacherUserId', body.user.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Teacher Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me",
+            "description": "Verify the teacher/admin token and refresh teacher user metadata.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.id) { pm.environment.set('teacherUserId', body.id); }",
+                  "if (body.email) { pm.environment.set('teacherEmail', body.email); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Authenticate an internal learner account for open-registration and legacy flows.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{studentPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('studentAccessToken', body.tokens.accessToken);",
+                  "if (body.user && body.user.id) { pm.environment.set('studentUserId', body.user.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Student Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me",
+            "description": "Verify the learner token and refresh learner user metadata.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.id) { pm.environment.set('studentUserId', body.id); }",
+                  "if (body.email) { pm.environment.set('studentEmail', body.email); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get First Challenge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/challenges/all?page=1&limit=1",
+            "description": "Fetch one existing challenge ID to seed both redesigned and legacy exam creation requests.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.test('At least one challenge exists', function () { pm.expect(Array.isArray(body.items) && body.items.length > 0).to.eql(true); });",
+                  "pm.environment.set('firstChallengeId', body.items[0].id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Admin - Redesign",
+      "item": [
+        {
+          "name": "Create Open Registration Exam (Draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams",
+            "description": "Create a draft open-registration exam that can be started immediately after publish.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Open Registration Exam {{$timestamp}}\",\n  \"slug\": \"open-registration-{{$timestamp}}\",\n  \"duration\": 60,\n  \"startDate\": \"{{pastStartDate}}\",\n  \"endDate\": \"{{futureEndDate}}\",\n  \"isVisible\": false,\n  \"maxAttempts\": 2,\n  \"accessMode\": \"open_registration\",\n  \"selfRegistrationApprovalMode\": \"auto\",\n  \"selfRegistrationPasswordRequired\": false,\n  \"allowExternalCandidates\": true,\n  \"registrationOpenAt\": null,\n  \"registrationCloseAt\": null,\n  \"challenges\": [\n    {\n      \"type\": \"existing\",\n      \"challengeId\": \"{{firstChallengeId}}\",\n      \"orderIndex\": 0\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('openExamId', body.id);",
+                  "pm.environment.set('openExamSlug', body.slug);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publish Open Registration Exam",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{openExamId}}/publish",
+            "description": "Publish the draft open-registration exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('openExamId', body.id);",
+                  "pm.environment.set('openExamSlug', body.slug);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Hybrid Manual Exam (Draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams",
+            "description": "Create a draft hybrid exam with manual approval and registration password enabled.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hybrid Manual Exam {{$timestamp}}\",\n  \"slug\": \"hybrid-manual-{{$timestamp}}\",\n  \"duration\": 60,\n  \"startDate\": \"{{pastStartDate}}\",\n  \"endDate\": \"{{futureEndDate}}\",\n  \"isVisible\": false,\n  \"maxAttempts\": 2,\n  \"accessMode\": \"hybrid\",\n  \"selfRegistrationApprovalMode\": \"manual\",\n  \"selfRegistrationPasswordRequired\": true,\n  \"allowExternalCandidates\": true,\n  \"registrationOpenAt\": null,\n  \"registrationCloseAt\": null,\n  \"examPassword\": \"{{hybridExamPassword}}\",\n  \"challenges\": [\n    {\n      \"type\": \"existing\",\n      \"challengeId\": \"{{firstChallengeId}}\",\n      \"orderIndex\": 0\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('hybridExamId', body.id);",
+                  "pm.environment.set('hybridExamSlug', body.slug);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publish Hybrid Manual Exam",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/publish",
+            "description": "Publish the hybrid manual exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('hybridExamId', body.id);",
+                  "pm.environment.set('hybridExamSlug', body.slug);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Invite Only Exam (Draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams",
+            "description": "Create a draft invite-only exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Invite Only Exam {{$timestamp}}\",\n  \"slug\": \"invite-only-{{$timestamp}}\",\n  \"duration\": 60,\n  \"startDate\": \"{{pastStartDate}}\",\n  \"endDate\": \"{{futureEndDate}}\",\n  \"isVisible\": false,\n  \"maxAttempts\": 1,\n  \"accessMode\": \"invite_only\",\n  \"selfRegistrationApprovalMode\": null,\n  \"selfRegistrationPasswordRequired\": false,\n  \"allowExternalCandidates\": true,\n  \"registrationOpenAt\": null,\n  \"registrationCloseAt\": null,\n  \"challenges\": [\n    {\n      \"type\": \"existing\",\n      \"challengeId\": \"{{firstChallengeId}}\",\n      \"orderIndex\": 0\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('inviteExamId', body.id);",
+                  "pm.environment.set('inviteExamSlug', body.slug);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publish Invite Only Exam",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{inviteExamId}}/publish",
+            "description": "Publish the invite-only exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('inviteExamId', body.id);",
+                  "pm.environment.set('inviteExamSlug', body.slug);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Admin Exams",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams?limit=50&offset=0",
+            "description": "List redesigned admin exams.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const rows = Array.isArray(body) ? body : (Array.isArray(body?.items) ? body.items : (Array.isArray(body?.data) ? body.data : []));",
+                  "pm.test('Admin exams list is array-backed', function () { pm.expect(Array.isArray(rows)).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Hybrid Exam Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}",
+            "description": "Get the hybrid exam detail view used by the admin wizard.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('hybridExamId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Hybrid Exam Schedule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}",
+            "description": "Exercise admin update and reschedule behavior for the hybrid exam. This request sends the stable access-policy fields again so it still passes validation even if the current exam row was created before the latest policy rules.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accessMode\": \"hybrid\",\n  \"selfRegistrationApprovalMode\": \"manual\",\n  \"selfRegistrationPasswordRequired\": true,\n  \"allowExternalCandidates\": true,\n  \"endDate\": \"{{rescheduledEndDate}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('hybridExamId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Invite Participant (External)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{inviteExamId}}/participants",
+            "description": "Add an external participant to the invite-only exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"email\": \"{{inviteExternalEmail}}\",\n      \"fullName\": \"{{inviteExternalFullName}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const participant = Array.isArray(body) ? body[0] : body;",
+                  "pm.environment.set('inviteParticipantId', participant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend Invite For Invite Participant",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{inviteExamId}}/participants/{{inviteParticipantId}}/resend-invite",
+            "description": "Generate invite metadata. Copy the raw invite token from the invite email or SMTP catcher into {{inviteToken}} before running resolve-invite requests. Only tokenHash is stored in DB, so the raw token is not recoverable there.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('inviteId', body.inviteId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Invite Exam Participants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{inviteExamId}}/participants",
+            "description": "List participants for the invite-only exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.test('Participant list is array-backed', function () { pm.expect(Array.isArray(body)).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Bind Candidate Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{inviteExamId}}/participants",
+            "description": "Create a participant row that can later be bound to the existing student account.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"email\": \"{{studentEmail}}\",\n      \"fullName\": \"{{bindExternalFullName}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const participant = Array.isArray(body) ? body[0] : body;",
+                  "pm.environment.set('bindParticipantId', participant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bind Student Account To Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{inviteExamId}}/participants/{{bindParticipantId}}/bind-account",
+            "description": "Bind the student account to the manually-added participant row.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{studentUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('bindParticipantId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Merge Source Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants",
+            "description": "Create the source participant row for merge testing.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"email\": \"{{mergeSourceEmail}}\",\n      \"fullName\": \"{{mergeSourceName}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const participant = Array.isArray(body) ? body[0] : body;",
+                  "pm.environment.set('mergeSourceParticipantId', participant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Merge Target Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants",
+            "description": "Create the target participant row for merge testing.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"email\": \"{{mergeTargetEmail}}\",\n      \"fullName\": \"{{mergeTargetName}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const participant = Array.isArray(body) ? body[0] : body;",
+                  "pm.environment.set('mergeTargetParticipantId', participant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Merge Participants",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants/merge",
+            "description": "Merge the source participant into the target participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceParticipantId\": \"{{mergeSourceParticipantId}}\",\n  \"targetParticipantId\": \"{{mergeTargetParticipantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('mergeTargetParticipantId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Revocable Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants",
+            "description": "Create a participant that will be revoked.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"email\": \"{{revokeExternalEmail}}\",\n      \"fullName\": \"{{revokeExternalName}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const participant = Array.isArray(body) ? body[0] : body;",
+                  "pm.environment.set('revokeParticipantId', participant.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke Participant",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants/{{revokeParticipantId}}/revoke",
+            "description": "Revoke a participant from the hybrid exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bulk Import Participants",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants/import",
+            "description": "Exercise the bulk-import endpoint with two external participants.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"email\": \"{{bulkImportEmailA}}\",\n      \"fullName\": \"{{bulkImportNameA}}\"\n    },\n    {\n      \"email\": \"{{bulkImportEmailB}}\",\n      \"fullName\": \"{{bulkImportNameB}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.test('Bulk import returns at least one participant', function () { pm.expect(Array.isArray(body) && body.length >= 1).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Public & Learner - Redesign",
+      "item": [
+        {
+          "name": "Get Public Open Exam",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}",
+            "description": "Public whitelist DTO for the open-registration exam."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const keys = Object.keys(body || {});",
+                  "pm.test('No sensitive password fields are exposed', function () {",
+                  "  pm.expect(keys).to.not.include('password');",
+                  "  pm.expect(keys).to.not.include('passwordHash');",
+                  "  pm.expect(keys).to.not.include('password_hash');",
+                  "  pm.expect(keys).to.not.include('examPassword');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Open Exam As Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/register",
+            "description": "Internal authenticated learner self-registers for the open-registration exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"fullName\": \"Internal Student\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200/201\", function () { pm.expect([200,201]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('openStudentParticipantId', body.participantId);",
+                  "if (body.entrySessionId) { pm.environment.set('openStudentEntrySessionId', body.entrySessionId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Open Exam Access State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{openExamSlug}}/me/access-state",
+            "description": "Get learner access-state for the internal open-registration flow.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.entrySessionId) { pm.environment.set('openStudentEntrySessionId', body.entrySessionId); }",
+                  "if (body.participationId) { pm.environment.set('openStudentParticipationId', body.participationId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Open Exam Entry Session",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/exams/entry-sessions/{{openStudentEntrySessionId}}/start",
+            "description": "Start the internal learner participation via the redesigned entry-session API.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('openStudentParticipationId', body.participationId);",
+                  "if (body.firstChallengeId) { pm.environment.set('openStudentFirstChallengeId', body.firstChallengeId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync Open Exam Participation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/session/sync",
+            "description": "Autosave answers for the internal learner open-registration attempt.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participationId\": \"{{openStudentParticipationId}}\",\n  \"answers\": {\n    \"{{firstChallengeId}}\": {\n      \"code\": \"print(\\\"open-student\\\")\",\n      \"language\": \"python\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Open Exam Participation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{openExamSlug}}/submit",
+            "description": "Submit the active open-registration participation for the internal learner.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.participationId) { pm.environment.set('openStudentParticipationId', body.participationId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Open Exam As External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/register",
+            "description": "External learner self-registers for the open-registration exam and should be auto-approved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{openExternalEmail}}\",\n  \"fullName\": \"{{openExternalFullName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200/201\", function () { pm.expect([200,201]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('openExternalParticipantId', body.participantId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send OTP For Open External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/otp/send",
+            "description": "Send OTP for the external open-registration candidate.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{openExternalEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP For Open External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/otp/verify",
+            "description": "Paste {{openExternalOtpCode}} from the delivered email or SMTP catcher before running. OTPs are stored in application memory, not in the database. This returns an access token for the shadow/linked user.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{openExternalEmail}}\",\n  \"otp\": \"{{openExternalOtpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const otp = (pm.variables.replaceIn('{{openExternalOtpCode}}') || '').trim();",
+                  "if (!otp) {",
+                  "  pm.test('Manual OTP missing -> expect validation error', function () { pm.expect([400, 422]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  pm.environment.set('openExternalAccessToken', body.tokens.accessToken);",
+                  "  if (body.entrySessionId) { pm.environment.set('openExternalEntrySessionId', body.entrySessionId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Open External Access State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{openExamSlug}}/me/access-state",
+            "description": "Get access-state for the OTP-authenticated external open-registration candidate.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{openExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.entrySessionId) { pm.environment.set('openExternalEntrySessionId', body.entrySessionId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Open External Entry Session",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/exams/entry-sessions/{{openExternalEntrySessionId}}/start",
+            "description": "Start the external learner participation for the open-registration exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{openExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const sessionId = (pm.variables.replaceIn('{{openExternalEntrySessionId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{openExternalAccessToken}}') || '').trim();",
+                  "if (!sessionId || !token) {",
+                  "  pm.test('Skipped without verified external session', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  if (body.participationId) { pm.environment.set('openExternalParticipationId', body.participationId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync Open External Participation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/session/sync",
+            "description": "Autosave answers for the external open-registration attempt.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{openExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participationId\": \"{{openExternalParticipationId}}\",\n  \"answers\": {\n    \"{{firstChallengeId}}\": {\n      \"code\": \"print(\\\"open-external\\\")\",\n      \"language\": \"python\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pid = (pm.variables.replaceIn('{{openExternalParticipationId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{openExternalAccessToken}}') || '').trim();",
+                  "if (!pid || !token) {",
+                  "  pm.test('Skipped without external participation context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Open External Participation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{openExamSlug}}/submit",
+            "description": "Submit the active external open-registration participation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{openExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pid = (pm.variables.replaceIn('{{openExternalParticipationId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{openExternalAccessToken}}') || '').trim();",
+                  "if (!pid || !token) {",
+                  "  pm.test('Skipped without external participation context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Public Hybrid Exam",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/public/exams/{{hybridExamSlug}}",
+            "description": "Public whitelist DTO for the hybrid manual-approval exam."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Hybrid Exam External Pending",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{hybridExamSlug}}/register",
+            "description": "External learner self-registers for the hybrid exam and should remain pending until admin approval.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{manualExternalEmail}}\",\n  \"fullName\": \"{{manualExternalFullName}}\",\n  \"examPassword\": \"{{hybridExamPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200/201\", function () { pm.expect([200,201]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('pendingParticipantId', body.participantId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve Pending Hybrid Participant",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants/{{pendingParticipantId}}/approve",
+            "description": "Approve the pending hybrid self-registration participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Hybrid Exam External For Rejection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{hybridExamSlug}}/register",
+            "description": "Create a second pending hybrid participant to exercise the reject flow.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{rejectedExternalEmail}}\",\n  \"fullName\": \"{{rejectedExternalFullName}}\",\n  \"examPassword\": \"{{hybridExamPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200/201\", function () { pm.expect([200,201]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('rejectedParticipantId', body.participantId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject Pending Hybrid Participant",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/exams/{{hybridExamId}}/participants/{{rejectedParticipantId}}/reject",
+            "description": "Reject the second pending hybrid participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send OTP For Approved Hybrid External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{hybridExamSlug}}/otp/send",
+            "description": "Send OTP to the approved hybrid external participant.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{manualExternalEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP For Approved Hybrid External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{hybridExamSlug}}/otp/verify",
+            "description": "Paste {{manualOtpCode}} from the delivered email or SMTP catcher before running. OTPs are stored in application memory, not in the database.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{manualExternalEmail}}\",\n  \"otp\": \"{{manualOtpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const otp = (pm.variables.replaceIn('{{manualOtpCode}}') || '').trim();",
+                  "if (!otp) {",
+                  "  pm.test('Manual OTP missing -> expect validation error', function () { pm.expect([400, 422]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  pm.environment.set('manualExternalAccessToken', body.tokens.accessToken);",
+                  "  if (body.entrySessionId) { pm.environment.set('manualEntrySessionId', body.entrySessionId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Hybrid External Access State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{hybridExamSlug}}/me/access-state",
+            "description": "Access-state for the approved OTP-authenticated hybrid external participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{manualExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.entrySessionId) { pm.environment.set('manualEntrySessionId', body.entrySessionId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Hybrid External Entry Session",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/exams/entry-sessions/{{manualEntrySessionId}}/start",
+            "description": "Start the hybrid external participant attempt.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{manualExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const sessionId = (pm.variables.replaceIn('{{manualEntrySessionId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{manualExternalAccessToken}}') || '').trim();",
+                  "if (!sessionId || !token) {",
+                  "  pm.test('Skipped without verified hybrid session', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  if (body.participationId) { pm.environment.set('manualParticipationId', body.participationId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync Hybrid External Participation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/session/sync",
+            "description": "Autosave answers for the approved hybrid external participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{manualExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participationId\": \"{{manualParticipationId}}\",\n  \"answers\": {\n    \"{{firstChallengeId}}\": {\n      \"code\": \"print(\\\"hybrid-external\\\")\",\n      \"language\": \"python\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pid = (pm.variables.replaceIn('{{manualParticipationId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{manualExternalAccessToken}}') || '').trim();",
+                  "if (!pid || !token) {",
+                  "  pm.test('Skipped without hybrid participation context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Hybrid External Participation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{hybridExamSlug}}/submit",
+            "description": "Submit the approved hybrid external participation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{manualExternalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pid = (pm.variables.replaceIn('{{manualParticipationId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{manualExternalAccessToken}}') || '').trim();",
+                  "if (!pid || !token) {",
+                  "  pm.test('Skipped without hybrid participation context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Public Invite Exam",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/public/exams/{{inviteExamSlug}}",
+            "description": "Public whitelist DTO for the invite-only exam."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve Invite Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{inviteExamSlug}}/invites/resolve",
+            "description": "Paste the raw invite token into {{inviteToken}} before running. This step opens the entry session for invite-based access.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inviteToken\": \"{{inviteToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const inviteToken = (pm.variables.replaceIn('{{inviteToken}}') || '').trim();",
+                  "if (!inviteToken) {",
+                  "  pm.test('Invite token missing -> expect client/invite error', function () { pm.expect([400, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  if (body.participantId) { pm.environment.set('inviteParticipantId', body.participantId); }",
+                  "  if (body.entrySessionId) { pm.environment.set('inviteEntrySessionId', body.entrySessionId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send OTP For Invite External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{inviteExamSlug}}/otp/send",
+            "description": "Send OTP for the invite-based external participant after invite resolution.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{inviteExternalEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const inviteToken = (pm.variables.replaceIn('{{inviteToken}}') || '').trim();",
+                  "if (!inviteToken) {",
+                  "  pm.test('Skipped without invite token resolution', function () { pm.expect([400, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP For Invite External",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{inviteExamSlug}}/otp/verify",
+            "description": "Paste {{inviteOtpCode}} from the delivered email or SMTP catcher before running. OTPs are stored in application memory, not in the database.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{inviteExternalEmail}}\",\n  \"otp\": \"{{inviteOtpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const inviteToken = (pm.variables.replaceIn('{{inviteToken}}') || '').trim();",
+                  "const otp = (pm.variables.replaceIn('{{inviteOtpCode}}') || '').trim();",
+                  "if (!inviteToken || !otp) {",
+                  "  pm.test('Manual invite OTP/token missing -> expect request error', function () { pm.expect([400, 401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  pm.environment.set('inviteAccessToken', body.tokens.accessToken);",
+                  "  if (body.entrySessionId) { pm.environment.set('inviteEntrySessionId', body.entrySessionId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Invite External Access State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{inviteExamSlug}}/me/access-state",
+            "description": "Access-state for the invite-based external participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{inviteAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body.entrySessionId) { pm.environment.set('inviteEntrySessionId', body.entrySessionId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Invite External Entry Session",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/exams/entry-sessions/{{inviteEntrySessionId}}/start",
+            "description": "Start the invite-based external participant attempt.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{inviteAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const sessionId = (pm.variables.replaceIn('{{inviteEntrySessionId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{inviteAccessToken}}') || '').trim();",
+                  "if (!sessionId || !token) {",
+                  "  pm.test('Skipped without invite verification context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "  if (body.participationId) { pm.environment.set('inviteParticipationId', body.participationId); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync Invite External Participation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/session/sync",
+            "description": "Autosave answers for the invite-based external participant.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{inviteAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participationId\": \"{{inviteParticipationId}}\",\n  \"answers\": {\n    \"{{firstChallengeId}}\": {\n      \"code\": \"print(\\\"invite-external\\\")\",\n      \"language\": \"python\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pid = (pm.variables.replaceIn('{{inviteParticipationId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{inviteAccessToken}}') || '').trim();",
+                  "if (!pid || !token) {",
+                  "  pm.test('Skipped without invite participation context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Invite External Participation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{inviteExamSlug}}/submit",
+            "description": "Submit the active invite-based external participation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{inviteAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const pid = (pm.variables.replaceIn('{{inviteParticipationId}}') || '').trim();",
+                  "const token = (pm.variables.replaceIn('{{inviteAccessToken}}') || '').trim();",
+                  "if (!pid || !token) {",
+                  "  pm.test('Skipped without invite participation context', function () { pm.expect([401, 403, 404]).to.include(pm.response.code); });",
+                  "} else {",
+                  "  pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Legacy Compatibility",
+      "item": [
+        {
+          "name": "Create Legacy Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams",
+            "description": "Create a legacy exam using the old `/api/exams` contract.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Legacy Exam {{$timestamp}}\",\n  \"password\": \"{{legacyExamPassword}}\",\n  \"duration\": 60,\n  \"startDate\": \"{{pastStartDate}}\",\n  \"endDate\": \"{{futureEndDate}}\",\n  \"isVisible\": true,\n  \"maxAttempts\": 1,\n  \"challenges\": [\n    {\n      \"type\": \"existing\",\n      \"challengeId\": \"{{firstChallengeId}}\",\n      \"orderIndex\": 0\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('legacyExamId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Legacy Exams",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams?limit=50&offset=0",
+            "description": "List legacy exams."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Legacy Exam By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}",
+            "description": "Fetch the legacy exam detail and cache its first challenge ID."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('legacyExamId', body.id);",
+                  "if (Array.isArray(body.challenges) && body.challenges.length > 0) { pm.environment.set('legacyChallengeId', body.challenges[0].id || body.challenges[0].challengeId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Legacy Exam Challenge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/challenge/{{legacyChallengeId}}",
+            "description": "Fetch the first legacy exam challenge payload."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200/404', function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Join Legacy Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/join",
+            "description": "Join the legacy exam using the student account and the plain-text exam password.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{legacyExamPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('legacyParticipationId', body.participationId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get My Legacy Participation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/participation/me",
+            "description": "Fetch the current learner participation for the legacy exam.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200/404\", function () { pm.expect([200,404]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "if (body && body.id) { pm.environment.set('legacyParticipationId', body.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Or Create Legacy Session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/session",
+            "description": "Open or resume the legacy exam session.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "pm.environment.set('legacySessionId', body.sessionId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sync Legacy Session",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/session/sync",
+            "description": "Use the legacy sync payload to autosave answers.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{legacySessionId}}\",\n  \"answers\": {\n    \"{{legacyChallengeId}}\": {\n      \"code\": \"print(\\\"legacy\\\")\",\n      \"language\": \"python\",\n      \"updatedAt\": \"{{$isoTimestamp}}\"\n    }\n  },\n  \"clientTimestamp\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Legacy Participation By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/participation/{{legacyParticipationId}}",
+            "description": "Fetch the legacy participation detail payload.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Legacy Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/submit",
+            "description": "Submit the legacy exam participation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participationId\": \"{{legacyParticipationId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Legacy Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}/leaderboard?limit=50&offset=0",
+            "description": "Fetch the legacy exam leaderboard.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Legacy Exam",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}",
+            "description": "Update the legacy exam title using the old contract.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Legacy Exam Updated {{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Legacy Exam",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/exams/{{legacyExamId}}",
+            "description": "Delete the legacy exam to complete the compatibility lifecycle.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacherAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200/400', function () { pm.expect([200, 400]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Negative & Edge Cases",
+      "item": [
+        {
+          "name": "Invite Only Blocks Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{inviteExamSlug}}/register",
+            "description": "Expect the invite-only exam to reject direct registration.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{studentAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"fullName\": \"Blocked Student\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Rate-Limit External On Open Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/register",
+            "description": "Create a throwaway external participant used to demonstrate OTP resend cooldown.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{rateLimitExternalEmail}}\",\n  \"fullName\": \"{{rateLimitExternalFullName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200/201\", function () { pm.expect([200,201]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send OTP Rate-Limit Candidate (First)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/otp/send",
+            "description": "First OTP send should succeed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{rateLimitExternalEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send OTP Rate-Limit Candidate (Second => 429)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/public/exams/{{openExamSlug}}/otp/send",
+            "description": "Immediate resend should hit OTP cooldown / rate limit.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{rateLimitExternalEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 429\", function () { pm.response.to.have.status(429); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public DTO Hides Password Fields",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/public/exams/{{hybridExamSlug}}",
+            "description": "Explicitly assert that public exam DTOs never expose password fields."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const payload = json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json;",
+                  "const body = payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data') ? payload.data : payload;",
+                  "const keys = Object.keys(body || {});",
+                  "pm.test('No sensitive password fields are exposed', function () {",
+                  "  pm.expect(keys).to.not.include('password');",
+                  "  pm.expect(keys).to.not.include('passwordHash');",
+                  "  pm.expect(keys).to.not.include('password_hash');",
+                  "  pm.expect(keys).to.not.include('examPassword');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

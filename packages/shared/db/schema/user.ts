@@ -13,6 +13,7 @@ export const users = pgTable('users', {
   dateOfBirth: timestamp('date_of_birth'),
   status: varchar('status', { length: 20 }).default('active').notNull(),
   role: varchar('role', { length: 20 }).default('user').notNull(),
+  isShadowAccount: boolean('is_shadow_account').default(false).notNull(),
   rankingPoint: integer('ranking_point').default(0).notNull(),
   lastLoginAt: timestamp('last_login_at'),
   passwordChangedAt: timestamp('password_changed_at').defaultNow().notNull(),

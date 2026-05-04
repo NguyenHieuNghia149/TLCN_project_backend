@@ -30,6 +30,9 @@ describe('API route registrar', () => {
     const createCommentRouter = createFactoryMock();
     const createLearningProcessRouter = createFactoryMock();
     const createLearnedLessonRouter = createFactoryMock();
+    const createPublicExamRouter = createFactoryMock();
+    const createAdminExamRouter = createFactoryMock();
+    const createExamAccessRouter = createFactoryMock();
     const createExamRouter = createFactoryMock();
     const createLeaderboardRouter = createFactoryMock();
     const createNotificationRouter = createFactoryMock();
@@ -72,6 +75,15 @@ describe('API route registrar', () => {
     jest.doMock('../../../apps/api/src/routes/learned-lesson.routes', () => ({
       createLearnedLessonRouter,
     }));
+    jest.doMock('../../../apps/api/src/routes/publicExam.routes', () => ({
+      createPublicExamRouter,
+    }));
+    jest.doMock('../../../apps/api/src/routes/admin/adminExam.routes', () => ({
+      createAdminExamRouter,
+    }));
+    jest.doMock('../../../apps/api/src/routes/examAccess.routes', () => ({
+      createExamAccessRouter,
+    }));
     jest.doMock('../../../apps/api/src/routes/exam.routes', () => ({ createExamRouter }));
     jest.doMock('../../../apps/api/src/routes/leaderboard.routes', () => ({
       createLeaderboardRouter,
@@ -113,6 +125,9 @@ describe('API route registrar', () => {
       '/api/comments',
       '/api/learningprocess',
       '/api/learned-lessons',
+      '/api/public/exams',
+      '/api/admin/exams',
+      '/api/exams',
       '/api/exams',
       '/api/leaderboard',
       '/api/notifications',

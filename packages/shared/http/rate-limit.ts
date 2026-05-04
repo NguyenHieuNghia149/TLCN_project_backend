@@ -12,6 +12,9 @@ export type RateLimitOptions = {
 };
 
 export function rateLimitMiddleware(options: RateLimitOptions): RequestHandler {
+  if (process.env.DISABLE_RATE_LIMITS === 'true') {
+    return (req, res, next) => next();
+  }
   return rateLimit({
     windowMs: options.windowMs,
     max: options.max,

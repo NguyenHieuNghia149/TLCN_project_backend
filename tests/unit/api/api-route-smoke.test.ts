@@ -73,6 +73,60 @@ describe('API route factory smoke tests', () => {
       GetExamLeaderboardSchema: {},
       UpdateExamSchema: {},
     }));
+    jest.doMock('@backend/api/controllers/examAccess.controller', () => ({
+      PublicExamController: class PublicExamController {
+        constructor(...args: unknown[]) {}
+        getPublicExam = jest.fn();
+        register = jest.fn();
+        resolveInvite = jest.fn();
+        sendOtp = jest.fn();
+        verifyOtp = jest.fn();
+      },
+      ExamAccessController: class ExamAccessController {
+        constructor(...args: unknown[]) {}
+        getAccessState = jest.fn();
+        startEntrySession = jest.fn();
+        syncSession = jest.fn();
+        submitExam = jest.fn();
+      },
+    }));
+    jest.doMock('@backend/api/controllers/adminExam.controller', () => ({
+      AdminExamController: class AdminExamController {
+        constructor(...args: unknown[]) {}
+        listExams = jest.fn();
+        getExamById = jest.fn();
+        createExam = jest.fn();
+        updateExam = jest.fn();
+        publishExam = jest.fn();
+        cancelExam = jest.fn();
+        archiveExam = jest.fn();
+        getParticipants = jest.fn();
+        addParticipants = jest.fn();
+        importParticipants = jest.fn();
+        approveParticipant = jest.fn();
+        rejectParticipant = jest.fn();
+        revokeParticipant = jest.fn();
+        resendInvite = jest.fn();
+        bindAccount = jest.fn();
+        mergeParticipants = jest.fn();
+      },
+    }));
+    jest.doMock('@backend/shared/validations/exam-access.validation', () => ({
+      ExamSlugParamsSchema: {},
+      PublicExamRegisterSchema: {},
+      PublicExamInviteResolveSchema: {},
+      PublicExamOtpSendSchema: {},
+      PublicExamOtpVerifySchema: {},
+      ExamEntrySessionStartParamsSchema: {},
+      CreateAdminExamSchema: {},
+      UpdateAdminExamSchema: {},
+      AdminExamListQuerySchema: {},
+      AdminExamAddParticipantsSchema: {},
+      AdminExamBindAccountSchema: {},
+      AdminExamMergeParticipantsSchema: {},
+      ExamIdParamsSchema: {},
+      ExamParticipantParamsSchema: {},
+    }));
 
     jest.isolateModules(() => {
       const factories = [
@@ -80,6 +134,8 @@ describe('API route factory smoke tests', () => {
         require('@backend/api/routes/supportedLanguage.routes').createSupportedLanguageRouter,
         require('@backend/api/routes/challenge.routes').createChallengeRouter,
         require('@backend/api/routes/comment.routes').createCommentRouter,
+        require('@backend/api/routes/publicExam.routes').createPublicExamRouter,
+        require('@backend/api/routes/examAccess.routes').createExamAccessRouter,
         require('@backend/api/routes/exam.routes').createExamRouter,
         require('@backend/api/routes/favorite.routes').createFavoriteRouter,
         require('@backend/api/routes/leaderboard.routes').createLeaderboardRouter,
@@ -96,6 +152,7 @@ describe('API route factory smoke tests', () => {
         require('@backend/api/routes/admin/adminTeacher.routes').createAdminTeacherRouter,
         require('@backend/api/routes/admin/adminLesson.routes').createAdminLessonRouter,
         require('@backend/api/routes/admin/adminTopic.routes').createAdminTopicRouter,
+        require('@backend/api/routes/admin/adminExam.routes').createAdminExamRouter,
         require('@backend/api/routes/admin/dashboard.routes').createDashboardRouter,
       ];
 

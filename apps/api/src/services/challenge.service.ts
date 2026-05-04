@@ -471,7 +471,7 @@ export class ChallengeService {
   async getChallengeById(
     challengeId: string,
     userId?: string,
-    options?: { showAllTestcases?: boolean }
+    options?: { showAllTestcases?: boolean; allowPrivateVisibility?: boolean }
   ): Promise<ChallengeResponse> {
     const problem = await this.problemRepository.findById(challengeId);
 
@@ -479,8 +479,9 @@ export class ChallengeService {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
     }
 
-
-    if (problem.visibility !== ProblemVisibility.PUBLIC && !options?.showAllTestcases) {
+    const canBypassVisibility =
+      options?.showAllTestcases === true || options?.allowPrivateVisibility === true;
+    if (problem.visibility !== ProblemVisibility.PUBLIC && !canBypassVisibility) {
       throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
     }
     // Admin/Teacher can view all testcases, regular users see only public testcases
