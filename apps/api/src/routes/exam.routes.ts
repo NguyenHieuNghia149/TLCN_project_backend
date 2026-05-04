@@ -7,7 +7,12 @@ import {
   UpdateExamSchema,
 } from '@backend/shared/validations/exam.validation';
 import { createExamService } from '@backend/api/services/exam.service';
-import { authenticationToken, requireTeacher } from '@backend/api/middlewares/auth.middleware';
+import {
+  authenticationToken,
+  optionalAuth,
+  requireTeacher,
+  requireTeacherOrOwner,
+} from '@backend/api/middlewares/auth.middleware';
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { validate } from '@backend/api/middlewares/validate.middleware';
 
@@ -35,10 +40,11 @@ export function createExamRouter(): Router {
     message: 'Too many exam creation requests from this IP, please try again later.',
   });
 
-  router.get('/', examRateLimit, examController.getExams.bind(examController));
+  router.get('/', optionalAuth, examRateLimit, examController.getExams.bind(examController));
   router.get('/:id', examRateLimit, examController.getExamById.bind(examController));
   router.get(
     '/:examId/challenge/:challengeId',
+    authenticationToken,
     examRateLimit,
     examController.getExamChallenge.bind(examController)
   );
@@ -62,12 +68,15 @@ export function createExamRouter(): Router {
   router.get(
     '/:id/leaderboard',
     authenticationToken,
+    requireTeacherOrOwner,
     examRateLimit,
     examController.getLeaderboard.bind(examController)
   );
 
   router.get(
     '/:examId/leaderboard',
+    authenticationToken,
+    requireTeacherOrOwner,
     examRateLimit,
     validate(GetExamLeaderboardSchema),
     examController.getExamLeaderboard.bind(examController)

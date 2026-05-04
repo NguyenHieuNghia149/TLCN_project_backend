@@ -4,19 +4,19 @@ import { rateLimitMiddleware } from '@backend/shared/http/rate-limit';
 
 export const authLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Reduced from 200 to 20 to protect against brute force login/register
+  max: process.env.NODE_ENV === 'production' ? 20 : 1000,
   message: 'Too many authentication attempts, please try again later.',
 });
 
 export const refreshLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Reduced from 1000 to 50 for token refresh
+  max: process.env.NODE_ENV === 'production' ? 50 : 2000,
   message: 'Too many refresh attempts, please try again later.',
 });
 
 export const generalLimiter = rateLimitMiddleware({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000,
+  max: process.env.NODE_ENV === 'production' ? 1000 : 10000,
   message: 'Too many requests from this IP, please try again later.',
 });
 

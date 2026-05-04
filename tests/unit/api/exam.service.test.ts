@@ -1,4 +1,5 @@
 import { createExamService, ExamService } from '../../../apps/api/src/services/exam.service';
+import { InvalidPasswordException } from '../../../apps/api/src/exceptions/exam.exceptions';
 
 /** Builds a dependency bag for ExamService tests with optional overrides. */
 function createExamDependencies(overrides: Partial<any> = {}) {
@@ -122,10 +123,13 @@ describe('ExamService dependency injection', () => {
       createExamDependencies({ examToProblemsRepository, challengeService }),
     );
 
-    const result = await service.getExamChallenge('exam-1', 'challenge-1');
+    const result = await service.getExamChallenge('exam-1', 'challenge-1', 'user-1');
 
     expect(examToProblemsRepository.findByExamId).toHaveBeenCalledWith('exam-1');
-    expect(challengeService.getChallengeById).toHaveBeenCalledWith('challenge-1');
+    expect(challengeService.getChallengeById).toHaveBeenCalledWith('challenge-1', 'user-1', {
+      allowPrivateVisibility: true,
+      showAllTestcases: false,
+    });
     expect(result).toMatchObject({
       id: 'challenge-1',
       title: 'Two Sum',
@@ -178,9 +182,383 @@ describe('ExamService dependency injection', () => {
     });
   });
 
+  it('includes per-challenge max points in learner submission details', async () => {
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        startTime: new Date('2025-01-01T00:00:00.000Z'),
+        endTime: new Date('2025-01-01T00:30:00.000Z'),
+      }),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([
+        { problemId: 'problem-1' },
+        { problemId: 'problem-2' },
+      ]),
+    } as any;
+    const userRepository = {
+      findById: jest.fn().mockResolvedValue({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        email: 'jane@example.com',
+      }),
+    } as any;
+    const problemRepository = {
+      findById: jest
+        .fn()
+        .mockImplementation((id: string) =>
+          Promise.resolve({ id, title: id === 'problem-1' ? 'Arrays' : 'DP' }),
+        ),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockImplementation((problemId: string) =>
+        Promise.resolve(
+          problemId === 'problem-1'
+            ? [
+                { id: 'tc-1', point: 30 },
+                { id: 'tc-2', point: 70 },
+              ]
+            : [
+                { id: 'tc-3', point: 10 },
+                { id: 'tc-4', point: 15 },
+              ],
+        ),
+      ),
+    } as any;
+    const submissionRepository = {
+      findLatestByParticipationAndProblem: jest
+        .fn()
+        .mockImplementation((_participationId: string, problemId: string) =>
+          Promise.resolve(
+            problemId === 'problem-1'
+              ? {
+                  id: 'submission-1',
+                  sourceCode: 'print("ok")',
+                  language: 'python',
+                  submittedAt: new Date('2025-01-01T00:10:00.000Z'),
+                }
+              : null,
+          ),
+        ),
+    } as any;
+    const resultSubmissionRepository = {
+      findBySubmissionId: jest.fn().mockResolvedValue([
+        { testcaseId: 'tc-1', isPassed: true },
+        { testcaseId: 'tc-2', isPassed: false },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({
+        examParticipationRepository,
+        examRepository,
+        examToProblemsRepository,
+        userRepository,
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        resultSubmissionRepository,
+      }),
+    );
+
+    const result = await service.getParticipationSubmission(
+      'exam-1',
+      'participation-1',
+      'user-1',
+    );
+
+    expect(result.totalScore).toBe(30);
+    expect(result.totalMaxScore).toBe(125);
+    expect(result.perProblem).toEqual([
+      {
+        problemId: 'problem-1',
+        challengeTitle: 'Arrays',
+        obtained: 30,
+        maxPoints: 100,
+      },
+      {
+        problemId: 'problem-2',
+        challengeTitle: 'DP',
+        obtained: 0,
+        maxPoints: 25,
+      },
+    ]);
+    expect(result.solutions).toEqual([
+      expect.objectContaining({
+        challengeId: 'problem-1',
+        challengeTitle: 'Arrays',
+        score: 30,
+        maxPoints: 100,
+      }),
+      expect.objectContaining({
+        challengeId: 'problem-2',
+        challengeTitle: 'DP',
+        score: 0,
+        maxPoints: 25,
+      }),
+    ]);
+  });
+
   it('creates a fresh exam service instance', () => {
     const service = createExamService();
 
     expect(service).toBeInstanceOf(ExamService);
+  });
+
+  it('returns slug in legacy getExamById payload for frontend slug routing', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        title: 'Spring Midterm',
+        duration: 60,
+        startDate: new Date('2025-01-01T00:00:00.000Z'),
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+        isVisible: true,
+        maxAttempts: 1,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examRepository, examToProblemsRepository }),
+    );
+
+    const result = await service.getExamById('exam-1');
+
+    expect(result.slug).toBe('spring-midterm');
+  });
+
+  it('returns slug in legacy getExams list payload for learner links', async () => {
+    const examRepository = {
+      getExamsPaginated: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'exam-1',
+            slug: 'spring-midterm',
+            title: 'Spring Midterm',
+            duration: 60,
+            startDate: new Date('2025-01-01T00:00:00.000Z'),
+            endDate: new Date('2025-01-01T01:00:00.000Z'),
+            isVisible: true,
+            maxAttempts: 1,
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+          },
+        ],
+        total: 1,
+      }),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    const result = await service.getExams(10, 0, undefined, 'all', undefined, true);
+
+    expect(result.total).toBe(1);
+    expect(result.data[0]?.slug).toBe('spring-midterm');
+  });
+
+  it('limits visible learner exam lists to published exams', async () => {
+    const examRepository = {
+      getExamsPaginated: jest.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+      }),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    await service.getExams(10, 0, undefined, 'all', undefined, true, 'user');
+
+    expect(examRepository.getExamsPaginated).toHaveBeenCalledWith(
+      10,
+      0,
+      expect.objectContaining({
+        isVisible: true,
+        status: 'published',
+      }),
+    );
+  });
+
+  it('includes learner participation state in getExams list payload', async () => {
+    const examRepository = {
+      getExamsPaginated: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'exam-1',
+            slug: 'spring-midterm',
+            title: 'Spring Midterm',
+            duration: 60,
+            startDate: new Date('2025-01-01T00:00:00.000Z'),
+            endDate: new Date('2025-01-01T01:00:00.000Z'),
+            isVisible: true,
+            maxAttempts: 2,
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+          },
+        ],
+        total: 1,
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findByUserId: jest.fn().mockResolvedValue([
+        {
+          id: 'participation-1',
+          examId: 'exam-1',
+          status: 'SUBMITTED',
+          startTime: new Date('2025-01-01T00:10:00.000Z'),
+          endTime: new Date('2025-01-01T00:40:00.000Z'),
+        },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examRepository, examParticipationRepository }),
+    );
+
+    const result = await service.getExams(10, 0, undefined, 'all', 'user-1', true, 'user');
+
+    expect(examParticipationRepository.findByUserId).toHaveBeenCalledWith('user-1');
+    expect(result.data[0]).toMatchObject({
+      attemptsUsed: 1,
+      latestParticipationStatus: 'SUBMITTED',
+      hasInProgressParticipation: false,
+      hasCompletedParticipation: true,
+    });
+  });
+
+  it('returns null from getMyParticipation when user has no in-progress participation', async () => {
+    const examParticipationRepository = {
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examParticipationRepository }),
+    );
+
+    const result = await service.getMyParticipation('exam-1', 'user-1');
+
+    expect(examParticipationRepository.findInProgressByExamAndUser).toHaveBeenCalledWith(
+      'exam-1',
+      'user-1',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns active participation from getMyParticipation when status is IN_PROGRESS', async () => {
+    const examParticipationRepository = {
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        startTime: new Date('2025-01-01T00:00:00.000Z'),
+        expiresAt: new Date('2025-01-01T01:00:00.000Z'),
+        endTime: null,
+        status: 'IN_PROGRESS',
+      }),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examParticipationRepository }),
+    );
+
+    const result = await service.getMyParticipation('exam-1', 'user-1');
+
+    expect(result).toMatchObject({
+      id: 'participation-1',
+      examId: 'exam-1',
+      userId: 'user-1',
+      status: 'IN_PROGRESS',
+    });
+  });
+});
+
+describe('ExamService exam password storage', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('stores the exam password as registrationPassword when creating an exam', async () => {
+    const examRepository = {
+      createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    jest.spyOn(service, 'getExamById').mockResolvedValue({
+      id: 'exam-1',
+      title: 'Exam',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    } as any);
+
+    await service.createExam({
+      title: 'Exam',
+      password: 'plain-password',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+    } as any);
+
+    expect(examRepository.createExamWithChallenges).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrationPassword: 'plain-password',
+      }),
+      expect.any(Array),
+    );
+    expect(examRepository.createExamWithChallenges).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        password: expect.anything(),
+        passwordHash: expect.anything(),
+      }),
+      expect.any(Array),
+    );
+  });
+
+  it('validates exam join password against registrationPassword', async () => {
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        startDate: new Date(Date.now() - 60_000),
+        endDate: new Date(Date.now() + 60 * 60_000),
+        duration: 60,
+        maxAttempts: 2,
+        registrationPassword: 'correct-password',
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findAllByExamAndUser: jest.fn().mockResolvedValue([]),
+      createExamParticipationWithExpiry: jest.fn().mockResolvedValue([
+        {
+          id: 'participation-1',
+          startTime: new Date('2025-01-01T00:00:00.000Z'),
+          expiresAt: new Date('2025-01-01T01:00:00.000Z'),
+        },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({ examRepository, examParticipationRepository }),
+    );
+
+    await expect(service.joinExam('exam-1', 'user-1', 'wrong-password')).rejects.toBeInstanceOf(
+      InvalidPasswordException,
+    );
+
+    await expect(
+      service.joinExam('exam-1', 'user-1', 'correct-password'),
+    ).resolves.toMatchObject({
+      participationId: 'participation-1',
+      duration: 60,
+    });
   });
 });

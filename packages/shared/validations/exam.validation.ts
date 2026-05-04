@@ -84,6 +84,7 @@ export const ExamChallengeResponseSchema = z.object({
 
 export const ExamResponseSchema = z.object({
   id: z.string(),
+  slug: z.string().optional(),
   title: z.string(),
   password: z.string(),
   duration: z.number(),
@@ -91,6 +92,13 @@ export const ExamResponseSchema = z.object({
   endDate: z.string(),
   isVisible: z.boolean(),
   maxAttempts: z.number(),
+  attemptsUsed: z.number().optional(),
+  latestParticipationStatus: z
+    .enum(['IN_PROGRESS', 'SUBMITTED', 'EXPIRED', 'ABANDONED'])
+    .nullable()
+    .optional(),
+  hasInProgressParticipation: z.boolean().optional(),
+  hasCompletedParticipation: z.boolean().optional(),
   challenges: z.array(ExamChallengeResponseSchema),
   createdAt: z.string(),
   updatedAt: z.string(),

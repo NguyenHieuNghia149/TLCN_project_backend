@@ -1,10 +1,24 @@
 import { z } from 'zod';
 
+import { CodeVariant } from '@backend/shared/types';
+
+export const CodeVariantSchema = z.object({
+  language: z.string().min(1, 'Solution code language is required.'),
+  sourceCode: z.string().min(1, 'Solution code is required.'),
+});
+
+export function normalizeSolutionApproachCodeVariants(input: {
+  codeVariants?: CodeVariant[];
+}): CodeVariant[] {
+  return input.codeVariants ?? [];
+}
+
 export const CreateSolutionApproachSchema = z.object({
   title: z.string().min(1, 'Solution approach title is required.'),
   description: z.string().optional(),
-  sourceCode: z.string().min(1, 'Solution approach source code is required.'),
-  language: z.string().min(1, 'Solution approach language is required.'),
+  codeVariants: z
+    .array(CodeVariantSchema)
+    .min(1, 'Solution approach must include at least one code variant.'),
   timeComplexity: z.string().optional(),
   spaceComplexity: z.string().optional(),
   explanation: z.string().optional(),
@@ -35,8 +49,7 @@ export const SolutionApproachResponseSchema = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
-  sourceCode: z.string(),
-  language: z.string(),
+  codeVariants: z.array(CodeVariantSchema),
   timeComplexity: z.string(),
   spaceComplexity: z.string(),
   explanation: z.string(),

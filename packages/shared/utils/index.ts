@@ -9,3 +9,6 @@ export * from './response';
 export * from './security';
 export * from './function-signature-normalizer';
 export * from './function-signature';
+
+export * from './supported-languages';
+

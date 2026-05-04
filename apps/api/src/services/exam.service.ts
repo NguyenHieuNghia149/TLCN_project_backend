@@ -289,7 +289,7 @@ export class ExamService {
     const createdExamId = await this.examRepository.createExamWithChallenges(
       {
         title: examFields.title,
-        password: examFields.password,
+        registrationPassword: examFields.password,
         duration: examFields.duration,
         startDate: new Date(examFields.startDate),
         endDate: new Date(examFields.endDate),
@@ -335,7 +335,9 @@ export class ExamService {
     // Map frontend fields back to DB columns if necessary
     const dbFields: any = {};
     if (fields.title) dbFields.title = fields.title;
-    if (fields.password) dbFields.password = fields.password;
+    if (fields.password !== undefined) {
+      dbFields.registrationPassword = fields.password;
+    }
     if (fields.duration) dbFields.duration = fields.duration;
     if (fields.startDate) dbFields.startDate = new Date(fields.startDate);
     if (fields.endDate) dbFields.endDate = new Date(fields.endDate);
@@ -411,7 +413,7 @@ export class ExamService {
         }
       }
 
-      // If we reach here, it's a safe update (only title, password, visibility changed)
+      // If we reach here, it's a safe update (only title, registrationPassword, visibility changed)
       // We can use the simple update method
       await this.examRepository.update(examId, dbFields);
       return this.getExamById(examId);
@@ -466,8 +468,9 @@ export class ExamService {
     if (problemIds.length === 0) {
       return {
         id: examData.id,
+        slug: examData.slug ?? undefined,
         title: examData.title,
-        password: examData.password,
+        password: '',
         duration: examData.duration,
         startDate: examData.startDate.toISOString(),
         endDate: examData.endDate.toISOString(),
@@ -500,8 +503,9 @@ export class ExamService {
 
     return {
       id: examData.id,
+      slug: examData.slug ?? undefined,
       title: examData.title,
-      password: examData.password,
+      password: '',
       duration: examData.duration,
       startDate: examData.startDate.toISOString(),
       endDate: examData.endDate.toISOString(),
@@ -517,7 +521,7 @@ export class ExamService {
    * Get detailed information about a specific challenge in an exam
    * Call this when user switches to a different challenge to avoid loading all challenges at once
    */
-  async getExamChallenge(examId: string, challengeId: string): Promise<any> {
+  async getExamChallenge(examId: string, challengeId: string, userId: string): Promise<any> {
     // Verify exam exists and challenge is part of this exam
     const examToProblems = await this.examToProblemsRepository.findByExamId(examId);
     const challengeInExam = examToProblems.find((etp: any) => etp.problemId === challengeId);
@@ -527,7 +531,10 @@ export class ExamService {
     }
 
     // Get full challenge details from ChallengeService
-    const challengeResponse = await this.challengeService.getChallengeById(challengeId);
+    const challengeResponse = await this.challengeService.getChallengeById(challengeId, userId, {
+      allowPrivateVisibility: true,
+      showAllTestcases: false,
+    });
 
     // Return challenge with orderIndex from exam
     return {
@@ -603,12 +610,12 @@ export class ExamService {
     endTime?: Date | null;
     status: string;
   } | null> {
-    // Get latest participation regardless of status
-    const participations = await this.examParticipationRepository.findAllByExamAndUser(
+    // Return active participation only.
+    // Completed/submitted attempts must not be resumed in workspace.
+    const participation = await this.examParticipationRepository.findInProgressByExamAndUser(
       examId,
       userId
     );
-    const participation = participations[0];
 
     if (!participation) {
       return null;
@@ -639,17 +646,87 @@ export class ExamService {
     search?: string,
     filterType?: 'all' | 'my' | 'participated',
     userId?: string,
-    isVisible?: boolean
+    isVisible?: boolean,
+    userRole?: string
   ): Promise<{ data: ExamResponse[]; total: number }> {
     // Build options for repository
     const options: any = {};
     if (search) options.search = search;
     if (isVisible !== undefined) options.isVisible = isVisible;
+    const canManageExamList = userRole === 'teacher' || userRole === 'owner' || userRole === 'admin';
+    if (!canManageExamList) {
+      options.excludeInviteOnly = true;
+      options.status = 'published';
+    }
+
+    const userParticipations =
+      userId && typeof this.examParticipationRepository.findByUserId === 'function'
+        ? await this.examParticipationRepository.findByUserId(userId)
+        : [];
+    const participationSummaryByExamId = new Map<
+      string,
+      {
+        attemptsUsed: number;
+        latestParticipationStatus: EExamParticipationStatus | null;
+        latestStartedAt: number;
+        hasInProgressParticipation: boolean;
+        hasCompletedParticipation: boolean;
+      }
+    >();
+
+    const toTime = (value: unknown): number => {
+      if (value instanceof Date) return value.getTime();
+      if (typeof value === 'string' || typeof value === 'number') {
+        const time = new Date(value).getTime();
+        return Number.isFinite(time) ? time : 0;
+      }
+      return 0;
+    };
+    const validParticipationStatuses = new Set<string>(
+      Object.values(EExamParticipationStatus)
+    );
+
+    for (const participation of userParticipations) {
+      const examId = (participation as any).examId;
+      if (!examId) continue;
+
+      const rawStatus = (participation as any).status;
+      const status = validParticipationStatuses.has(rawStatus)
+        ? (rawStatus as EExamParticipationStatus)
+        : null;
+      const startedAt = toTime(
+        (participation as any).startTime ?? (participation as any).createdAt
+      );
+      const summary =
+        participationSummaryByExamId.get(examId) ??
+        {
+          attemptsUsed: 0,
+          latestParticipationStatus: null,
+          latestStartedAt: Number.NEGATIVE_INFINITY,
+          hasInProgressParticipation: false,
+          hasCompletedParticipation: false,
+        };
+
+      summary.attemptsUsed += 1;
+      if (startedAt > summary.latestStartedAt) {
+        summary.latestParticipationStatus = status;
+        summary.latestStartedAt = startedAt;
+      }
+      if (status === EExamParticipationStatus.IN_PROGRESS) {
+        summary.hasInProgressParticipation = true;
+      }
+      if (
+        status === EExamParticipationStatus.SUBMITTED ||
+        status === EExamParticipationStatus.EXPIRED
+      ) {
+        summary.hasCompletedParticipation = true;
+      }
+      participationSummaryByExamId.set(examId, summary);
+    }
 
     // If filterType is 'participated' and userId provided, get exam ids participated by user
     if (filterType === 'participated' && userId) {
-      const participations = await this.examParticipationRepository.findByUserId(userId);
-      const examIds = participations.map((p: any) => p.examId);
+      const examIds = Array.from(participationSummaryByExamId.keys());
       if (examIds.length === 0) {
         return { data: [], total: 0 };
       }
@@ -661,19 +738,41 @@ export class ExamService {
 
     const { items, total } = await this.examRepository.getExamsPaginated(limit, offset, options);
 
-    const examsData: ExamResponse[] = (items || []).map((examData: any) => ({
-      id: examData.id,
-      title: examData.title,
-      password: examData.password,
-      duration: examData.duration,
-      startDate: examData.startDate.toISOString(),
-      endDate: examData.endDate.toISOString(),
-      isVisible: examData.isVisible,
-      maxAttempts: examData.maxAttempts,
-      challenges: [], // Don't fetch full challenge details for list view
-      createdAt: examData.createdAt.toISOString(),
-      updatedAt: examData.updatedAt.toISOString(),
-    }));
+    const examsData: ExamResponse[] = (items || []).map((examData: any) => {
+      const participationSummary = participationSummaryByExamId.get(examData.id);
+
+      return {
+        id: examData.id,
+        slug: examData.slug ?? undefined,
+        title: examData.title,
+        password: '',
+        duration: examData.duration,
+        startDate: examData.startDate.toISOString(),
+        endDate: examData.endDate.toISOString(),
+        createdBy: examData.createdBy ?? undefined,
+        isVisible: examData.isVisible,
+        maxAttempts: examData.maxAttempts,
+        status: examData.status ?? undefined,
+        accessMode: examData.accessMode ?? undefined,
+        selfRegistrationApprovalMode: examData.selfRegistrationApprovalMode ?? null,
+        selfRegistrationPasswordRequired:
+          examData.selfRegistrationPasswordRequired ?? undefined,
+        allowExternalCandidates: examData.allowExternalCandidates ?? undefined,
+        registrationOpenAt: examData.registrationOpenAt
+          ? new Date(examData.registrationOpenAt).toISOString()
+          : null,
+        registrationCloseAt: examData.registrationCloseAt
+          ? new Date(examData.registrationCloseAt).toISOString()
+          : null,
+        attemptsUsed: participationSummary?.attemptsUsed ?? 0,
+        latestParticipationStatus: participationSummary?.latestParticipationStatus ?? null,
+        hasInProgressParticipation: participationSummary?.hasInProgressParticipation ?? false,
+        hasCompletedParticipation: participationSummary?.hasCompletedParticipation ?? false,
+        challenges: [], // Don't fetch full challenge details for list view
+        createdAt: examData.createdAt.toISOString(),
+        updatedAt: examData.updatedAt.toISOString(),
+      };
+    });
 
     return {
       data: examsData,
@@ -702,7 +801,11 @@ export class ExamService {
     }
 
     // Check password
-    if (examData.password !== password) {
+    if (!examData.registrationPassword) {
+      throw new InvalidPasswordException();
+    }
+
+    if (password !== examData.registrationPassword) {
       throw new InvalidPasswordException();
     }
 
@@ -986,7 +1089,8 @@ export class ExamService {
           userId: row.userId,
           userFirstName: row.userFirstName || null,
           userLastName: row.userLastName || null,
-          email: row.email || null,
+          email: row.normalizedEmail || row.email || null,
+          fullName: row.fullName || null,
           perProblem,
           totalScore,
           submittedAt: row.submittedAt || new Date(),
@@ -1004,14 +1108,13 @@ export class ExamService {
 
     // Get user info for results
     const results = leaderboard.slice(offset, offset + limit).map((entry: any, index: any) => {
-      const firstNameValue = entry.userFirstName || entry.email || '';
-      const lastNameValue = entry.userLastName || '';
+      const displayNameValue = entry.fullName || [entry.userFirstName, entry.userLastName].filter(Boolean).join(' ') || entry.email || '';
       return {
         id: entry.participationId,
         userId: entry.userId,
         user: {
-          firstname: firstNameValue,
-          lastname: lastNameValue,
+          firstname: displayNameValue,
+          lastname: '',
           email: entry.email || '',
         },
         totalScore: entry.totalScore,
@@ -1104,13 +1207,22 @@ export class ExamService {
     user?: { firstname: string; lastname: string; email?: string };
     solutions: Array<{
       challengeId: string;
+      challengeTitle: string;
       code: string;
       language: string;
       score: number;
+      maxPoints: number;
       submittedAt: string;
       results?: Array<{ testCaseId: string; passed: boolean }>;
     }>;
     totalScore: number;
+    totalMaxScore: number;
+    perProblem: Array<{
+      problemId: string;
+      challengeTitle: string;
+      obtained: number;
+      maxPoints: number;
+    }>;
     startedAt: string;
     submittedAt: string;
     duration: number;
@@ -1144,6 +1256,7 @@ export class ExamService {
       problemIds.map(async (problemId: any) => {
         const problem = await this.problemRepository.findById(problemId);
         const testcases = await this.testcaseRepository.findByProblemId(problemId);
+        const maxPoints = testcases.reduce((sum: number, tc: any) => sum + (tc.point || 0), 0) || 1;
 
         // Get latest submission for this problem in this participation
         const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
@@ -1169,7 +1282,6 @@ export class ExamService {
           );
 
           let passedPoints = 0;
-          const maxPoints = testcases.reduce((s: any, tc: any) => s + (tc.point || 0), 0) || 1;
           for (const tc of testcases) {
             const r = tcMap.get(tc.id);
             const isPassed = r?.isPassed || false;
@@ -1189,15 +1301,21 @@ export class ExamService {
           code,
           language,
           score,
+          maxPoints,
           submittedAt,
           results,
         };
       })
     );
 
-    // Calculate total score
     const totalScore = solutions.reduce((s: any, sol: any) => s + sol.score, 0);
-    const avgScore = solutions.length > 0 ? Math.round(totalScore / solutions.length) : 0;
+    const totalMaxScore = solutions.reduce((s: any, sol: any) => s + sol.maxPoints, 0);
+    const perProblem = solutions.map(solution => ({
+      problemId: solution.challengeId,
+      challengeTitle: solution.challengeTitle,
+      obtained: solution.score,
+      maxPoints: solution.maxPoints,
+    }));
 
     return {
       id: participationId,
@@ -1211,7 +1329,9 @@ export class ExamService {
           }
         : undefined,
       solutions,
-      totalScore: totalScore,
+      totalScore,
+      totalMaxScore,
+      perProblem,
       startedAt: participation.startTime.toISOString(),
       submittedAt: (participation.endTime || new Date()).toISOString(),
       duration: participation.endTime

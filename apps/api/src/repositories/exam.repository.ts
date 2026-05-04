@@ -1,7 +1,27 @@
-import { exam, ExamEntity, ExamInsert, problems, examToProblems, examParticipations } from '@backend/shared/db/schema';
+import {
+  exam,
+  ExamEntity,
+  ExamInsert,
+  problems,
+  examToProblems,
+  examParticipations,
+  examParticipants,
+} from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
 import { ProblemRepository } from './problem.repository';
-import { desc, eq, count, and, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  not,
+  sql,
+} from 'drizzle-orm';
 
 type ExamRepositoryDependencies = {
   problemRepository: ProblemRepository;
@@ -19,14 +39,21 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
     return this.db
       .select()
       .from(exam)
-      .where(eq(exam.isVisible, true))
+      .where(and(eq(exam.isVisible, true), eq(exam.status, 'published')))
       .orderBy(desc(exam.createdAt));
   }
 
   async getExamsPaginated(
     limit = 50,
     offset = 0,
-    options?: { search?: string; createdBy?: string; examIds?: string[]; isVisible?: boolean }
+    options?: {
+      search?: string;
+      createdBy?: string;
+      examIds?: string[];
+      isVisible?: boolean;
+      status?: string;
+      excludeInviteOnly?: boolean;
+    }
   ): Promise<{ items: ExamEntity[]; total: number }> {
     const predicates: any[] = [];
 
@@ -34,7 +61,17 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       predicates.push(eq(exam.isVisible, options.isVisible));
     }
 
-    // Note: createdBy filter not supported because `exam` table does not include creator column
+    if (options?.createdBy) {
+      predicates.push(eq(exam.createdBy, options.createdBy));
+    }
+
+    if (options?.status) {
+      predicates.push(eq(exam.status, options.status));
+    }
+
+    if (options?.excludeInviteOnly) {
+      predicates.push(ne(exam.accessMode, 'invite_only'));
+    }
 
     if (options?.examIds && options.examIds.length > 0) {
       predicates.push(inArray(exam.id, options.examIds));
@@ -61,6 +98,98 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
     const total = Number((totalRes && totalRes[0] && (totalRes[0] as any).total) || 0);
 
     return { items: items as ExamEntity[], total };
+  }
+
+  async findBySlug(slug: string): Promise<ExamEntity | null> {
+    const [row] = await this.db.select().from(exam).where(eq(exam.slug, slug)).limit(1);
+    return row || null;
+  }
+
+  async countActiveParticipants(examId: string): Promise<number> {
+    const [result] = await this.db
+      .select({ total: count() })
+      .from(examParticipants)
+      .where(
+        and(
+          eq(examParticipants.examId, examId),
+          isNull(examParticipants.mergedIntoParticipantId),
+        ),
+      );
+
+    return Number(result?.total ?? 0);
+  }
+
+  async publishIfDraft(examId: string): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'published',
+        isVisible: true,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'draft')))
+      .returning();
+
+    return updated || null;
+  }
+
+  async cancelIfPublishedWithoutParticipants(examId: string): Promise<ExamEntity | null> {
+    const activeParticipantSubquery = this.db
+      .select({ id: examParticipants.id })
+      .from(examParticipants)
+      .where(
+        and(
+          eq(examParticipants.examId, examId),
+          isNull(examParticipants.mergedIntoParticipantId),
+        ),
+      )
+      .limit(1);
+
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'cancelled',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(exam.id, examId),
+          eq(exam.status, 'published'),
+          not(exists(activeParticipantSubquery)),
+        ),
+      )
+      .returning();
+
+    return updated || null;
+  }
+
+  async archivePublishedIfEnded(examId: string, now: Date): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'archived',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'published'), lt(exam.endDate, now)))
+      .returning();
+
+    return updated || null;
+  }
+
+  async archiveCancelled(examId: string): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'archived',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'cancelled')))
+      .returning();
+
+    return updated || null;
   }
 
   /**
