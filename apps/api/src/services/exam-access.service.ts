@@ -50,7 +50,6 @@ type RegisterForExamInput = {
   email: string;
   fullName: string;
   userId?: string;
-  examPassword?: string;
 };
 
 type VerifyOtpInput = {
@@ -999,13 +998,6 @@ export class ExamAccessService {
     this.enforceRegistrationRateLimit(exam.id, normalizedEmail);
     await this.assertRegistrationWindow(exam);
 
-    if (exam.selfRegistrationPasswordRequired) {
-      const registrationPassword = this.getRegistrationPasswordForEmail(exam);
-      if (!registrationPassword || input.examPassword !== registrationPassword) {
-        throw new InvalidPasswordException('Incorrect exam password');
-      }
-    }
-
     const existingParticipant = await this.deps.examParticipantRepository.findByExamAndIdentity(
       exam.id,
       {
@@ -1328,7 +1320,7 @@ export class ExamAccessService {
     return this.buildAccessState(exam, participant, entrySession, participation, userId);
   }
 
-  async startEntrySession(entrySessionId: string, userId: string) {
+  async startEntrySession(entrySessionId: string, userId: string, examPassword?: string) {
     const session = await this.deps.examEntrySessionRepository.findById(entrySessionId);
     if (!session) {
       throw new AppException('Entry session not found', 404, 'ENTRY_SESSION_NOT_FOUND');
@@ -1410,6 +1402,8 @@ export class ExamAccessService {
     if (attemptsUsed >= exam.maxAttempts) {
       throw new AuthorizationException('Maximum attempts reached');
     }
+
+    this.assertStartPasswordIfRequired(exam, participant, examPassword);
 
     const startedAt = new Date();
     const expiresAt = this.computeParticipationExpiresAt(startedAt, exam.duration, exam.endDate);
@@ -1981,6 +1975,13 @@ export class ExamAccessService {
           ? await this.findExistingRealUserByEmail(participant.normalizedEmail)
           : null));
 
+    const requiresPassword = participant
+      ? this.participantRequiresStartPassword(exam, participant) &&
+        effectiveEntrySessionStatus === 'eligible' &&
+        !this.isParticipationInProgress(participation) &&
+        !['revoked', 'completed'].includes(participant?.accessStatus ?? '')
+      : exam.accessMode !== 'invite_only' && !!exam.selfRegistrationPasswordRequired;
+
     return {
       examId: exam.id,
       participantId: participant?.id ?? null,
@@ -1995,10 +1996,7 @@ export class ExamAccessService {
         participation?.expiresAt ? this.asIsoString(participation.expiresAt) : null,
       requiresLogin,
       requiresOtp: !userId && !!participant && !requiresLogin,
-      requiresPassword:
-        !participant &&
-        exam.accessMode !== 'invite_only' &&
-        !!exam.selfRegistrationPasswordRequired,
+      requiresPassword,
     };
   }
 
@@ -2008,6 +2006,24 @@ export class ExamAccessService {
 
   private participantUsesSelfRegistrationPath(participant: any) {
     return participant?.source === 'self_registration';
+  }
+
+  private participantRequiresStartPassword(exam: any, participant: any) {
+    return (
+      !!exam.selfRegistrationPasswordRequired &&
+      this.participantUsesSelfRegistrationPath(participant)
+    );
+  }
+
+  private assertStartPasswordIfRequired(exam: any, participant: any, examPassword?: string) {
+    if (!this.participantRequiresStartPassword(exam, participant)) {
+      return;
+    }
+
+    const registrationPassword = this.getRegistrationPasswordForEmail(exam);
+    if (!registrationPassword || examPassword !== registrationPassword) {
+      throw new InvalidPasswordException('Incorrect exam password');
+    }
   }
 
   private shouldAutoResumeEntrySession(exam: any, participant: any, participation: any) {

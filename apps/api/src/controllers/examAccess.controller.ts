@@ -91,7 +91,11 @@ export class ExamAccessController {
       return;
     }
 
-    const result = await this.examAccessService.startEntrySession(id, userId);
+    const result = await this.examAccessService.startEntrySession(
+      id,
+      userId,
+      req.body?.examPassword,
+    );
     res.status(200).json(result);
   }
 

@@ -182,6 +182,126 @@ describe('ExamService dependency injection', () => {
     });
   });
 
+  it('includes per-challenge max points in learner submission details', async () => {
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        startTime: new Date('2025-01-01T00:00:00.000Z'),
+        endTime: new Date('2025-01-01T00:30:00.000Z'),
+      }),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([
+        { problemId: 'problem-1' },
+        { problemId: 'problem-2' },
+      ]),
+    } as any;
+    const userRepository = {
+      findById: jest.fn().mockResolvedValue({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        email: 'jane@example.com',
+      }),
+    } as any;
+    const problemRepository = {
+      findById: jest
+        .fn()
+        .mockImplementation((id: string) =>
+          Promise.resolve({ id, title: id === 'problem-1' ? 'Arrays' : 'DP' }),
+        ),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockImplementation((problemId: string) =>
+        Promise.resolve(
+          problemId === 'problem-1'
+            ? [
+                { id: 'tc-1', point: 30 },
+                { id: 'tc-2', point: 70 },
+              ]
+            : [
+                { id: 'tc-3', point: 10 },
+                { id: 'tc-4', point: 15 },
+              ],
+        ),
+      ),
+    } as any;
+    const submissionRepository = {
+      findLatestByParticipationAndProblem: jest
+        .fn()
+        .mockImplementation((_participationId: string, problemId: string) =>
+          Promise.resolve(
+            problemId === 'problem-1'
+              ? {
+                  id: 'submission-1',
+                  sourceCode: 'print("ok")',
+                  language: 'python',
+                  submittedAt: new Date('2025-01-01T00:10:00.000Z'),
+                }
+              : null,
+          ),
+        ),
+    } as any;
+    const resultSubmissionRepository = {
+      findBySubmissionId: jest.fn().mockResolvedValue([
+        { testcaseId: 'tc-1', isPassed: true },
+        { testcaseId: 'tc-2', isPassed: false },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({
+        examParticipationRepository,
+        examRepository,
+        examToProblemsRepository,
+        userRepository,
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        resultSubmissionRepository,
+      }),
+    );
+
+    const result = await service.getParticipationSubmission(
+      'exam-1',
+      'participation-1',
+      'user-1',
+    );
+
+    expect(result.totalScore).toBe(30);
+    expect(result.totalMaxScore).toBe(125);
+    expect(result.perProblem).toEqual([
+      {
+        problemId: 'problem-1',
+        challengeTitle: 'Arrays',
+        obtained: 30,
+        maxPoints: 100,
+      },
+      {
+        problemId: 'problem-2',
+        challengeTitle: 'DP',
+        obtained: 0,
+        maxPoints: 25,
+      },
+    ]);
+    expect(result.solutions).toEqual([
+      expect.objectContaining({
+        challengeId: 'problem-1',
+        challengeTitle: 'Arrays',
+        score: 30,
+        maxPoints: 100,
+      }),
+      expect.objectContaining({
+        challengeId: 'problem-2',
+        challengeTitle: 'DP',
+        score: 0,
+        maxPoints: 25,
+      }),
+    ]);
+  });
+
   it('creates a fresh exam service instance', () => {
     const service = createExamService();
 

@@ -228,7 +228,6 @@ export const UpdateAdminExamSchema = z.object({
 export const PublicExamRegisterSchema = z.object({
   email: z.string().email('Invalid email format.'),
   fullName: z.string().min(1, 'Full name is required.').max(255, 'Full name is too long.'),
-  examPassword: z.string().max(255, 'Password is too long.').optional(),
 });
 
 export const PublicExamInviteResolveSchema = z.object({
@@ -247,6 +246,13 @@ export const PublicExamOtpVerifySchema = z.object({
 export const ExamEntrySessionStartParamsSchema = z.object({
   id: z.string().uuid('Invalid entry session ID format.'),
 });
+
+export const ExamEntrySessionStartBodySchema = z.preprocess(
+  value => value ?? {},
+  z.object({
+    examPassword: z.string().max(255, 'Password is too long.').optional(),
+  }),
+);
 
 export const ExamSessionSyncSchema = z.union([
   z.object({
@@ -325,4 +331,7 @@ export type PublicExamRegisterInput = z.infer<typeof PublicExamRegisterSchema>;
 export type PublicExamInviteResolveInput = z.infer<typeof PublicExamInviteResolveSchema>;
 export type PublicExamOtpSendInput = z.infer<typeof PublicExamOtpSendSchema>;
 export type PublicExamOtpVerifyInput = z.infer<typeof PublicExamOtpVerifySchema>;
+export type ExamEntrySessionStartBodyInput = z.infer<
+  typeof ExamEntrySessionStartBodySchema
+>;
 export type AdminExamAddParticipantsInput = z.infer<typeof AdminExamAddParticipantsSchema>;

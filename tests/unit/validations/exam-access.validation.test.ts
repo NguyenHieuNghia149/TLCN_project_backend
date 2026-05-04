@@ -1,7 +1,9 @@
 import {
   AdminExamListQuerySchema,
   CreateAdminExamSchema,
+  ExamEntrySessionStartBodySchema,
   ExamSessionSyncSchema,
+  PublicExamRegisterSchema,
   UpdateAdminExamSchema,
 } from '@backend/shared/validations/exam-access.validation';
 
@@ -46,6 +48,32 @@ describe('exam access validation', () => {
     ).toEqual({
       examPassword: 'Changed#1234',
     });
+  });
+
+  it('keeps public registration limited to email and full name', () => {
+    const parsed = PublicExamRegisterSchema.parse({
+      email: 'student@example.com',
+      fullName: 'Exam Student',
+      examPassword: 'OldRegistrationPassword',
+    });
+
+    expect(parsed).toEqual({
+      email: 'student@example.com',
+      fullName: 'Exam Student',
+    });
+  });
+
+  it('accepts an optional exam password on entry-session start', () => {
+    expect(
+      ExamEntrySessionStartBodySchema.parse({
+        examPassword: 'Exam#1234',
+      }),
+    ).toEqual({
+      examPassword: 'Exam#1234',
+    });
+
+    expect(ExamEntrySessionStartBodySchema.parse({})).toEqual({});
+    expect(ExamEntrySessionStartBodySchema.parse(undefined)).toEqual({});
   });
 
   it('rejects password-required create payloads without an exam password', () => {

@@ -11,7 +11,7 @@ export const ExistingChallengeSchema = z.object({
   challengeId: z.string().uuid('Invalid challenge ID format.'),
 });
 
-export const NewChallengeSchema = CreateProblemSchema.extend({
+export const NewChallengeSchema = CreateProblemSchema.safeExtend({
   // New challenge must have all required fields from ProblemInput
 });
 

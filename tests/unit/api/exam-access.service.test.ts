@@ -487,7 +487,7 @@ describe('ExamAccessService', () => {
     });
   });
 
-  it('does not mutate an existing participant before registration password validation', async () => {
+  it('does not require an exam password while registering for a password-protected exam', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2099-04-30T09:00:00.000Z'));
     const examRepository = {
       findBySlug: jest.fn().mockResolvedValue({
@@ -531,15 +531,19 @@ describe('ExamAccessService', () => {
       }),
     );
 
-    await expect(
-      service.registerForExam('spring-midterm', {
-        email: 'student@example.com',
-        fullName: 'Injected Name',
-        examPassword: 'Wrong#1234',
-      }),
-    ).rejects.toBeInstanceOf(InvalidPasswordException);
+    const result = await service.registerForExam('spring-midterm', {
+      email: 'student@example.com',
+      fullName: 'Injected Name',
+    });
+
     expect(examParticipantRepository.update).not.toHaveBeenCalled();
     expect(examParticipantRepository.create).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      participantId: 'participant-1',
+      approvalStatus: 'approved',
+      accessStatus: 'eligible',
+      created: false,
+    });
   });
 
   it('always rejects register path for invite-only exams even when a participant already exists', async () => {
@@ -730,7 +734,6 @@ describe('ExamAccessService', () => {
     await service.registerForExam('spring-midterm', {
       email: 'student@example.com',
       fullName: 'Exam Student',
-      examPassword,
     });
 
     expect(emailService.sendExamRegistrationReceivedEmail).toHaveBeenCalledWith(
@@ -810,7 +813,6 @@ describe('ExamAccessService', () => {
     await service.registerForExam('spring-midterm', {
       email: 'student@example.com',
       fullName: 'Exam Student',
-      examPassword,
     });
 
     expect(emailService.sendExamRegistrationReceivedEmail).toHaveBeenCalledWith(
@@ -1235,6 +1237,138 @@ describe('ExamAccessService', () => {
     });
   });
 
+  it('rejects starting a self-registration entry session without the exam password', async () => {
+    const examEntrySessionRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'entry-session-password',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        participationId: null,
+        status: 'eligible',
+        expiresAt: new Date('2099-05-03T10:30:00.000Z'),
+      }),
+      markStarted: jest.fn(),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        source: 'self_registration',
+        accessStatus: 'eligible',
+      }),
+      updateAccessStatus: jest.fn(),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'published',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2020-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        selfRegistrationPasswordRequired: true,
+        registrationPassword: 'Exam#1234',
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue(null),
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      countAttemptsByParticipant: jest.fn().mockResolvedValue(0),
+      createAttempt: jest.fn(),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipantRepository,
+        examRepository,
+        examParticipationRepository,
+      }),
+    );
+
+    await expect(
+      service.startEntrySession('entry-session-password', 'user-1'),
+    ).rejects.toBeInstanceOf(InvalidPasswordException);
+    expect(examParticipationRepository.createAttempt).not.toHaveBeenCalled();
+    expect(examEntrySessionRepository.markStarted).not.toHaveBeenCalled();
+  });
+
+  it('does not require the self-registration password for invite participants in a hybrid exam', async () => {
+    const examEntrySessionRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'entry-session-invite',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        participationId: null,
+        status: 'eligible',
+        expiresAt: new Date('2099-05-03T10:30:00.000Z'),
+      }),
+      markStarted: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        source: 'invite',
+        accessStatus: 'eligible',
+      }),
+      updateAccessStatus: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'published',
+        accessMode: 'hybrid',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2020-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+        selfRegistrationPasswordRequired: true,
+        registrationPassword: 'Exam#1234',
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue(null),
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      countAttemptsByParticipant: jest.fn().mockResolvedValue(0),
+      createAttempt: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        examId: 'exam-1',
+        expiresAt: new Date('2099-05-01T10:30:00.000Z'),
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([
+        {
+          problemId: 'challenge-1',
+          orderIndex: 0,
+        },
+      ]),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipantRepository,
+        examRepository,
+        examParticipationRepository,
+        examToProblemsRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    const result = await service.startEntrySession('entry-session-invite', 'user-1');
+
+    expect(examParticipationRepository.createAttempt).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      participationId: 'participation-1',
+      firstChallengeId: 'challenge-1',
+    });
+  });
+
   it('does not auto-create a new eligible entry session when an in-progress participation already exists', async () => {
     const examRepository = {
       findBySlug: jest.fn().mockResolvedValue({
@@ -1310,6 +1444,75 @@ describe('ExamAccessService', () => {
       entrySessionId: 'entry-session-started',
       entrySessionStatus: 'started',
       participationId: 'participation-1',
+    });
+  });
+
+  it('marks approved self-registration access state as requiring the exam password', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'open-midterm',
+        title: 'Open Midterm',
+        accessMode: 'open_registration',
+        selfRegistrationApprovalMode: 'auto',
+        selfRegistrationPasswordRequired: true,
+        registrationPassword: 'Exam#1234',
+        allowExternalCandidates: true,
+        status: 'published',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2020-04-01T09:00:00.000Z'),
+        endDate: new Date('2099-04-01T12:00:00.000Z'),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        normalizedEmail: 'student@example.com',
+        source: 'self_registration',
+        approvalStatus: 'approved',
+        accessStatus: 'eligible',
+      }),
+    } as any;
+    const examEntrySessionRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue({
+        id: 'entry-session-1',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        status: 'eligible',
+        participationId: null,
+        expiresAt: new Date('2099-04-01T12:00:00.000Z'),
+      }),
+      createOrResumeVerifiedSession: jest.fn().mockResolvedValue({
+        id: 'entry-session-1',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        status: 'eligible',
+        participationId: null,
+        expiresAt: new Date('2099-04-01T12:00:00.000Z'),
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue(null),
+      countAttemptsByParticipant: jest.fn().mockResolvedValue(0),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examEntrySessionRepository,
+        examParticipationRepository,
+      }),
+    );
+
+    const result = await service.getAccessState('open-midterm', 'user-1');
+
+    expect(result).toMatchObject({
+      participantId: 'participant-1',
+      entrySessionId: 'entry-session-1',
+      requiresPassword: true,
     });
   });
 
@@ -1764,7 +1967,7 @@ describe('ExamAccessService', () => {
         participantId: 'participant-1',
         participationId: null,
         status: 'eligible',
-        expiresAt: new Date('2026-05-03T10:30:00.000Z'),
+        expiresAt: new Date('2099-05-03T10:30:00.000Z'),
       }),
     } as any;
     const examParticipantRepository = {

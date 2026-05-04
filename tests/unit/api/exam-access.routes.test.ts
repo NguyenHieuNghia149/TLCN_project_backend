@@ -291,17 +291,80 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/exams/entry-sessions/11111111-1111-4111-8111-111111111111/start')
+      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .send({ examPassword: 'Exam#1234' });
+
+    expect(response.status).toBe(200);
+    expect(startEntrySession).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'user-1',
+      'Exam#1234',
+    );
+    expect(response.body).toMatchObject({
+      participationId: 'participation-1',
+      firstChallengeId: 'challenge-1',
+    });
+  });
+
+  it('starts an entry session for legacy clients that send no body', async () => {
+    const startEntrySession = jest.fn().mockResolvedValue({
+      participationId: 'participation-1',
+      expiresAt: '2026-04-03T09:00:00.000Z',
+      firstChallengeId: 'challenge-1',
+    });
+    const { app } = await createMountedApp({
+      mountPath: '/api/exams',
+      routeModulePath: '@backend/api/routes/examAccess.routes',
+      routeFactoryExport: 'createExamAccessRouter',
+      examAccessService: {
+        getAccessState: jest.fn(),
+        startEntrySession,
+        syncParticipation: jest.fn(),
+        submitActiveParticipation: jest.fn(),
+      },
+      legacyExamService: {
+        syncSession: jest.fn(),
+        submitExam: jest.fn(),
+      },
+    });
+
+    const response = await request(app)
+      .post('/api/exams/entry-sessions/11111111-1111-4111-8111-111111111111/start')
       .set('Authorization', `Bearer ${createAccessToken('user-1')}`);
 
     expect(response.status).toBe(200);
     expect(startEntrySession).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       'user-1',
+      undefined,
     );
-    expect(response.body).toMatchObject({
-      participationId: 'participation-1',
-      firstChallengeId: 'challenge-1',
+  });
+
+  it('rejects overlong entry-session passwords before they hit the service', async () => {
+    const startEntrySession = jest.fn();
+    const { app } = await createMountedApp({
+      mountPath: '/api/exams',
+      routeModulePath: '@backend/api/routes/examAccess.routes',
+      routeFactoryExport: 'createExamAccessRouter',
+      examAccessService: {
+        getAccessState: jest.fn(),
+        startEntrySession,
+        syncParticipation: jest.fn(),
+        submitActiveParticipation: jest.fn(),
+      },
+      legacyExamService: {
+        syncSession: jest.fn(),
+        submitExam: jest.fn(),
+      },
     });
+
+    const response = await request(app)
+      .post('/api/exams/entry-sessions/11111111-1111-4111-8111-111111111111/start')
+      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .send({ examPassword: 'x'.repeat(256) });
+
+    expect(response.status).toBe(400);
+    expect(startEntrySession).not.toHaveBeenCalled();
   });
 
   it('rejects malformed sync payloads before they hit the service', async () => {

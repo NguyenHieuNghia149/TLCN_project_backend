@@ -1207,13 +1207,22 @@ export class ExamService {
     user?: { firstname: string; lastname: string; email?: string };
     solutions: Array<{
       challengeId: string;
+      challengeTitle: string;
       code: string;
       language: string;
       score: number;
+      maxPoints: number;
       submittedAt: string;
       results?: Array<{ testCaseId: string; passed: boolean }>;
     }>;
     totalScore: number;
+    totalMaxScore: number;
+    perProblem: Array<{
+      problemId: string;
+      challengeTitle: string;
+      obtained: number;
+      maxPoints: number;
+    }>;
     startedAt: string;
     submittedAt: string;
     duration: number;
@@ -1247,6 +1256,7 @@ export class ExamService {
       problemIds.map(async (problemId: any) => {
         const problem = await this.problemRepository.findById(problemId);
         const testcases = await this.testcaseRepository.findByProblemId(problemId);
+        const maxPoints = testcases.reduce((sum: number, tc: any) => sum + (tc.point || 0), 0) || 1;
 
         // Get latest submission for this problem in this participation
         const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
@@ -1272,7 +1282,6 @@ export class ExamService {
           );
 
           let passedPoints = 0;
-          const maxPoints = testcases.reduce((s: any, tc: any) => s + (tc.point || 0), 0) || 1;
           for (const tc of testcases) {
             const r = tcMap.get(tc.id);
             const isPassed = r?.isPassed || false;
@@ -1292,15 +1301,21 @@ export class ExamService {
           code,
           language,
           score,
+          maxPoints,
           submittedAt,
           results,
         };
       })
     );
 
-    // Calculate total score
     const totalScore = solutions.reduce((s: any, sol: any) => s + sol.score, 0);
-    const avgScore = solutions.length > 0 ? Math.round(totalScore / solutions.length) : 0;
+    const totalMaxScore = solutions.reduce((s: any, sol: any) => s + sol.maxPoints, 0);
+    const perProblem = solutions.map(solution => ({
+      problemId: solution.challengeId,
+      challengeTitle: solution.challengeTitle,
+      obtained: solution.score,
+      maxPoints: solution.maxPoints,
+    }));
 
     return {
       id: participationId,
@@ -1314,7 +1329,9 @@ export class ExamService {
           }
         : undefined,
       solutions,
-      totalScore: totalScore,
+      totalScore,
+      totalMaxScore,
+      perProblem,
       startedAt: participation.startTime.toISOString(),
       submittedAt: (participation.endTime || new Date()).toISOString(),
       duration: participation.endTime
