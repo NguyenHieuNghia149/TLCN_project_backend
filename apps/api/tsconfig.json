@@ -1,21 +1,21 @@
 {
     "extends":  "../../tsconfig.json",
     "compilerOptions":  {
-                            "outDir":  "./dist",
-                            "baseUrl":  ".",
-                            "paths":  {
-                                          "@/*":  [
-                                                      "src/*"
-                                                  ],
-                                          "@backend/shared/*":  [
-                                                                    "../../packages/shared/*"
-                                                                ],
-                                          "@backend/api/*":  [
-                                                                 "src/*"
-                                                             ]
-                                      }
-                        },
-    "include":  [
+        "outDir":  "./dist",
+        "baseUrl":  ".",
+        "paths":  {
+        "@/*":  [
+                    "src/*"
+                ],
+        "@backend/shared/*":  [
+                                "../../packages/shared/*"
+                            ],
+        "@backend/api/*":  [
+                                "src/*"
+                            ]
+        }
+        },
+        "include":  [
                     "src/**/*"
                 ]
 }
