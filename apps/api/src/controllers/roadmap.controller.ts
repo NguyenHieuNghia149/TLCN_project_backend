@@ -135,6 +135,45 @@ export class RoadmapController {
     res.status(200).json(successResponse(stats));
   };
 
+  /**
+   * R14.5: Get roadmap detail with sequential unlock status per item
+   * Called by frontend to render roadmap with lock UI
+   * Returns items with: isCompleted, isUnlocked, lockReason
+   */
+  getRoadmapDetailWithLockStatus = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
+    const roadmapId = req.params.id as string;
+    if (!roadmapId) throw new AppException('Roadmap ID is required', 400, 'ROADMAP_ID_REQUIRED');
+
+    const data = await this.roadmapService.getRoadmapDetailWithLockStatus(roadmapId, userId);
+    res.status(200).json(successResponse(data));
+  };
+
+  /**
+   * R14.5: Mark roadmap item as completed by user
+   * Validates prerequisite: previous item must be completed first
+   * Returns completion record + unlocked next item
+   */
+  completeRoadmapItem = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
+    const roadmapId = req.params.id as string;
+    const itemId = req.params.itemId as string;
+    if (!roadmapId || !itemId) throw new AppException('Invalid path params', 400, 'INVALID_PARAMS');
+
+    const result = await this.roadmapService.completeRoadmapItem(userId, roadmapId, itemId);
+    res.status(200).json(successResponse(result));
+  };
+
   markItemCompleted = async (
     req: AuthenticatedRequest,
     res: Response,
