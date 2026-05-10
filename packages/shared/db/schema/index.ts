@@ -26,6 +26,7 @@ export * from './notification';
 export * from './roadmap';
 export * from './roadmapItem';
 export * from './roadmapProgress';
+export * from './userItemCompletion';
 
 // Relations
 import { relations } from 'drizzle-orm';

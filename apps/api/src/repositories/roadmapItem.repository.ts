@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, max, desc } from 'drizzle-orm';
 import { BaseRepository } from './base.repository';
 import {
   roadmapItems,
@@ -13,6 +13,22 @@ export class RoadmapItemRepository extends BaseRepository<
 > {
   constructor() {
     super(roadmapItems);
+  }
+
+  /**
+   * Get the maximum order value for items in a roadmap.
+   * Used to calculate the next order when adding a new item.
+   * Returns 0 if no items exist in the roadmap (next item will have order 1).
+   * @param roadmapId The roadmap ID
+   * @returns The maximum order value, or 0 if no items exist
+   */
+  async getMaxOrderByRoadmap(roadmapId: string): Promise<number> {
+    const result = await this.db
+      .select({ maxOrder: max(roadmapItems.order).as('maxOrder') })
+      .from(roadmapItems)
+      .where(eq(roadmapItems.roadmapId, roadmapId));
+
+    return result[0]?.maxOrder ?? 0;
   }
 
   async addItemToRoadmap(input: {
@@ -33,6 +49,36 @@ export class RoadmapItemRepository extends BaseRepository<
       .delete(roadmapItems)
       .where(and(eq(roadmapItems.roadmapId, roadmapId), eq(roadmapItems.id, itemId)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * R13.3: Compact order values after item deletion
+   * Ensures there are no gaps in order sequence (e.g., 1,2,3 instead of 1,3,5)
+   * Useful for maintaining clean data after deletions
+   * @param roadmapId The roadmap ID
+   */
+  async compactOrdersAfterDelete(roadmapId: string): Promise<void> {
+    await this.db.transaction(async tx => {
+      // Get all items in this roadmap ordered by current order
+      const items = await tx
+        .select({ id: roadmapItems.id, order: roadmapItems.order })
+        .from(roadmapItems)
+        .where(eq(roadmapItems.roadmapId, roadmapId))
+        .orderBy(roadmapItems.order);
+
+      // If there are gaps, reassign orders sequentially
+      if (items.length > 0) {
+        for (let newOrder = 1; newOrder <= items.length; newOrder += 1) {
+          const currentOrder = items[newOrder - 1]!.order;
+          if (currentOrder !== newOrder) {
+            await tx
+              .update(roadmapItems)
+              .set({ order: newOrder, updatedAt: new Date() })
+              .where(eq(roadmapItems.id, items[newOrder - 1]!.id));
+          }
+        }
+      }
+    });
   }
 
   async listItemsByRoadmap(roadmapId: string): Promise<RoadmapItemEntity[]> {
