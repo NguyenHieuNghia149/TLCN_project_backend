@@ -13,6 +13,7 @@ export * from './submission';
 export * from './resultSubmission';
 export * from './favorite';
 export * from './comment';
+export * from './commentLike';
 export * from './completed_lesson';
 export * from './exam';
 export * from './examsToProblems';
@@ -22,6 +23,10 @@ export * from './examInvites';
 export * from './examEntrySessions';
 export * from './examAuditLogs';
 export * from './notification';
+export * from './roadmap';
+export * from './roadmapItem';
+export * from './roadmapProgress';
+export * from './userItemCompletion';
 
 // Relations
 import { relations } from 'drizzle-orm';
@@ -38,6 +43,9 @@ import { favorite } from './favorite';
 import { languages } from './languages';
 import { lessons } from './lesson';
 import { notifications } from './notification';
+import { roadmaps } from './roadmap';
+import { roadmapItems } from './roadmapItem';
+import { roadmapProgress } from './roadmapProgress';
 import { problems } from './problem';
 import { resultSubmissions } from './resultSubmission';
 import { solutions } from './solution';
@@ -312,6 +320,33 @@ export const examAuditLogsRelations = relations(examAuditLogs, ({ one }) => ({
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, {
     fields: [notifications.userId],
+    references: [users.id],
+  }),
+}));
+
+export const roadmapsRelations = relations(roadmaps, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [roadmaps.createdBy],
+    references: [users.id],
+  }),
+  items: many(roadmapItems),
+  progress: many(roadmapProgress),
+}));
+
+export const roadmapItemsRelations = relations(roadmapItems, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapItems.roadmapId],
+    references: [roadmaps.id],
+  }),
+}));
+
+export const roadmapProgressRelations = relations(roadmapProgress, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapProgress.roadmapId],
+    references: [roadmaps.id],
+  }),
+  user: one(users, {
+    fields: [roadmapProgress.userId],
     references: [users.id],
   }),
 }));

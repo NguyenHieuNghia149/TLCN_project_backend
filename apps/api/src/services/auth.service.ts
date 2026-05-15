@@ -317,6 +317,41 @@ export class AuthService {
     otpStore.delete(email);
     await this.tokenRepository.revokeAllUserTokens(user.id);
   }
+
+  // [CRITICAL FIX] Validate token and check ban status separately
+  async validateToken(token: string): Promise<{ userId: string; email: string; role: string }> {
+    let decoded;
+
+    // Try to verify JWT token first
+    try {
+      decoded = JWTUtils.verifyAccessToken(token);
+    } catch (error) {
+      throw new InvalidCredentialsException('Invalid token');
+    }
+
+    // Get user from database
+    const user = await this.userRepository.findById(decoded.userId);
+
+    if (!user) {
+      throw new InvalidCredentialsException('User not found');
+    }
+
+    // [CRITICAL] Check ban status SEPARATELY and throw ValidationException
+    // NOT InvalidCredentialsException — this allows client to distinguish:
+    // - 401 = Token invalid or user doesn't exist (authentication error)
+    // - 403 = User exists but account suspended (authorization error)
+    if (user.status === 'banned') {
+      throw new ValidationException(
+        'Your account has been suspended. Please contact support for more information.'
+      );
+    }
+
+    return {
+      userId: user.id,
+      email: user.email,
+      role: user.role ?? EUserRole.USER,
+    };
+  }
 }
 
 /** Creates an AuthService with concrete repositories and optional shared auth dependencies. */

@@ -261,6 +261,85 @@ export class EMailService {
     return isValid;
   }
 
+  // --- Ban/Unban Notification Methods ---
+
+  async sendBanNotification(
+    email: string,
+    userName: string,
+    banReason: string,
+  ): Promise<void> {
+    try {
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #d32f2f;">Account Suspension Notice</h2>
+          <p>Dear ${this.escapeHtml(userName)},</p>
+          <p>Your account has been suspended due to the following reason:</p>
+          <blockquote style="background: #f5f5f5; padding: 10px; border-left: 4px solid #d32f2f; margin: 15px 0;">
+            ${this.escapeHtml(banReason)}
+          </blockquote>
+          <p>If you believe this is a mistake, please contact our support team.</p>
+          <p style="margin-top: 30px; color: #666;">
+            Best regards,<br/>
+            <strong>The Admin Team</strong>
+          </p>
+        </div>
+      `;
+
+      await this.transporter.sendMail({
+        from: config.email.from,
+        to: email,
+        subject: 'Your Account Has Been Suspended',
+        html: htmlContent,
+      });
+
+      logger.info(`Ban notification sent to ${email}`);
+    } catch (error) {
+      logger.error(`Failed to send ban notification to ${email}:`, error);
+    }
+  }
+
+  async sendUnbanNotification(
+    email: string,
+    userName: string,
+  ): Promise<void> {
+    try {
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #22863a;">Account Restored</h2>
+          <p>Dear ${this.escapeHtml(userName)},</p>
+          <p>Good news! Your account suspension has been lifted. You can now access the platform again.</p>
+          <p style="margin-top: 30px; color: #666;">
+            Welcome back!<br/>
+            <strong>The Admin Team</strong>
+          </p>
+        </div>
+      `;
+
+      await this.transporter.sendMail({
+        from: config.email.from,
+        to: email,
+        subject: 'Your Account Has Been Restored',
+        html: htmlContent,
+      });
+
+      logger.info(`Unban notification sent to ${email}`);
+    } catch (error) {
+      logger.error(`Failed to send unban notification to ${email}:`, error);
+    }
+  }
+
+  // Helper: Escape HTML to prevent injection
+  private escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;',
+    };
+    return text.replace(/[&<>"']/g, (m: string) => map[m] || m);
+  }
+
   private buildRegistrationPasswordHtml(registrationPassword?: string | null) {
     if (!registrationPassword) {
       return '';
@@ -284,15 +363,6 @@ export class EMailService {
     }
 
     return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-  }
-
-  private escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 }
 

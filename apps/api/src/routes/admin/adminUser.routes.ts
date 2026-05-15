@@ -26,6 +26,7 @@ export function createAdminUserRouter(): Router {
 
   const idSchema = z.object({ id: z.string().uuid('Invalid user ID') });
 
+  // Get routes (must be before /:id route to prevent 'banned' being treated as ID)
   router.get('/', authenticationToken, requireTeacherOrOwner, adminReadLimit, controller.list);
   router.get(
     '/teachers',
@@ -35,6 +36,15 @@ export function createAdminUserRouter(): Router {
     controller.listTeachers
   );
   router.get(
+    '/banned',
+    authenticationToken,
+    requireTeacherOrOwner,
+    adminReadLimit,
+    (req, res) => controller.listBannedUsers(req, res)
+  );
+
+  // Single resource routes (after specific routes)
+  router.get(
     '/:id',
     authenticationToken,
     requireTeacherOrOwner,
@@ -42,7 +52,30 @@ export function createAdminUserRouter(): Router {
     validate(idSchema, 'params'),
     controller.getById
   );
+
+  // Create route
   router.post('/', authenticationToken, requireTeacherOrOwner, adminMutateLimit, controller.create);
+
+  // Ban/Unban routes (must be before /:id/... routes)
+  router.post(
+    '/:id/ban',
+    authenticationToken,
+    requireTeacherOrOwner,
+    adminMutateLimit,
+    validate(idSchema, 'params'),
+    (req, res) => controller.banUser(req, res)
+  );
+
+  router.post(
+    '/:id/unban',
+    authenticationToken,
+    requireTeacherOrOwner,
+    adminMutateLimit,
+    validate(idSchema, 'params'),
+    (req, res) => controller.unbanUser(req, res)
+  );
+
+  // Update/Delete routes (most generic, at end)
   router.put(
     '/:id',
     authenticationToken,
