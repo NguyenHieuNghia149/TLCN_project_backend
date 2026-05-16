@@ -4,7 +4,7 @@ import {
   CommentWithReplies,
 } from '../repositories/comment.repository';
 import { CommentInsert, CommentEntity } from '@backend/shared/db/schema';
-import { CommentPinResponse } from '../types/comment.types';
+import { CommentPinResponse } from '@backend/shared/types/comment.types';
 import { logger } from '@backend/shared/utils';
 
 export class CommentService {

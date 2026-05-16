@@ -1,6 +1,6 @@
 import { CommentLikeRepository } from '../repositories/commentLike.repository';
 import { CommentRepository } from '../repositories/comment.repository';
-import { CommentLikeResponse, CommentLikeStatus, BatchLikeStatusResult } from '../types/comment.types';
+import { CommentLikeResponse, CommentLikeStatus, BatchLikeStatusResult } from '@backend/shared/types/comment.types';
 import { logger } from '@backend/shared/utils';
 
 export class CommentLikeService {

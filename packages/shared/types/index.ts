@@ -7,6 +7,8 @@ export * from './userGender.enum';
 export * from './userRole.enum';
 export * from './userStatus.enum';
 export * from './functionSignature';
+export * from './comment.types';
+export * from './user.types';
 
 export * from './supportedLanguage';
 

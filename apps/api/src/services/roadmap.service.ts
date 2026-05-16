@@ -76,19 +76,30 @@ export class RoadmapService {
       throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
     }
 
-    // Get user's completed items for this roadmap
+    // Get user's completed items from BOTH sources to ensure data sync
+    // 1. From userItemCompletions (item-level completion tracking)
     const itemIds = roadmapDetail.items.map(item => item.id);
-    const completedItemIds = await this.userItemCompletionRepository.getCompletedItemsByUser(
+    const completedFromUserItems = await this.userItemCompletionRepository.getCompletedItemsByUser(
       userId,
       itemIds
     );
+    
+    // 2. From roadmapProgress (aggregate completion tracking)
+    const progress = await this.roadmapProgressRepository.getProgressByUserAndRoadmap(userId, roadmapId);
+    const completedFromProgress = (progress?.completedItemIds ?? []) as string[];
+    
+    // Merge both sources to ensure no data is lost
+    const completedItemIds = Array.from(new Set([...completedFromUserItems, ...completedFromProgress]));
     const completedSet = new Set(completedItemIds);
 
+    // Sort items by order before calculating sequential lock state
+    const orderedItems = [...roadmapDetail.items].sort((a, b) => a.order - b.order);
+
     // Calculate lock status for each item
-    const itemsWithLockStatus = roadmapDetail.items.map((item, index) => {
+    const itemsWithLockStatus = orderedItems.map((item, index) => {
       const isCompleted = completedSet.has(item.id);
-      const isUnlocked = index === 0 || completedSet.has(roadmapDetail.items[index - 1]!.id);
-      const previousItem = index > 0 ? roadmapDetail.items[index - 1] : null;
+      const isUnlocked = index === 0 || completedSet.has(orderedItems[index - 1]!.id);
+      const previousItem = index > 0 ? orderedItems[index - 1] : null;
       const lockReason = !isUnlocked && previousItem ? `Complete "${previousItem.itemTitle}" first` : null;
 
       return {
@@ -230,14 +241,40 @@ export class RoadmapService {
       throw new AppException('Roadmap item not found', 404, 'ROADMAP_ITEM_NOT_FOUND');
     }
 
+    const itemIds = roadmapDetail.items.map(i => i.id);
+    const userCompletedItemIds = await this.userItemCompletionRepository.getCompletedItemsByUser(
+      userId,
+      itemIds
+    );
+    const completedSet = new Set(userCompletedItemIds);
+
     // 2. Check if already completed (idempotent)
     const alreadyCompleted = await this.userItemCompletionRepository.isItemCompletedByUser(
       userId,
       itemId
     );
     if (alreadyCompleted) {
-      // Already completed, return success with no unlocked item
-      return { item };
+      await this.markItemCompleted(userId, roadmapId, itemId);
+
+      const nextItem = roadmapDetail.items.find(i => i.order === item.order + 1);
+      const unlockedNextItem = nextItem
+        ? {
+            ...nextItem,
+            isCompleted: completedSet.has(nextItem.id),
+            isUnlocked: true,
+            lockReason: null,
+          }
+        : undefined;
+
+      return {
+        item: {
+          ...item,
+          isCompleted: true,
+          isUnlocked: true,
+          lockReason: null,
+        },
+        unlockedNextItem,
+      };
     }
 
     // 3. Validate prerequisite: if order > 0, previous item must be completed
@@ -266,11 +303,29 @@ export class RoadmapService {
 
     // 4. Mark as completed (create UserItemCompletion record)
     await this.userItemCompletionRepository.markItemCompleted(userId, itemId);
+    await this.markItemCompleted(userId, roadmapId, itemId);
 
-    // 5. Get next item (if exists) - it's now unlocked
+    // 5. Build enriched item response with lock status
+    completedSet.add(item.id);
+    const enrichedItem = {
+      ...item,
+      isCompleted: true,
+      isUnlocked: true,
+      lockReason: null,
+    };
+
+    // 6. Get next item (if exists) - now unlocked by completion
     const nextItem = roadmapDetail.items.find(i => i.order === item.order + 1);
+    const unlockedNextItem = nextItem
+      ? {
+          ...nextItem,
+          isCompleted: completedSet.has(nextItem.id),
+          isUnlocked: true,
+          lockReason: null,
+        }
+      : undefined;
 
-    return { item, unlockedNextItem: nextItem };
+    return { item: enrichedItem, unlockedNextItem };
   }
 
   async markItemCompleted(userId: string, roadmapId: string, itemId: string): Promise<void> {

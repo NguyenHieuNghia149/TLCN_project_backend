@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { successResponse } from '@backend/shared/utils/response';
 import { LearnedLessonService } from '@backend/api/services/learned-lesson.service';
 import { AppException } from '@backend/api/exceptions/base.exception';
 
@@ -29,7 +30,7 @@ export class LearnedLessonController {
       lessonId as string
     );
 
-    res.status(200).json({ isCompleted });
+    res.status(200).json(successResponse({ isCompleted }));
   }
 
   /**
@@ -57,9 +58,7 @@ export class LearnedLessonController {
       throw new AppException('Failed to mark lesson as completed', 500, 'ERROR');
     }
 
-    res.status(201).json({
-      message: 'Lesson marked as completed',
-    });
+    res.status(201).json(successResponse({ message: 'Lesson marked as completed' }));
   }
 
   /**
@@ -78,6 +77,6 @@ export class LearnedLessonController {
 
     const completedLessonIds = await this.learnedLessonService.getCompletedLessonsByUser(userId);
 
-    res.status(200).json({ completedLessonIds });
+    res.status(200).json(successResponse({ completedLessonIds }));
   }
 }

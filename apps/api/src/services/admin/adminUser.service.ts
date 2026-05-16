@@ -6,7 +6,7 @@ import {
 import { UserRepository } from '@backend/api/repositories/user.repository';
 import { PaginatedResult, PaginationOptions, UserFilters } from '@backend/api/repositories/user.repository';
 import { UserEntity, UserInsert } from '@backend/shared/db/schema';
-import { BanUserResponse, UnbanUserResponse, BannedListResponse } from '@backend/api/types/user.types';
+import { BanUserResponse, UnbanUserResponse, BannedListResponse } from '@backend/shared/types/user.types';
 import { EMailService, createEMailService } from './../../services/email.service';
 
 // Custom exception classes for Express-based app
