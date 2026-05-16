@@ -40,6 +40,18 @@ export function createRoadmapRouter(): Router {
     roadmapController.completeRoadmapItem
   );
 
+  /**
+   * Mark a lesson/problem as completed in a roadmap using its content ID.
+   * Used by ProblemDetailPage after an ACCEPTED submission (and optionally by LessonDetail).
+   * Body: { contentId: string, itemType: 'lesson' | 'problem' }
+   */
+  router.post(
+    '/roadmaps/:id/complete-by-content',
+    authenticationToken,
+    generalLimit,
+    roadmapController.completeByContent
+  );
+
   // Generic roadmap routes come AFTER specific ones
   router.get('/roadmaps/:id', generalLimit, roadmapController.getRoadmapById);
   router.get('/user/roadmaps', authenticationToken, generalLimit, roadmapController.listUserRoadmaps);

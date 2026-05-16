@@ -174,6 +174,31 @@ export class RoadmapController {
     res.status(200).json(successResponse(result));
   };
 
+  /**
+   * Mark a lesson or problem as completed in a roadmap using the content ID.
+   * Called from ProblemDetailPage after a successful (ACCEPTED) submission
+   * when the user navigated from a specific roadmap.
+   * Body: { contentId: string, itemType: 'lesson' | 'problem' }
+   */
+  completeByContent = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
+    const roadmapId = req.params.id as string;
+    if (!roadmapId) throw new AppException('Roadmap ID is required', 400, 'ROADMAP_ID_REQUIRED');
+
+    const { contentId, itemType } = req.body as { contentId?: string; itemType?: string };
+    if (!contentId || !itemType || !['lesson', 'problem'].includes(itemType)) {
+      throw new AppException('contentId and itemType (lesson|problem) are required', 400, 'INVALID_INPUT');
+    }
+
+    await this.roadmapService.completeByContent(userId, roadmapId, contentId, itemType as 'lesson' | 'problem');
+    res.status(200).json(successResponse({ marked: true }));
+  };
+
   markItemCompleted = async (
     req: AuthenticatedRequest,
     res: Response,

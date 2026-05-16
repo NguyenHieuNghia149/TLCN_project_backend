@@ -328,6 +328,29 @@ export class RoadmapService {
     return { item: enrichedItem, unlockedNextItem };
   }
 
+  /**
+   * Mark a lesson or problem as completed within a specific roadmap,
+   * identified by its content ID (not the roadmapItem UUID).
+   * Used when the user solves a problem or finishes a lesson while studying a roadmap.
+   */
+  async completeByContent(
+    userId: string,
+    roadmapId: string,
+    contentId: string,
+    itemType: 'lesson' | 'problem'
+  ): Promise<void> {
+    const roadmap = await this.roadmapRepository.findById(roadmapId);
+    if (!roadmap) {
+      throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
+    }
+    await this.roadmapProgressRepository.markItemCompletedInRoadmap(
+      userId,
+      contentId,
+      roadmapId,
+      itemType
+    );
+  }
+
   async markItemCompleted(userId: string, roadmapId: string, itemId: string): Promise<void> {
     // Service receives synchronous call from controller and schedules side-effect internally.
     setImmediate(async () => {
