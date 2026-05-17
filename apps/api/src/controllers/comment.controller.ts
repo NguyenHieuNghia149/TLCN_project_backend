@@ -11,11 +11,11 @@ export class CommentController {
     private readonly commentLikeService: CommentLikeService
   ) {}
 
-  createComment = async (
+  async createComment(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
@@ -29,51 +29,51 @@ export class CommentController {
       lessonId: parsed.body.lessonId,
       problemId: parsed.body.problemId,
       parentCommentId: parsed.body.parentCommentId,
-    } as any;
+    };
 
-    const created = await this.commentService.createComment(payload);
+    const created = await this.commentService.createComment(payload as Parameters<CommentService['createComment']>[0]);
 
     res.status(201).json({ message: 'Comment created', ...created });
-  };
+  }
 
-  getByLesson = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { lessonId } = req.params as any;
+  async getByLesson(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const { lessonId } = req.params as { lessonId: string };
     if (!lessonId) {
       throw new AppException('lessonId required', 400, 'MISSING_LESSON_ID');
     }
 
     const comments = await this.commentService.getCommentsByLesson(lessonId);
     res.status(200).json(comments);
-  };
+  }
 
-  getByProblem = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { problemId } = req.params as any;
+  async getByProblem(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const { problemId } = req.params as { problemId: string };
     if (!problemId) {
       throw new AppException('problemId required', 400, 'MISSING_PROBLEM_ID');
     }
 
     const comments = await this.commentService.getCommentsByProblem(problemId);
     res.status(200).json(comments);
-  };
+  }
 
-  getReplies = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { commentId } = req.params as any;
+  async getReplies(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const { commentId } = req.params as { commentId: string };
     if (!commentId) {
       throw new AppException('commentId required', 400, 'MISSING_COMMENT_ID');
     }
 
     const replies = await this.commentService.getReplies(commentId);
     res.status(200).json(replies);
-  };
+  }
 
-  deleteComment = async (
+  async deleteComment(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     const userRole = req.user?.role;
-    const { id } = req.params as any;
+    const { id } = req.params as { id: string };
     if (!id) {
       throw new AppException('id required', 400, 'MISSING_ID');
     }
@@ -84,20 +84,20 @@ export class CommentController {
     }
 
     res.status(200).json({ message: 'Comment deleted' });
-  };
+  }
 
-  updateComment = async (
+  async updateComment(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    const { id } = req.params as any;
-    const { content } = req.body as any;
+    const { id } = req.params as { id: string };
+    const { content } = req.body as { content: string };
 
     if (!id) {
       throw new AppException('id required', 400, 'MISSING_ID');
@@ -112,17 +112,17 @@ export class CommentController {
     }
 
     res.status(200).json({ message: 'Comment updated', ...updated });
-  };
+  }
 
   /**
    * Pin a comment (admin only)
    * POST /api/comments/:id/pin
    */
-  pinComment = async (
+  async pinComment(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     const userRole = req.user?.role;
 
@@ -130,7 +130,7 @@ export class CommentController {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    const { id } = req.params as any;
+    const { id } = req.params as { id: string };
     if (!id) {
       throw new AppException('id required', 400, 'MISSING_ID');
     }
@@ -142,30 +142,30 @@ export class CommentController {
         data: result,
         error: null,
       });
-    } catch (error: any) {
-      // Map service errors to HTTP responses
-      if (error.message.includes('admin')) {
-        throw new AppException(error.message, 403, 'FORBIDDEN');
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message.includes('admin')) {
+        throw new AppException(err.message, 403, 'FORBIDDEN');
       }
-      if (error.message.includes('not found')) {
-        throw new AppException(error.message, 404, 'NOT_FOUND');
+      if (err.message.includes('not found')) {
+        throw new AppException(err.message, 404, 'NOT_FOUND');
       }
-      if (error.message.includes('already pinned')) {
-        throw new AppException(error.message, 400, 'ALREADY_PINNED');
+      if (err.message.includes('already pinned')) {
+        throw new AppException(err.message, 400, 'ALREADY_PINNED');
       }
-      throw error;
+      throw err;
     }
-  };
+  }
 
   /**
    * Unpin a comment (admin only)
    * DELETE /api/comments/:id/pin
    */
-  unpinComment = async (
+  async unpinComment(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     const userRole = req.user?.role;
 
@@ -173,7 +173,7 @@ export class CommentController {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    const { id } = req.params as any;
+    const { id } = req.params as { id: string };
     if (!id) {
       throw new AppException('id required', 400, 'MISSING_ID');
     }
@@ -185,29 +185,30 @@ export class CommentController {
         data: result,
         error: null,
       });
-    } catch (error: any) {
-      if (error.message.includes('admin')) {
-        throw new AppException(error.message, 403, 'FORBIDDEN');
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message.includes('admin')) {
+        throw new AppException(err.message, 403, 'FORBIDDEN');
       }
-      if (error.message.includes('not found')) {
-        throw new AppException(error.message, 404, 'NOT_FOUND');
+      if (err.message.includes('not found')) {
+        throw new AppException(err.message, 404, 'NOT_FOUND');
       }
-      if (error.message.includes('not pinned')) {
-        throw new AppException(error.message, 400, 'NOT_PINNED');
+      if (err.message.includes('not pinned')) {
+        throw new AppException(err.message, 400, 'NOT_PINNED');
       }
-      throw error;
+      throw err;
     }
-  };
+  }
 
   /**
    * Toggle like on a comment
    * POST /api/comments/:id/like
    */
-  toggleLikeComment = async (
+  async toggleLikeComment(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     const userRole = req.user?.role;
 
@@ -215,7 +216,7 @@ export class CommentController {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    const { id } = req.params as any;
+    const { id } = req.params as { id: string };
     if (!id) {
       throw new AppException('id required', 400, 'MISSING_ID');
     }
@@ -227,26 +228,27 @@ export class CommentController {
         data: result,
         error: null,
       });
-    } catch (error: any) {
-      if (error.message.includes('not found')) {
-        throw new AppException(error.message, 404, 'NOT_FOUND');
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message.includes('not found')) {
+        throw new AppException(err.message, 404, 'NOT_FOUND');
       }
-      throw error;
+      throw err;
     }
-  };
+  }
 
   /**
    * Get like status for a comment
    * GET /api/comments/:id/like-status
    * Works with optional auth (unauthenticated users get userHasLiked: false)
    */
-  getCommentLikeStatus = async (
+  async getCommentLikeStatus(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId || undefined;
-    const { id } = req.params as any;
+    const { id } = req.params as { id: string };
 
     if (!id) {
       throw new AppException('id required', 400, 'MISSING_ID');
@@ -259,26 +261,27 @@ export class CommentController {
         data: result,
         error: null,
       });
-    } catch (error: any) {
-      if (error.message.includes('not found')) {
-        throw new AppException(error.message, 404, 'NOT_FOUND');
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message.includes('not found')) {
+        throw new AppException(err.message, 404, 'NOT_FOUND');
       }
-      throw error;
+      throw err;
     }
-  };
+  }
 
   /**
    * Get batch like status for multiple comments
    * GET /api/comments/like-status/batch?ids=id1,id2,...
    * Works with optional auth
    */
-  getBatchLikeStatus = async (
+  async getBatchLikeStatus(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId || undefined;
-    const { ids } = req.query as any;
+    const { ids } = req.query as { ids?: string };
 
     if (!ids || typeof ids !== 'string') {
       throw new AppException('ids query parameter required (comma-separated)', 400, 'INVALID_IDS');
@@ -296,8 +299,8 @@ export class CommentController {
         data: result,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
-  };
+  }
 }

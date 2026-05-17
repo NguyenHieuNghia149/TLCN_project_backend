@@ -14,11 +14,11 @@ import {
 export class RoadmapController {
   constructor(private readonly roadmapService: RoadmapService) {}
 
-  createRoadmap = async (
+  async createRoadmap(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) {
       throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
@@ -27,9 +27,9 @@ export class RoadmapController {
     const input = CreateRoadmapSchema.parse(req.body);
     const roadmap = await this.roadmapService.createRoadmap(input, userId);
     res.status(201).json(successResponse(roadmap));
-  };
+  }
 
-  listRoadmaps = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  async listRoadmaps(req: Request, res: Response, next: NextFunction): Promise<void> {
     const limit = Number(req.query.limit ?? 20);
     const offset = Number(req.query.offset ?? 0);
     const visibility = req.query.visibility as 'public' | 'private' | undefined;
@@ -37,9 +37,9 @@ export class RoadmapController {
 
     const data = await this.roadmapService.listRoadmaps({ limit, offset, visibility, createdBy });
     res.status(200).json(successResponse(data));
-  };
+  }
 
-  getRoadmapById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  async getRoadmapById(req: Request, res: Response, next: NextFunction): Promise<void> {
     const roadmapId = req.params.id as string;
     if (!roadmapId) {
       throw new AppException('Roadmap ID is required', 400, 'ROADMAP_ID_REQUIRED');
@@ -49,13 +49,13 @@ export class RoadmapController {
       throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
     }
     res.status(200).json(successResponse(data));
-  };
+  }
 
-  updateRoadmap = async (
+  async updateRoadmap(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -64,13 +64,13 @@ export class RoadmapController {
     const input = UpdateRoadmapSchema.parse(req.body);
     const updated = await this.roadmapService.updateRoadmap(roadmapId, userId, input);
     res.status(200).json(successResponse(updated));
-  };
+  }
 
-  deleteRoadmap = async (
+  async deleteRoadmap(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -78,9 +78,9 @@ export class RoadmapController {
 
     await this.roadmapService.deleteRoadmap(roadmapId, userId);
     res.status(200).json(successResponse({ deleted: true }));
-  };
+  }
 
-  addItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  async addItem(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -89,13 +89,13 @@ export class RoadmapController {
     const input = AddRoadmapItemSchema.parse(req.body);
     const item = await this.roadmapService.addItemToRoadmap({ roadmapId, userId, ...input });
     res.status(201).json(successResponse(item));
-  };
+  }
 
-  removeItem = async (
+  async removeItem(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -104,13 +104,13 @@ export class RoadmapController {
 
     await this.roadmapService.removeItemFromRoadmap(roadmapId, userId, itemId);
     res.status(200).json(successResponse({ deleted: true }));
-  };
+  }
 
-  reorderItems = async (
+  async reorderItems(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -119,13 +119,13 @@ export class RoadmapController {
     const { itemIds } = ReorderRoadmapItemsSchema.parse(req.body);
     const items = await this.roadmapService.reorderItems(roadmapId, userId, itemIds);
     res.status(200).json(successResponse(items));
-  };
+  }
 
-  getUserProgress = async (
+  async getUserProgress(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -133,18 +133,18 @@ export class RoadmapController {
 
     const stats = await this.roadmapService.getUserProgress(userId, roadmapId);
     res.status(200).json(successResponse(stats));
-  };
+  }
 
   /**
    * R14.5: Get roadmap detail with sequential unlock status per item
    * Called by frontend to render roadmap with lock UI
    * Returns items with: isCompleted, isUnlocked, lockReason
    */
-  getRoadmapDetailWithLockStatus = async (
+  async getRoadmapDetailWithLockStatus(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -152,18 +152,18 @@ export class RoadmapController {
 
     const data = await this.roadmapService.getRoadmapDetailWithLockStatus(roadmapId, userId);
     res.status(200).json(successResponse(data));
-  };
+  }
 
   /**
    * R14.5: Mark roadmap item as completed by user
    * Validates prerequisite: previous item must be completed first
    * Returns completion record + unlocked next item
    */
-  completeRoadmapItem = async (
+  async completeRoadmapItem(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -172,7 +172,7 @@ export class RoadmapController {
 
     const result = await this.roadmapService.completeRoadmapItem(userId, roadmapId, itemId);
     res.status(200).json(successResponse(result));
-  };
+  }
 
   /**
    * Mark a lesson or problem as completed in a roadmap using the content ID.
@@ -180,11 +180,11 @@ export class RoadmapController {
    * when the user navigated from a specific roadmap.
    * Body: { contentId: string, itemType: 'lesson' | 'problem' }
    */
-  completeByContent = async (
+  async completeByContent(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -197,13 +197,13 @@ export class RoadmapController {
 
     await this.roadmapService.completeByContent(userId, roadmapId, contentId, itemType as 'lesson' | 'problem');
     res.status(200).json(successResponse({ marked: true }));
-  };
+  }
 
-  markItemCompleted = async (
+  async markItemCompleted(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -212,13 +212,13 @@ export class RoadmapController {
     const { itemId } = MarkRoadmapItemSchema.parse(req.body);
     await this.roadmapService.markItemCompleted(userId, roadmapId, itemId);
     res.status(200).json(successResponse({ queued: true }));
-  };
+  }
 
-  markItemIncomplete = async (
+  async markItemIncomplete(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
     const roadmapId = req.params.id as string;
@@ -227,13 +227,13 @@ export class RoadmapController {
     const { itemId } = MarkRoadmapItemSchema.parse(req.body);
     await this.roadmapService.markItemIncomplete(userId, roadmapId, itemId);
     res.status(200).json(successResponse({ queued: true }));
-  };
+  }
 
-  listUserRoadmaps = async (
+  async listUserRoadmaps(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     const userId = req.user?.userId;
     if (!userId) throw new AppException('Authentication required', 401, 'UNAUTHORIZED');
 
@@ -241,5 +241,5 @@ export class RoadmapController {
     const offset = Number(req.query.offset ?? 0);
     const data = await this.roadmapService.listRoadmaps({ limit, offset, createdBy: userId });
     res.status(200).json(successResponse(data));
-  };
+  }
 }

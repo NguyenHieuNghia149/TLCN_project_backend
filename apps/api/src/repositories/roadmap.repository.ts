@@ -64,7 +64,7 @@ export class RoadmapRepository extends BaseRepository<typeof roadmaps, RoadmapEn
       .offset(params.offset);
 
     return rows.map(r => ({
-      ...(r.roadmap as any),
+      ...(r.roadmap as RoadmapEntity),
       creatorEmail: r.creatorEmail ?? null,
       creatorFirstName: r.creatorFirstName ?? null,
       creatorLastName: r.creatorLastName ?? null,

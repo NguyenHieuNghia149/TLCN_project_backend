@@ -72,7 +72,7 @@ export class RoadmapService {
    */
   async getRoadmapDetailWithLockStatus(roadmapId: string, userId: string) {
     const roadmapDetail = await this.roadmapRepository.getRoadmapDetail(roadmapId);
-    if (!roadmapDetail) {
+    if (!roadmapDetail?.roadmap) {
       throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
     }
 
@@ -229,7 +229,7 @@ export class RoadmapService {
     userId: string,
     roadmapId: string,
     itemId: string
-  ): Promise<{ item: any; unlockedNextItem?: any }> {
+  ): Promise<{ item: Record<string, unknown>; unlockedNextItem?: Record<string, unknown> }> {
     // 1. Get roadmap detail with enriched item data (includes itemTitle)
     const roadmapDetail = await this.roadmapRepository.getRoadmapDetail(roadmapId);
     if (!roadmapDetail) {
@@ -277,8 +277,8 @@ export class RoadmapService {
       };
     }
 
-    // 3. Validate prerequisite: if order > 0, previous item must be completed
-    if (item.order > 0) {
+    // 3. Validate prerequisite: if order > 1, previous item must be completed
+    if (item.order > 1) {
       const previousItem = roadmapDetail.items.find(i => i.order === item.order - 1);
       if (!previousItem) {
         throw new AppException(

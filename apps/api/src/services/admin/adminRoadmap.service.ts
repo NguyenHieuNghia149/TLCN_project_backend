@@ -82,7 +82,7 @@ export class AdminRoadmapService {
       throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
     }
 
-    const updated = await this.roadmapRepository.update(params.id, { visibility: params.visibility } as any);
+    const updated = await this.roadmapRepository.update(params.id, { visibility: params.visibility });
     if (!updated) {
       throw new AppException('Failed to update roadmap visibility', 500, 'UPDATE_FAILED');
     }
@@ -229,6 +229,8 @@ export class AdminRoadmapService {
       throw new AppException('Item not found in roadmap', 404, 'ITEM_NOT_FOUND');
     }
 
+    await this.roadmapItemRepository.compactOrdersAfterDelete(params.roadmapId);
+
     logger.info({
       action: 'ADMIN_ROADMAP_ITEM_REMOVED',
       roadmapId: params.roadmapId,
@@ -266,12 +268,12 @@ export class AdminRoadmapService {
     ]);
 
     return {
-      lessons: lessons.map((lesson: any) => ({
+      lessons: lessons.map((lesson: { id: string; title: string }) => ({
         id: lesson.id,
         title: lesson.title,
         type: 'lesson' as const,
       })),
-      problems: (problems.data || []).map((problem: any) => ({
+      problems: (problems.data || []).map((problem: { id: string; title: string }) => ({
         id: problem.id,
         title: problem.title,
         type: 'problem' as const,

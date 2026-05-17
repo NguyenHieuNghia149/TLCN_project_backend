@@ -38,7 +38,7 @@ export class CommentService {
     if (userId && comment.userId !== userId) {
       throw new Error('Permission denied');
     }
-    return this.repo.update(id, { content } as any);
+    return this.repo.update(id, { content } as Partial<CommentInsert>);
   }
 
   async deleteComment(id: string, userId?: string, userRole?: string): Promise<boolean> {
