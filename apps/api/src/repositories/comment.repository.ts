@@ -128,7 +128,7 @@ export class CommentRepository extends BaseRepository<
       })
       .from(this.table)
       .leftJoin(users, eq(this.table.userId, users.id))
-      .where(inArray(this.table.parentCommentId, parentCommentIds as any))
+      .where(inArray(this.table.parentCommentId, parentCommentIds as string[]))
       .orderBy(this.table.createdAt);
 
     const repliesByParentId = new Map<string, CommentWithUser[]>();

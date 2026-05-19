@@ -2,7 +2,15 @@ import '../utils/load-env';
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, TransactionType } from '../db/connection';
-import { resultSubmissions, submissions, testcases, users, roadmapItems, roadmapProgress } from '../db/schema';
+import {
+  resultSubmissions,
+  submissions,
+  testcases,
+  users,
+  roadmapItems,
+  roadmapProgress,
+  userItemCompletions,
+} from '../db/schema';
 import { ESubmissionStatus } from '../types';
 import { SubmissionResult } from '../validations/submission.validation';
 
@@ -138,23 +146,54 @@ async function updateRoadmapProgressForProblem(
 
   if (items.length === 0) return;
 
-  const roadmapIds = items.map(i => i.roadmapId);
+  const itemIds = items.map(item => item.id);
+  const existingCompletions = await executor
+    .select({ itemId: userItemCompletions.itemId })
+    .from(userItemCompletions)
+    .where(and(eq(userItemCompletions.userId, userId), inArray(userItemCompletions.itemId, itemIds)));
+
+  const existingItemIds = new Set(existingCompletions.map(row => row.itemId));
+  const missingItemIds = itemIds.filter(id => !existingItemIds.has(id));
+  if (missingItemIds.length > 0) {
+    await executor.insert(userItemCompletions).values(
+      missingItemIds.map(itemId => ({ userId, itemId }))
+    );
+  }
+
+  const roadmapIds = Array.from(new Set(items.map(i => i.roadmapId)));
   const progresses = await executor
     .select()
     .from(roadmapProgress)
     .where(and(eq(roadmapProgress.userId, userId), inArray(roadmapProgress.roadmapId, roadmapIds)));
 
-  for (const prog of progresses) {
-    const rItem = items.find(i => i.roadmapId === prog.roadmapId);
-    if (rItem) {
-      const current = (prog.completedItemIds ?? []) as string[];
-      if (!current.includes(rItem.id)) {
-        const next = [...current, rItem.id];
+  const progressByRoadmap = new Map(progresses.map(prog => [prog.roadmapId, prog]));
+  const itemsByRoadmap = items.reduce((map, item) => {
+    const list = map.get(item.roadmapId) ?? [];
+    list.push(item.id);
+    map.set(item.roadmapId, list);
+    return map;
+  }, new Map<string, string[]>());
+
+  for (const [roadmapId, roadmapItemIds] of itemsByRoadmap.entries()) {
+    const progress = progressByRoadmap.get(roadmapId);
+    if (progress) {
+      const current = new Set(((progress.completedItemIds ?? []) as string[]));
+      const newItemIds = roadmapItemIds.filter(id => !current.has(id));
+      if (newItemIds.length > 0) {
         await executor
           .update(roadmapProgress)
-          .set({ completedItemIds: next, updatedAt: new Date() })
-          .where(eq(roadmapProgress.id, prog.id));
+          .set({
+            completedItemIds: [...Array.from(current), ...newItemIds],
+            updatedAt: new Date(),
+          })
+          .where(eq(roadmapProgress.id, progress.id));
       }
+    } else {
+      await executor.insert(roadmapProgress).values({
+        userId,
+        roadmapId,
+        completedItemIds: roadmapItemIds,
+      });
     }
   }
 }

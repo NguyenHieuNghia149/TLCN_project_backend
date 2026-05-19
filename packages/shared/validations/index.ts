@@ -15,3 +15,4 @@ export * from './lesson.validation';
 export * from './profile.validation';
 export * from './roadmap.validation';
 export * from './supportedLanguage.validation';
+export * from './ban.validation';

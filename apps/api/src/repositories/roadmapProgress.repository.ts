@@ -3,6 +3,7 @@ import { BaseRepository } from './base.repository';
 import {
   roadmapItems,
   roadmapProgress,
+  userItemCompletions,
   RoadmapProgressEntity,
   RoadmapProgressInsert,
 } from '@backend/shared/db/schema';
@@ -115,6 +116,68 @@ export class RoadmapProgressRepository extends BaseRepository<
     return { total, completed, percentage, completedItems };
   }
 
+  /**
+   * Mark a lesson/problem as completed only within a specific roadmap.
+   * Used when the user completes content by navigating from a specific roadmap,
+   * so progress is scoped to that roadmap only (not propagated globally).
+   *
+   * @param userId       The user completing the item
+   * @param targetItemId The lesson ID or problem ID (not the roadmapItem UUID)
+   * @param roadmapId    The roadmap the user is currently studying
+   * @param itemType     'lesson' | 'problem'
+   */
+  async markItemCompletedInRoadmap(
+    userId: string,
+    targetItemId: string,
+    roadmapId: string,
+    itemType: 'lesson' | 'problem'
+  ): Promise<void> {
+    // 1. Find the roadmapItem in the given roadmap that maps to this lesson/problem
+    const items = await this.db
+      .select({ id: roadmapItems.id, roadmapId: roadmapItems.roadmapId })
+      .from(roadmapItems)
+      .where(
+        and(
+          eq(roadmapItems.itemId, targetItemId),
+          eq(roadmapItems.itemType, itemType),
+          eq(roadmapItems.roadmapId, roadmapId)
+        )
+      );
+
+    if (items.length === 0) {
+      // The lesson/problem is not part of this roadmap — nothing to update
+      return;
+    }
+
+    const itemIds = items.map((i) => i.id);
+
+    // 2. Insert userItemCompletion records for items not yet completed
+    const existingRows = await this.db
+      .select({ itemId: userItemCompletions.itemId })
+      .from(userItemCompletions)
+      .where(
+        and(
+          eq(userItemCompletions.userId, userId),
+          inArray(userItemCompletions.itemId, itemIds)
+        )
+      );
+    const existingSet = new Set(existingRows.map((r) => r.itemId));
+    const newIds = itemIds.filter((id) => !existingSet.has(id));
+
+    if (newIds.length > 0) {
+      await this.db
+        .insert(userItemCompletions)
+        .values(newIds.map((itemId) => ({ userId, itemId })));
+    }
+
+    // 3. Merge with the roadmapProgress aggregate row for this roadmap
+    const allCompletedIds = [...existingSet, ...newIds];
+    const existing = await this.getProgressByUserAndRoadmap(userId, roadmapId);
+    const current = (existing?.completedItemIds ?? []) as string[];
+    const merged = Array.from(new Set([...current, ...allCompletedIds]));
+    await this.updateProgress(userId, roadmapId, merged);
+  }
+
   async markItemCompletedInAllUserRoadmaps(
     userId: string,
     targetItemId: string,
@@ -126,10 +189,36 @@ export class RoadmapProgressRepository extends BaseRepository<
       .from(roadmapItems)
       .where(and(eq(roadmapItems.itemId, targetItemId), eq(roadmapItems.itemType, itemType)));
 
-    if (items.length === 0) return;
+    console.log(`[markItemCompletedInAllUserRoadmaps] userId=${userId}, targetItemId=${targetItemId}, itemType=${itemType}, foundItems=${items.length}`);
 
-    // 2. Find all user progresses for these roadmaps
-    const roadmapIds = items.map((i) => i.roadmapId);
+    if (items.length === 0) {
+      console.log(`[markItemCompletedInAllUserRoadmaps] No roadmap items found for this ${itemType}, returning early`);
+      return;
+    }
+
+    const itemIds = items.map((i) => i.id);
+    const roadmapIds = Array.from(new Set(items.map((i) => i.roadmapId)));
+
+    // 2. Find already completed roadmap item IDs for this user
+    const existingCompletionRows = await this.db
+      .select({ itemId: userItemCompletions.itemId })
+      .from(userItemCompletions)
+      .where(
+        and(
+          eq(userItemCompletions.userId, userId),
+          inArray(userItemCompletions.itemId, itemIds)
+        )
+      );
+    const existingCompletedItemIds = new Set(existingCompletionRows.map((row) => row.itemId));
+
+    const newlyCompletedItemIds = itemIds.filter((itemId) => !existingCompletedItemIds.has(itemId));
+    if (newlyCompletedItemIds.length > 0) {
+      await this.db.insert(userItemCompletions).values(
+        newlyCompletedItemIds.map((itemId) => ({ userId, itemId }))
+      );
+    }
+
+    // 3. Load progress rows and merge with current state
     const progresses = await this.db
       .select()
       .from(roadmapProgress)
@@ -140,15 +229,30 @@ export class RoadmapProgressRepository extends BaseRepository<
         )
       );
 
-    // 3. For each progress, add the corresponding roadmapItem.id to completedItemIds
-    for (const prog of progresses) {
-      const roadmapItem = items.find((i) => i.roadmapId === prog.roadmapId);
-      if (roadmapItem) {
-        const current = (prog.completedItemIds ?? []) as string[];
-        if (!current.includes(roadmapItem.id)) {
-          const next = [...current, roadmapItem.id];
-          await this.updateProgress(userId, prog.roadmapId, next);
-        }
+    // 4. For each roadmap, merge new completed items with existing progress
+    for (const roadmapId of roadmapIds) {
+      const roadmapItemIds = items
+        .filter((item) => item.roadmapId === roadmapId)
+        .map((item) => item.id);
+
+      const existingProgress = progresses.find((p) => p.roadmapId === roadmapId);
+      const currentCompleted = existingProgress?.completedItemIds ?? [];
+      
+      // Merge: existing progress items + newly completed items from this lesson/problem
+      const newlyCompletedInThisRoadmap = newlyCompletedItemIds.filter((id) =>
+        roadmapItemIds.includes(id)
+      );
+
+      console.log(`[markItemCompletedInAllUserRoadmaps] roadmapId=${roadmapId}, roadmapItemIds=${roadmapItemIds.length}, newlyCompletedInThisRoadmap=${newlyCompletedInThisRoadmap.length}`);
+
+      if (newlyCompletedInThisRoadmap.length > 0) {
+        const merged = Array.from(
+          new Set([...(currentCompleted as string[]), ...newlyCompletedInThisRoadmap])
+        );
+        console.log(`[markItemCompletedInAllUserRoadmaps] Updating progress for roadmapId=${roadmapId}, merged completedItemIds=${merged.length}`);
+        await this.updateProgress(userId, roadmapId, merged);
+      } else {
+        console.log(`[markItemCompletedInAllUserRoadmaps] No new items to update for roadmapId=${roadmapId}`);
       }
     }
   }

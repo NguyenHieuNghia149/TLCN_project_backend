@@ -17,6 +17,7 @@ export type UpdateRoadmapInput = z.infer<typeof UpdateRoadmapSchema>;
 export const AddRoadmapItemSchema = z.object({
   itemType: z.enum(['lesson', 'problem']),
   itemId: z.string().uuid(),
+  order: z.number().int().optional(),
 });
 export type AddRoadmapItemInput = z.infer<typeof AddRoadmapItemSchema>;
 
@@ -36,3 +37,30 @@ export type RoadmapProgressStats = {
   percentage: number;
   completedItems: string[];
 };
+
+export const ListRoadmapsQuerySchema = z.object({
+  keyword: z.string().optional(),
+  createdBy: z.string().uuid().optional(),
+  visibility: z.enum(['public', 'private']).optional(),
+  createdAtFrom: z.string().optional(),
+  createdAtTo: z.string().optional(),
+  limit: z.coerce.number().min(1).max(100).optional(),
+  offset: z.coerce.number().min(0).optional(),
+});
+export type ListRoadmapsQueryInput = z.infer<typeof ListRoadmapsQuerySchema>;
+
+export const UpdateVisibilitySchema = z.object({
+  visibility: z.enum(['public', 'private']),
+});
+export type UpdateVisibilityInput = z.infer<typeof UpdateVisibilitySchema>;
+
+export const RoadmapIdParamSchema = z.object({
+  id: z.string().uuid('Invalid roadmap ID'),
+});
+export type RoadmapIdParamInput = z.infer<typeof RoadmapIdParamSchema>;
+
+export const RemoveRoadmapItemParamSchema = z.object({
+  id: z.string().uuid('Invalid roadmap ID'),
+  itemId: z.string().uuid('Invalid item ID'),
+});
+export type RemoveRoadmapItemParamInput = z.infer<typeof RemoveRoadmapItemParamSchema>;

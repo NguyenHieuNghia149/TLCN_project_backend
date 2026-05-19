@@ -25,9 +25,10 @@ export class CommentLikeRepository extends BaseRepository<
         commentId,
         userId,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Ignore UNIQUE constraint violation - user already liked this comment
-      if (error.code === '23505') {
+      const err = error as { code?: string };
+      if (err.code === '23505') {
         return;
       }
       throw error;
