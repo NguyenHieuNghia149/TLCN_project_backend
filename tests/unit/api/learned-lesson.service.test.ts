@@ -14,7 +14,10 @@ describe('LearnedLessonService', () => {
     const learnedLessonRepository = {
       hasUserCompletedLesson: jest.fn().mockResolvedValue(true),
     } as any;
-    const service = new LearnedLessonService({ learnedLessonRepository });
+    const roadmapProgressRepository = {
+      markItemCompletedInAllUserRoadmaps: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new LearnedLessonService({ learnedLessonRepository, roadmapProgressRepository });
 
     const result = await service.hasUserCompletedLesson('user-1', 'lesson-1');
 

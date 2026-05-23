@@ -5,8 +5,8 @@ import { AppException } from '@backend/api/exceptions/base.exception';
 class UserRoadmapSelectionController {
   private service = createUserRoadmapSelectionService();
 
-  getUserSelection = async (req: Request, res: Response): Promise<void> => {
-    const userId = (req as any).user?.userId as string | undefined;
+  async getUserSelection(req: Request, res: Response): Promise<void> {
+    const userId = (req as unknown as { user?: { userId: string } }).user?.userId;
     if (!userId) {
       throw new AppException('Unauthorized', 401, 'UNAUTHORIZED');
     }
@@ -16,15 +16,15 @@ class UserRoadmapSelectionController {
       success: true,
       data: selection,
     });
-  };
+  }
 
-  selectRoadmap = async (req: Request, res: Response): Promise<void> => {
-    const userId = (req as any).user?.userId as string | undefined;
+  async selectRoadmap(req: Request, res: Response): Promise<void> {
+    const userId = (req as unknown as { user?: { userId: string } }).user?.userId;
     if (!userId) {
       throw new AppException('Unauthorized', 401, 'UNAUTHORIZED');
     }
 
-    const roadmapId = (req.body as any)?.roadmapId;
+    const roadmapId = (req.body as { roadmapId?: string })?.roadmapId;
     if (!roadmapId) {
       throw new AppException('roadmapId is required', 400, 'INVALID_INPUT');
     }
@@ -38,7 +38,7 @@ class UserRoadmapSelectionController {
       success: true,
       data: selection,
     });
-  };
+  }
 }
 
 export default UserRoadmapSelectionController;

@@ -4,7 +4,7 @@ import { AdminRoadmapService } from '@backend/api/services/admin/adminRoadmap.se
 export class AdminRoadmapController {
   constructor(private readonly service: AdminRoadmapService) {}
 
-  list = async (req: Request, res: Response): Promise<void> => {
+  async list(req: Request, res: Response): Promise<void> {
     const limit = Math.max(1, parseInt(String(req.query.limit || '20'), 10) || 20);
     const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
 
@@ -19,10 +19,10 @@ export class AdminRoadmapController {
     });
 
     res.status(200).json({ success: true, data: result, error: null });
-  };
+  }
 
-  create = async (req: Request, res: Response): Promise<void> => {
-    const userId = (req as any).user?.userId as string | undefined;
+  async create(req: Request, res: Response): Promise<void> {
+    const userId = (req as unknown as { user?: { userId: string } }).user?.userId;
     if (!userId) {
       res.status(401).json({
         success: false,
@@ -46,17 +46,17 @@ export class AdminRoadmapController {
     });
 
     res.status(201).json({ success: true, data: roadmap, error: null });
-  };
+  }
 
-  getById = async (req: Request, res: Response): Promise<void> => {
+  async getById(req: Request, res: Response): Promise<void> {
     const { id } = req.params as { id: string };
     const result = await this.service.getRoadmapDetail(id);
     res.status(200).json({ success: true, data: result, error: null });
-  };
+  }
 
-  updateVisibility = async (req: Request, res: Response): Promise<void> => {
+  async updateVisibility(req: Request, res: Response): Promise<void> {
     const { id } = req.params as { id: string };
-    const adminId = (req as any).user?.userId as string | undefined;
+    const adminId = (req as unknown as { user?: { userId: string } }).user?.userId;
 
     // [WARN-2] Throw instead of falling back to 'unknown'
     if (!adminId) {
@@ -72,11 +72,11 @@ export class AdminRoadmapController {
 
     const result = await this.service.updateVisibility({ id, visibility, adminId });
     res.status(200).json({ success: true, data: result, error: null });
-  };
+  }
 
-  remove = async (req: Request, res: Response): Promise<void> => {
+  async remove(req: Request, res: Response): Promise<void> {
     const { id } = req.params as { id: string };
-    const adminId = (req as any).user?.userId as string | undefined;
+    const adminId = (req as unknown as { user?: { userId: string } }).user?.userId;
 
     // [WARN-2] Throw instead of falling back to 'unknown'
     if (!adminId) {
@@ -90,9 +90,9 @@ export class AdminRoadmapController {
 
     const result = await this.service.deleteRoadmap({ id, adminId });
     res.status(200).json({ success: true, data: result, error: null });
-  };
+  }
 
-  addItem = async (req: Request, res: Response): Promise<void> => {
+  async addItem(req: Request, res: Response): Promise<void> {
     const { id } = req.params as { id: string };
     const { itemType, itemId, order } = req.body as {
       itemType: 'lesson' | 'problem';
@@ -108,9 +108,9 @@ export class AdminRoadmapController {
     });
 
     res.status(201).json({ success: true, data: item, error: null });
-  };
+  }
 
-  removeItem = async (req: Request, res: Response): Promise<void> => {
+  async removeItem(req: Request, res: Response): Promise<void> {
     const { id, itemId } = req.params as { id: string; itemId: string };
     const result = await this.service.removeItemFromRoadmap({
       roadmapId: id,
@@ -118,12 +118,12 @@ export class AdminRoadmapController {
     });
 
     res.status(200).json({ success: true, data: result, error: null });
-  };
+  }
 
-  reorderItems = async (req: Request, res: Response): Promise<void> => {
+  async reorderItems(req: Request, res: Response): Promise<void> {
     const { id } = req.params as { id: string };
     const { itemIds } = req.body as { itemIds: string[] };
-    const adminId = (req as any).user?.userId as string | undefined;
+    const adminId = (req as unknown as { user?: { userId: string } }).user?.userId;
 
     if (!adminId) {
       res.status(401).json({
@@ -136,13 +136,13 @@ export class AdminRoadmapController {
 
     const result = await this.service.reorderItems(id, adminId, itemIds);
     res.status(200).json({ success: true, data: result, error: null });
-  };
+  }
 
   // [BUG-2] Delegate to service; [BUG-3] No try/catch – let global error handler format the response
-  getAvailableItems = async (req: Request, res: Response): Promise<void> => {
+  async getAvailableItems(req: Request, res: Response): Promise<void> {
     const data = await this.service.getAvailableItems();
     res.status(200).json({ success: true, data, error: null });
-  };
+  }
 }
 
 export default AdminRoadmapController;

@@ -24,23 +24,23 @@ export function createCommentRouter(): Router {
     message: 'Too many comment requests from this IP, please try again later.',
   });
 
-  router.post('/', authenticationToken, createLimit, controller.createComment);
-  router.get('/lesson/:lessonId', generalLimit, optionalAuth, controller.getByLesson);
-  router.get('/problem/:problemId', generalLimit, optionalAuth, controller.getByProblem);
-  router.get('/:commentId/replies', generalLimit, optionalAuth, controller.getReplies);
-  router.put('/:id', authenticationToken, createLimit, controller.updateComment);
-  router.delete('/:id', authenticationToken, createLimit, controller.deleteComment);
+  router.post('/', authenticationToken, createLimit, controller.createComment.bind(controller));
+  router.get('/lesson/:lessonId', generalLimit, optionalAuth, controller.getByLesson.bind(controller));
+  router.get('/problem/:problemId', generalLimit, optionalAuth, controller.getByProblem.bind(controller));
+  router.get('/:commentId/replies', generalLimit, optionalAuth, controller.getReplies.bind(controller));
+  router.put('/:id', authenticationToken, createLimit, controller.updateComment.bind(controller));
+  router.delete('/:id', authenticationToken, createLimit, controller.deleteComment.bind(controller));
 
   // Pin/Unpin endpoints (admin only)
-  router.post('/:id/pin', authenticationToken, createLimit, controller.pinComment);
-  router.delete('/:id/pin', authenticationToken, createLimit, controller.unpinComment);
+  router.post('/:id/pin', authenticationToken, createLimit, controller.pinComment.bind(controller));
+  router.delete('/:id/pin', authenticationToken, createLimit, controller.unpinComment.bind(controller));
 
   // Like endpoints
-  router.post('/:id/like', authenticationToken, createLimit, controller.toggleLikeComment);
-  router.get('/:id/like-status', generalLimit, optionalAuth, controller.getCommentLikeStatus);
+  router.post('/:id/like', authenticationToken, createLimit, controller.toggleLikeComment.bind(controller));
+  router.get('/:id/like-status', generalLimit, optionalAuth, controller.getCommentLikeStatus.bind(controller));
   
   // Batch like status (to prevent N+1 queries)
-  router.get('/like-status/batch', generalLimit, optionalAuth, controller.getBatchLikeStatus);
+  router.get('/like-status/batch', generalLimit, optionalAuth, controller.getBatchLikeStatus.bind(controller));
 
   return router;
 }

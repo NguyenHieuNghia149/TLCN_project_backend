@@ -6,8 +6,8 @@ export function createUserRouter(): Router {
   const router = Router();
   const controller = new UserRoadmapSelectionController();
 
-  router.get('/roadmap-selection', authenticationToken, controller.getUserSelection);
-  router.post('/roadmap-selection', authenticationToken, controller.selectRoadmap);
+  router.get('/roadmap-selection', authenticationToken, controller.getUserSelection.bind(controller));
+  router.post('/roadmap-selection', authenticationToken, controller.selectRoadmap.bind(controller));
 
   return router;
 }

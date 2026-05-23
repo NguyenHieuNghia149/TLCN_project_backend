@@ -4,7 +4,7 @@ import {
   CommentWithReplies,
 } from '../repositories/comment.repository';
 import { CommentInsert, CommentEntity } from '@backend/shared/db/schema';
-import { CommentPinResponse } from '../types/comment.types';
+import { CommentPinResponse } from '@backend/shared/types/comment.types';
 import { logger } from '@backend/shared/utils';
 
 export class CommentService {
@@ -38,7 +38,7 @@ export class CommentService {
     if (userId && comment.userId !== userId) {
       throw new Error('Permission denied');
     }
-    return this.repo.update(id, { content } as any);
+    return this.repo.update(id, { content } as Partial<CommentInsert>);
   }
 
   async deleteComment(id: string, userId?: string, userRole?: string): Promise<boolean> {
