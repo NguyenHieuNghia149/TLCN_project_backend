@@ -2,17 +2,17 @@
     "extends":  "../../tsconfig.json",
     "compilerOptions":  {
         "outDir":  "./dist",
-           "ignoreDeprecations":  "5.0",
+        "ignoreDeprecations":  "5.0",
 
         "paths":  {
         "@/*":  [
-                    "src/*"
-                ],
+               "./src/*"
+        ],
         "@backend/shared/*":  [
                                 "../../packages/shared/*"
                             ],
         "@backend/api/*":  [
-                                "src/*"
+                                "./src/*"
                             ]
         }
         },
