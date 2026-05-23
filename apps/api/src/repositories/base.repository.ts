@@ -1,6 +1,6 @@
 import { SQL, eq, desc, asc, count, and } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
-import { db } from '@backend/shared/db/connection';
+import { db, type DatabaseType } from '@backend/shared/db/connection';
 
 export interface PaginationOptions {
   page?: number;
@@ -22,7 +22,7 @@ export interface PaginationResult<T> {
 }
 
 export abstract class BaseRepository<TTable extends PgTable, TSelect, TInsert> {
-  protected db = db;
+  protected db: DatabaseType = db;
 
   constructor(protected readonly table: TTable) {}
 
