@@ -34,6 +34,9 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     nlohmann-json3-dev \
+    libjackson2-annotations-java \
+    libjackson2-core-java \
+    libjackson2-databind-java \
     openjdk-17-jdk \
     git \
     libprotobuf-dev \
