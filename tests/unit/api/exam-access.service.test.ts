@@ -426,6 +426,133 @@ describe('ExamAccessService', () => {
     });
   });
 
+  it('allows an authenticated participant to read archived exam metadata for results', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-archived',
+        slug: 'archived-midterm',
+        title: 'Archived Midterm',
+        status: 'archived',
+        accessMode: 'invite_only',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2026-01-01T09:00:00.000Z'),
+        endDate: new Date('2026-01-01T12:00:00.000Z'),
+        registrationOpenAt: null,
+        registrationCloseAt: null,
+        allowExternalCandidates: false,
+        selfRegistrationApprovalMode: null,
+        selfRegistrationPasswordRequired: false,
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-archived',
+        userId: 'user-1',
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      findLatestByParticipant: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        status: 'SUBMITTED',
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examParticipationRepository,
+        examToProblemsRepository,
+      }),
+    );
+
+    await expect(
+      (service.getPublicExamBySlug as any)('archived-midterm', 'user-1'),
+    ).resolves.toMatchObject({
+      id: 'exam-archived',
+      status: 'archived',
+    });
+  });
+
+  it('does not expose archived exam metadata without an authenticated attempt', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-archived',
+        slug: 'archived-midterm',
+        status: 'archived',
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue(null),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+      }),
+    );
+
+    await expect(service.getPublicExamBySlug('archived-midterm', 'user-2')).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'EXAM_NOT_AVAILABLE',
+    } as Partial<AppException>);
+  });
+
+  it('returns access state for an archived exam only when the user has an attempt', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-archived',
+        slug: 'archived-midterm',
+        status: 'archived',
+        accessMode: 'invite_only',
+        maxAttempts: 1,
+        startDate: new Date('2026-01-01T09:00:00.000Z'),
+        endDate: new Date('2026-01-01T12:00:00.000Z'),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-archived',
+        userId: 'user-1',
+        approvalStatus: 'approved',
+        accessStatus: 'completed',
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      findLatestByParticipant: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        status: 'SUBMITTED',
+        expiresAt: new Date('2026-01-01T12:00:00.000Z'),
+      }),
+      countAttemptsByParticipant: jest.fn().mockResolvedValue(1),
+    } as any;
+    const examEntrySessionRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue(null),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examParticipationRepository,
+        examEntrySessionRepository,
+      }),
+    );
+
+    await expect(service.getAccessState('archived-midterm', 'user-1')).resolves.toMatchObject({
+      examId: 'exam-archived',
+      participantId: 'participant-1',
+      participationId: 'participation-1',
+      canStart: false,
+    });
+  });
+
   it('returns the existing access state instead of creating a duplicate participant in hybrid mode', async () => {
     const examRepository = {
       findBySlug: jest.fn().mockResolvedValue({

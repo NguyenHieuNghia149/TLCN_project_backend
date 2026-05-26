@@ -26,6 +26,7 @@ export function createPublicExamRouter(): Router {
   router.get(
     '/:slug',
     publicExamLimiter,
+    optionalAuth,
     validate(ExamSlugParamsSchema, 'params'),
     controller.getPublicExam.bind(controller),
   );

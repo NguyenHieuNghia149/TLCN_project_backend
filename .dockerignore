@@ -45,5 +45,3 @@ jest.config.js
 nodemon.json
 README.md
 GEMINI.md
-
-package-lock.json

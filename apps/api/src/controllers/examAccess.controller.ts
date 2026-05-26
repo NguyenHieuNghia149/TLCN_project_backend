@@ -7,9 +7,9 @@ import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
 export class PublicExamController {
   constructor(private readonly examAccessService: ExamAccessService) {}
 
-  async getPublicExam(req: Request, res: Response, next: NextFunction) {
+  async getPublicExam(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     const { slug } = req.params as { slug: string };
-    const result = await this.examAccessService.getPublicExamBySlug(slug);
+    const result = await this.examAccessService.getPublicExamBySlug(slug, req.user?.userId ?? null);
     res.status(200).json(result);
   }
 

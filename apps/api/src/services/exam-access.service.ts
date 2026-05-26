@@ -934,9 +934,9 @@ export class ExamAccessService {
     return this.mapParticipantSummary(exam, updatedTarget ?? targetParticipant);
   }
 
-  async getPublicExamBySlug(slug: string) {
+  async getPublicExamBySlug(slug: string, userId?: string | null) {
     const exam = await this.requireExamBySlug(slug);
-    this.assertExamPublishedForAccess(exam, 'public_landing');
+    await this.assertExamPublishedOrParticipated(exam, userId, 'public_landing');
     const challengeLinks = await this.deps.examToProblemsRepository.findByExamId(exam.id);
     const now = new Date();
 
@@ -1281,7 +1281,7 @@ export class ExamAccessService {
 
   async getAccessState(slug: string, userId: string | null | undefined) {
     const exam = await this.requireExamBySlug(slug);
-    this.assertExamPublishedForAccess(exam, 'get_access_state');
+    await this.assertExamPublishedOrParticipated(exam, userId, 'get_access_state');
     if (!userId) {
       return this.emptyAccessState(exam);
     }
@@ -1828,6 +1828,35 @@ export class ExamAccessService {
       examId: exam.id,
       currentStatus: exam.status,
     });
+  }
+
+  private async assertExamPublishedOrParticipated(
+    exam: any,
+    userId: string | null | undefined,
+    action: string,
+  ) {
+    if (exam.status === 'published') {
+      return;
+    }
+
+    if (exam.status === 'archived' && userId) {
+      const participant = await this.deps.examParticipantRepository.findByExamAndIdentity(
+        exam.id,
+        { userId },
+      );
+      if (participant) {
+        const participation = await this.findPreferredParticipation(
+          exam.id,
+          participant.id,
+          userId,
+        );
+        if (participation) {
+          return;
+        }
+      }
+    }
+
+    this.assertExamPublishedForAccess(exam, action);
   }
 
   private async assertUniqueSlug(slug: string) {

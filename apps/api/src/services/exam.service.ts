@@ -731,6 +731,13 @@ export class ExamService {
         return { data: [], total: 0 };
       }
       options.examIds = examIds;
+
+      if (!canManageExamList) {
+        delete options.isVisible;
+        delete options.status;
+        delete options.excludeInviteOnly;
+        options.statuses = ['published', 'archived'];
+      }
     }
 
     // Note: filterType 'my' (exams created by user) requires an author/creator field on exam table,
@@ -966,8 +973,8 @@ export class ExamService {
   async finalizeExpiredParticipations(): Promise<number> {
     let finalized = 0;
 
-    // Get exams (visible ones)
-    const exams = await this.examRepository.getAllExams();
+    // Only scan published exams that currently have work to finalize.
+    const exams = await this.examRepository.getExamsWithIncompleteParticipations();
 
     const now = new Date();
 
@@ -1039,7 +1046,7 @@ export class ExamService {
 
             // Prefer submission created for this participation
             let obtained = 0;
-            const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
+            let sub = await this.submissionRepository.findLatestByParticipationAndProblem(
               row.participationId as string,
               problemId
             );
@@ -1059,8 +1066,7 @@ export class ExamService {
                 effectiveEnd
               );
               if (latestByTime) {
-                // use that submission
-                (sub as any) = latestByTime;
+                sub = latestByTime;
               }
             }
 

@@ -11,8 +11,8 @@ COPY apps/sandbox/package*.json ./apps/sandbox/
 COPY packages/shared/package*.json ./packages/shared/
 COPY tsconfig.json ./
 
-# Install all dependencies
-RUN npm install --ignore-scripts
+# Install all dependencies from the committed lockfile
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -31,7 +31,7 @@ COPY apps/api/package*.json ./apps/api/
 COPY apps/worker/package*.json ./apps/worker/
 COPY apps/sandbox/package*.json ./apps/sandbox/
 COPY packages/shared/package*.json ./packages/shared/
-RUN npm install --omit=dev --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy built files from builder stage
 COPY --from=builder /app/apps/api/dist ./apps/api/dist

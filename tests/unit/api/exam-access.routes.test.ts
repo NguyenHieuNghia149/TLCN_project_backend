@@ -120,11 +120,40 @@ describe('Exam access HTTP routes', () => {
     const response = await request(app).get('/api/public/exams/spring');
 
     expect(response.status).toBe(200);
-    expect(getPublicExamBySlug).toHaveBeenCalledWith('spring');
+    expect(getPublicExamBySlug).toHaveBeenCalledWith('spring', null);
     expect(response.body).toMatchObject({
       id: 'exam-1',
       slug: 'spring',
     });
+  });
+
+  it('forwards optional-auth userId when loading a landing used by learner results', async () => {
+    const getPublicExamBySlug = jest.fn().mockResolvedValue({
+      id: 'exam-1',
+      slug: 'spring',
+      title: 'Spring Midterm',
+      accessMode: 'invite_only',
+      status: 'archived',
+    });
+    const { app } = await createMountedApp({
+      mountPath: '/api/public/exams',
+      routeModulePath: '@backend/api/routes/publicExam.routes',
+      routeFactoryExport: 'createPublicExamRouter',
+      examAccessService: {
+        getPublicExamBySlug,
+        registerForExam: jest.fn(),
+        resolveInvite: jest.fn(),
+        sendOtp: jest.fn(),
+        verifyOtp: jest.fn(),
+      },
+    });
+
+    const response = await request(app)
+      .get('/api/public/exams/spring')
+      .set('Authorization', `Bearer ${createAccessToken('user-1')}`);
+
+    expect(response.status).toBe(200);
+    expect(getPublicExamBySlug).toHaveBeenCalledWith('spring', 'user-1');
   });
 
   it('forwards optional-auth userId when resolving an invite anonymously vs authenticated', async () => {

@@ -43,6 +43,31 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       .orderBy(desc(exam.createdAt));
   }
 
+  getExamsWithIncompleteParticipations(): Promise<ExamEntity[]> {
+    const activeParticipationSubquery = this.db
+      .select({ id: examParticipations.id })
+      .from(examParticipations)
+      .where(
+        and(
+          eq(examParticipations.examId, exam.id),
+          eq(examParticipations.status, 'IN_PROGRESS'),
+        ),
+      )
+      .limit(1);
+
+    return this.db
+      .select()
+      .from(exam)
+      .where(
+        and(
+          eq(exam.isVisible, true),
+          eq(exam.status, 'published'),
+          exists(activeParticipationSubquery),
+        ),
+      )
+      .orderBy(desc(exam.createdAt));
+  }
+
   async getExamsPaginated(
     limit = 50,
     offset = 0,
@@ -52,6 +77,7 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       examIds?: string[];
       isVisible?: boolean;
       status?: string;
+      statuses?: string[];
       excludeInviteOnly?: boolean;
     }
   ): Promise<{ items: ExamEntity[]; total: number }> {
@@ -65,7 +91,9 @@ export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, Exam
       predicates.push(eq(exam.createdBy, options.createdBy));
     }
 
-    if (options?.status) {
+    if (options?.statuses?.length) {
+      predicates.push(inArray(exam.status, options.statuses));
+    } else if (options?.status) {
       predicates.push(eq(exam.status, options.status));
     }
 
