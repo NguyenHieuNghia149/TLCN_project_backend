@@ -137,7 +137,6 @@ export class AuthService {
       expiresAt: new Date(Date.now() + (dto.rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000),
     });
 
-    const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
     return {
       user: {
         id: user.id,
@@ -147,8 +146,6 @@ export class AuthService {
         avatar: user.avatar,
         role: user.role,
         status: user.status,
-        rankingPoint: rankingPoint ?? null,
-        rank,
         lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
       },
@@ -214,8 +211,6 @@ export class AuthService {
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    const { rankingPoint, rank } = await this.userRepository.getUserRank(ensuredUser.id);
-
     return {
       user: {
         id: ensuredUser.id,
@@ -224,8 +219,6 @@ export class AuthService {
         lastName: ensuredUser.lastName,
         avatar: ensuredUser.avatar,
         role: ensuredUser.role,
-        rankingPoint,
-        rank,
         status: ensuredUser.status,
         createdAt: ensuredUser.createdAt.toISOString(),
         lastLoginAt: ensuredUser.lastLoginAt ? ensuredUser.lastLoginAt.toISOString() : null,
@@ -258,8 +251,6 @@ export class AuthService {
 
     const rotated = JWTUtils.generateTokenPair(user.id, user.email, user.role);
 
-    const { rankingPoint, rank } = await this.userRepository.getUserRank(user.id);
-
     return {
       user: {
         id: user.id,
@@ -269,8 +260,6 @@ export class AuthService {
         avatar: user.avatar,
         role: user.role,
         status: user.status,
-        rankingPoint: rankingPoint ?? null,
-        rank,
         lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
         createdAt: user.createdAt.toISOString(),
       },

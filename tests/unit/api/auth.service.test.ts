@@ -112,6 +112,51 @@ describe('AuthService', () => {
     });
   });
 
+  it('returns a minimal user session from password login without loading rank', async () => {
+    jest.spyOn(PasswordUtils, 'comparePassword').mockResolvedValue(true);
+    jest.spyOn(JWTUtils, 'generateTokenPair').mockReturnValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresIn: 3600,
+    });
+
+    const userRepository = {
+      findByEmail: jest.fn().mockResolvedValue({
+        id: 'user-1',
+        email: 'login@example.com',
+        password: 'hashed-password',
+        firstName: 'Login',
+        lastName: 'User',
+        avatar: null,
+        role: 'user',
+        status: 'active',
+        lastLoginAt: null,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+      updateLastLogin: jest.fn().mockResolvedValue(undefined),
+      getUserRank: jest.fn().mockResolvedValue({ rankingPoint: 10, rank: 2 }),
+    } as any;
+    const tokenRepository = {
+      createRefreshToken: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    const result = await service.login({
+      email: 'login@example.com',
+      password: 'StrongPass1!',
+      rememberMe: false,
+    } as any);
+
+    expect(userRepository.getUserRank).not.toHaveBeenCalled();
+    expect(result.user).not.toHaveProperty('rank');
+    expect(result.user).not.toHaveProperty('rankingPoint');
+  });
+
   it('uses the injected Google identity client for Google login', async () => {
     process.env.GOOGLE_CLIENT_ID = 'google-client-id';
     jest.spyOn(PasswordUtils, 'hashPassword').mockResolvedValue('google-password');
@@ -166,6 +211,9 @@ describe('AuthService', () => {
     });
     expect(tokenRepository.createRefreshToken).toHaveBeenCalledTimes(1);
     expect(result.user.email).toBe('google@example.com');
+    expect(userRepository.getUserRank).not.toHaveBeenCalled();
+    expect(result.user).not.toHaveProperty('rank');
+    expect(result.user).not.toHaveProperty('rankingPoint');
   });
 
   it('keeps the explicit not-configured error when no Google client is injected', async () => {
@@ -180,6 +228,52 @@ describe('AuthService', () => {
     await expect(service.loginWithGoogle({ idToken: 'google-id-token' } as any)).rejects.toThrow(
       'Google login is not configured',
     );
+  });
+
+  it('returns a minimal user session from refresh without loading rank', async () => {
+    jest.spyOn(JWTUtils, 'verifyRefreshToken').mockReturnValue({
+      userId: 'user-1',
+      email: 'login@example.com',
+      role: 'user',
+      type: 'refresh',
+    } as any);
+    jest.spyOn(JWTUtils, 'generateTokenPair').mockReturnValue({
+      accessToken: 'rotated-access-token',
+      refreshToken: 'rotated-refresh-token',
+      expiresIn: 3600,
+    });
+
+    const userRepository = {
+      findByIdOrThrow: jest.fn().mockResolvedValue({
+        id: 'user-1',
+        email: 'login@example.com',
+        firstName: 'Login',
+        lastName: 'User',
+        avatar: null,
+        role: 'user',
+        status: 'active',
+        lastLoginAt: null,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+      getUserRank: jest.fn().mockResolvedValue({ rankingPoint: 10, rank: 2 }),
+    } as any;
+    const tokenRepository = {
+      findByToken: jest.fn().mockResolvedValue({
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    const result = await service.refreshToken({ refreshToken: 'stored-refresh-token' });
+
+    expect(userRepository.getUserRank).not.toHaveBeenCalled();
+    expect(result.user).not.toHaveProperty('rank');
+    expect(result.user).not.toHaveProperty('rankingPoint');
   });
 
   it('creates an auth service instance from the factory', () => {
