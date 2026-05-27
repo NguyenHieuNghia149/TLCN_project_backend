@@ -21,16 +21,18 @@ The system follows a modular architecture using the **Controller-Service-Reposit
 graph TD
     Client["Client / Frontend"] -->|HTTP/REST| API["Backend API (Express)"]
     API -->|Read/Write| DB[("PostgreSQL")]
-    API -->|Queue| Redis[("Redis")]
+    API -->|Queue jobs| RedisQueue[("Redis queue / BullMQ")]
     API -->|Store Media| Cloud[("Cloudinary")]
 
     subgraph Execution Engine
-        Redis -->|Job Queue| Worker["Worker Service"]
+        RedisQueue -->|Job Queue| Worker["Worker Service"]
         Worker -->|Execute| Sandbox["Sandbox Environment"]
         Sandbox -->|Result| Worker
     end
 
-    Worker -->|Update Status| Redis
+    Worker -->|Publish Status| RedisCache[("Redis cache / PubSub")]
+    RedisCache -->|SSE stream| API
+    API -->|/api/submissions/stream/:submissionId| Client
 ```
 
 ## Tech Stack
@@ -40,8 +42,9 @@ graph TD
 - **Framework**: [Express.js](https://expressjs.com/)
 - **Database**: [PostgreSQL](https://www.postgresql.org/)
 - **ORM**: [Drizzle ORM](https://orm.drizzle.team/)
-- **Queues**: [Redis](https://redis.io/)
-- **Real-time**: [Socket.IO](https://socket.io/)
+- **Queues**: [Redis](https://redis.io/) / BullMQ
+- **Submission Status Stream**: Redis Pub/Sub + API SSE (`/api/submissions/stream/:submissionId`)
+- **WebSocket Notifications**: [Socket.IO](https://socket.io/)
 - **Infrastructure**: Docker, Docker Compose
 
 ## Getting Started
@@ -76,7 +79,10 @@ Ensure you have the following installed:
     ```env
     PORT=3000
     DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-    REDIS_URL=redis://localhost:6379
+    REDIS_QUEUE_URL=redis://localhost:6379
+    REDIS_CACHE_URL=redis://localhost:6380
+    # Optional legacy fallback used only where runtime factories allow it:
+    # REDIS_URL=redis://localhost:6379
     # Add other necessary variables like JWT_SECRET, CLOUDINARY_*, etc.
     ```
 
@@ -116,30 +122,31 @@ You can run the services individually or all together.
 
 ## Project Structure
 
-```
+```text
 backend/
-├── apps/
-│   ├── api/        # API Service (Express)
-│   │   ├── src/
-│   │   │   ├── config/     # Configuration files
-│   │   │   ├── controllers/  # Request handlers
-│   │   │   ├── services/     # Business logic layer
-│   │   │   ├── repositories/ # Database access layer
-│   │   │   ├── db/           # Drizzle schema and migrations
-│   │   │   ├── routes/       # API Route definitions
-│   │   │   ├── middlewares/  # Express middlewares
-│   │   │   ├── utils/        # Utility functions
-│   │   │   └── index.ts      # Application entry point
-│   │   └── package.json
-│   ├── worker/       # Background worker for code execution
-│   │   └── package.json
-│   └── sandbox/      # Isolated environment for running user code
-│       └── package.json
-├── packages/
-│   └── shared/       # Shared code across services
-│       ├── db/       # Drizzle schema and migrations
-│       └── types/    # Shared TypeScript types
-└── package.json
+|-- apps/
+|   |-- api/        # API Service (Express)
+|   |   |-- src/
+|   |   |   |-- config/       # Configuration files
+|   |   |   |-- controllers/  # Request handlers
+|   |   |   |-- services/     # Business logic layer
+|   |   |   |-- repositories/ # API-domain database access layer
+|   |   |   |-- routes/       # API route definitions
+|   |   |   |-- middlewares/  # Express middlewares
+|   |   |   |-- utils/        # Utility functions
+|   |   |   `-- index.ts      # Application entry point
+|   |   `-- package.json
+|   |-- worker/     # Background worker for code execution
+|   |   `-- package.json
+|   `-- sandbox/    # Isolated environment for running user code
+|       `-- package.json
+|-- packages/
+|   `-- shared/     # Shared code across services
+|       |-- db/
+|       |   |-- migrations/   # Drizzle migrations
+|       |   `-- schema/       # Canonical Drizzle schemas and relations
+|       `-- types/            # Shared TypeScript types
+`-- package.json
 ```
 
 ## Scripts
@@ -176,10 +183,11 @@ throw new AppException('Resource not found', 404, 'NOT_FOUND');
 
 ### Path Aliases
 
-Use the `@/` alias to refer to the `src` directory from anywhere in the project.
+Use the configured `@backend/...` aliases for maintained cross-package and cross-app imports. For API-local imports, prefer the explicit `@backend/api/*` alias; for shared code, use `@backend/shared/*`.
 
 ```typescript
-import { UserService } from '@/services/user.service';
+import { UserService } from '@backend/api/services/user.service';
+import { JudgeUtils } from '@backend/shared/utils';
 ```
 
 ### Core Utilities
