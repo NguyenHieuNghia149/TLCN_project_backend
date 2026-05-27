@@ -14,7 +14,9 @@ export const submissions = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     sourceCode: text('source_code').notNull(),
-    status: varchar('status', { length: 50 }).notNull().default(ESubmissionStatus.PENDING.toString()),
+    status: varchar('status', { length: 50 })
+      .notNull()
+      .default(ESubmissionStatus.PENDING.toString()),
     languageId: uuid('language_id')
       .references(() => languages.id)
       .notNull(),
@@ -32,13 +34,17 @@ export const submissions = pgTable(
     index('idx_submissions_user_submitted_at').on(table.userId, table.submittedAt),
     index('idx_submissions_problem_submitted_at').on(table.problemId, table.submittedAt),
     index('idx_submissions_status_submitted_at').on(table.status, table.submittedAt),
-    index('idx_submissions_user_problem_submitted_at').on(table.userId, table.problemId, table.submittedAt),
+    index('idx_submissions_user_problem_submitted_at').on(
+      table.userId,
+      table.problemId,
+      table.submittedAt
+    ),
     index('idx_submissions_language_id').on(table.languageId),
     index('idx_submissions_language_id_submitted_at').on(table.languageId, table.submittedAt),
     index('idx_submissions_accepted_solved_lookup')
       .on(table.userId, table.problemId)
-      .where(sql`${table.status} = 'ACCEPTED' AND ${table.examParticipationId} IS NULL`),
-  ],
+      .where(sql`${table.status} = 'accepted' AND ${table.examParticipationId} IS NULL`),
+  ]
 );
 
 export type SubmissionEntity = typeof submissions.$inferSelect;

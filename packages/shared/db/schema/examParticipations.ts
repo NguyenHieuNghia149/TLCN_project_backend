@@ -20,7 +20,10 @@ export const examParticipations = pgTable(
     submittedAt: timestamp('submitted_at'),
     expiresAt: timestamp('expires_at'),
     currentAnswers: json('current_answers').$type<Record<string, any> | null>(),
-    submittedAnswersSnapshot: json('submitted_answers_snapshot').$type<Record<string, any> | null>(),
+    submittedAnswersSnapshot: json('submitted_answers_snapshot').$type<Record<
+      string,
+      any
+    > | null>(),
     answersLockedAt: timestamp('answers_locked_at'),
     lastSyncedAt: timestamp('last_synced_at'),
     status: varchar('status', { length: 20 }).default('IN_PROGRESS').notNull(),
@@ -29,8 +32,9 @@ export const examParticipations = pgTable(
   },
   table => [
     index('idx_exam_participations_exam_user').on(table.examId, table.userId),
+    index('idx_exam_participations_exam_status').on(table.examId, table.status),
     index('idx_exam_participations_participant').on(table.participantId),
-  ],
+  ]
 );
 
 export type ExamParticipationEntity = typeof examParticipations.$inferSelect;

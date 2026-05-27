@@ -140,6 +140,13 @@
       "when": 1777734384684,
       "tag": "20260502150624_use_plain_exam_password",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779883200000,
+      "tag": "20260527120000_optimize_slow_query_indexes",
+      "breakpoints": true
     }
   ]
 }

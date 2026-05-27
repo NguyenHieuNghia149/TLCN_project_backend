@@ -41,9 +41,14 @@ export const exam = pgTable(
   table => [
     uniqueIndex('uq_exam_slug').on(table.slug),
     index('idx_exam_visible_created_at').on(table.isVisible, table.createdAt),
+    index('idx_exam_visible_status_created_at').on(
+      table.isVisible,
+      table.status,
+      table.createdAt.desc()
+    ),
     index('idx_exam_status_start_date').on(table.status, table.startDate),
     index('idx_exam_access_mode_status').on(table.accessMode, table.status),
-  ],
+  ]
 );
 
 export type ExamEntity = typeof exam.$inferSelect;
