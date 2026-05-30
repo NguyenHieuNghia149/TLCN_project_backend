@@ -1,4 +1,4 @@
-import { FsUtils, StringUtils, logger } from '@backend/shared/utils';
+import { FsUtils, JudgeUtils, StringUtils, logger } from '@backend/shared/utils';
 import { isDeepStrictEqual } from 'node:util';
 import { spawn } from 'child_process';
 import * as path from 'path';
@@ -258,53 +258,17 @@ export class SandboxService {
     ].join('\n');
   }
 
-  private classifyFailureStatus(errorMessage: string): string {
-    const normalized = errorMessage.toLowerCase();
-
-    if (normalized.includes('time limit exceeded') || normalized.includes('timeout')) {
-      return 'TIME_LIMIT_EXCEEDED';
-    }
-
-    if (normalized.includes('memory limit exceeded') || normalized.includes('out of memory')) {
-      return 'MEMORY_LIMIT_EXCEEDED';
-    }
-
-    if (normalized.includes('compilation') || normalized.includes('compile')) {
-      return 'COMPILATION_ERROR';
-    }
-
-    if (
-      normalized.includes('runtime') ||
-      normalized.includes('process exited with code') ||
-      normalized.includes('wrapper envelope missing or malformed') ||
-      normalized.includes('invalid envelope')
-    ) {
-      return 'RUNTIME_ERROR';
-    }
-
-    return 'WRONG_ANSWER';
-  }
-
   private determineSummaryStatus(
     results: Array<{ isPassed: boolean; error?: string | null }>,
     total: number
   ): string {
-    if (total === 0 || results.every(result => result.isPassed)) {
-      return 'ACCEPTED';
-    }
-
-    for (const result of results) {
-      if (result.isPassed || !result.error) {
-        continue;
-      }
-
-      const status = this.classifyFailureStatus(result.error);
-      if (status !== 'WRONG_ANSWER') {
-        return status;
-      }
-    }
-
-    return 'WRONG_ANSWER';
+    return JudgeUtils.determineFinalStatus(
+      {
+        passed: results.filter(result => result.isPassed).length,
+        total,
+      },
+      results,
+    ).toUpperCase();
   }
 
   private async createIsolatedWorkspace(jobDir: string, config: ExecutionConfig): Promise<void> {

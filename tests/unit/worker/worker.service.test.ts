@@ -217,5 +217,53 @@ describe('WorkerService JSON-first execution payload', () => {
     await expect(service.stop()).resolves.toBeUndefined();
     expect(mockSandboxClient.close).toHaveBeenCalledTimes(1);
   });
+
+  it('normalizes gRPC statuses to the canonical lower-case worker contract', () => {
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
+
+    const legacy = (service as any).mapGrpcResponseToLegacy({
+      submission_id: 'submission-1',
+      overall_status: 'TIME_LIMIT_EXCEEDED',
+      compile_error: '',
+      results: [
+        {
+          test_case_id: 'tc-1',
+          status: 'TIME_LIMIT_EXCEEDED',
+          time_taken_ms: 1000,
+          memory_used_kb: 0,
+          actual_output: '',
+          error_message: 'Time limit exceeded',
+        },
+      ],
+    });
+
+    expect(legacy.summary.status).toBe('time_limit_exceeded');
+    expect(legacy.results[0]).toMatchObject({
+      isPassed: false,
+      error: 'Time limit exceeded',
+      stderr: 'Time limit exceeded',
+    });
+  });
+
+  it('treats lower-case gRPC system_error as a sandbox system failure', () => {
+    const service = new WorkerService({
+      sandboxClient: mockSandboxClient,
+      createBullWorker: jest.fn(),
+      createBreaker: mockCreateBreaker as any,
+    });
+
+    expect(() =>
+      (service as any).mapGrpcResponseToLegacy({
+        submission_id: 'submission-1',
+        overall_status: 'system_error',
+        compile_error: 'sandbox unavailable',
+        results: [],
+      })
+    ).toThrow('sandbox unavailable');
+  });
 });
 

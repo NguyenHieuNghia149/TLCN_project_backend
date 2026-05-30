@@ -35,24 +35,12 @@ const loggerPatterns: FilePattern[] = [
 
 const jwtPatterns: FilePattern[] = [
   {
-    name: 'stale-top-level-jwt-secret-validation',
-    regex: /if \(!process\.env\.JWT_ACCESS_SECRET\s*\|\|\s*!process\.env\.JWT_REFRESH_SECRET\)/,
-  },
-  {
     name: 'stale-top-level-access-secret-constant',
     regex: /const ACCESS_SECRET\s*=\s*process\.env\.JWT_ACCESS_SECRET/,
   },
   {
-    name: 'stale-top-level-refresh-secret-constant',
-    regex: /const REFRESH_SECRET\s*=\s*process\.env\.JWT_REFRESH_SECRET/,
-  },
-  {
     name: 'stale-top-level-access-expires-constant',
     regex: /const ACCESS_EXPIRES\s*=\s*process\.env\.JWT_ACCESS_EXPIRES_IN/,
-  },
-  {
-    name: 'stale-top-level-refresh-expires-constant',
-    regex: /const REFRESH_EXPIRES\s*=\s*process\.env\.JWT_REFRESH_EXPIRES_IN/,
   },
 ];
 

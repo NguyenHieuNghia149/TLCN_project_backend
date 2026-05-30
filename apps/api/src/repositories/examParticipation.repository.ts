@@ -4,7 +4,7 @@ import {
   examParticipations,
 } from '@backend/shared/db/schema';
 import { BaseRepository } from './base.repository';
-import { eq, and, desc, inArray, count } from 'drizzle-orm';
+import { eq, and, desc, inArray, count, gte, isNull, or } from 'drizzle-orm';
 import { EExamParticipationStatus } from '@backend/shared/types';
 import { db } from '@backend/shared/db/connection';
 import { submissions, users, examParticipants } from '@backend/shared/db/schema';
@@ -123,6 +123,25 @@ export class ExamParticipationRepository extends BaseRepository<
     return participation || null;
   }
 
+  async findSyncStateById(participationId: string): Promise<Pick<
+    ExamParticipationEntity,
+    'id' | 'userId' | 'status' | 'expiresAt' | 'currentAnswers'
+  > | null> {
+    const [participation] = await this.db
+      .select({
+        id: examParticipations.id,
+        userId: examParticipations.userId,
+        status: examParticipations.status,
+        expiresAt: examParticipations.expiresAt,
+        currentAnswers: examParticipations.currentAnswers,
+      })
+      .from(examParticipations)
+      .where(eq(examParticipations.id, participationId))
+      .limit(1);
+
+    return participation || null;
+  }
+
   async findByExamId(examId: string): Promise<ExamParticipationEntity[]> {
     return this.db
       .select()
@@ -216,6 +235,34 @@ export class ExamParticipationRepository extends BaseRepository<
       .returning();
 
     return updated || null;
+  }
+
+  async updateSyncState(
+    participationId: string,
+    data: {
+      currentAnswers: Record<string, any>;
+      lastSyncedAt: Date;
+    },
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(examParticipations)
+      .set({
+        currentAnswers: data.currentAnswers,
+        lastSyncedAt: data.lastSyncedAt,
+      })
+      .where(
+        and(
+          eq(examParticipations.id, participationId),
+          eq(examParticipations.status, EExamParticipationStatus.IN_PROGRESS),
+          or(
+            isNull(examParticipations.expiresAt),
+            gte(examParticipations.expiresAt, data.lastSyncedAt),
+          ),
+        ),
+      )
+      .returning({ id: examParticipations.id });
+
+    return rows.length === 1;
   }
 
   async reassignParticipant(sourceParticipantId: string, targetParticipantId: string): Promise<void> {

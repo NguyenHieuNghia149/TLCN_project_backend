@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+import {
+  normalizeSubmissionStatus,
+  SUBMISSION_STATUS_VALUES,
+} from '@backend/shared/types/submissionStatus.enum';
 import { isIntegratedExecutableLanguageKey } from '@backend/shared/utils';
 
 export interface ExecutionResult {
@@ -47,23 +51,18 @@ export const SubmissionResponseSchema = z.object({
 
 export type SubmissionResponse = z.infer<typeof SubmissionResponseSchema>;
 
+const SubmissionStatusValueSchema = z.preprocess(
+  value => normalizeSubmissionStatus(value) ?? value,
+  z.enum(SUBMISSION_STATUS_VALUES)
+);
+
 export const SubmissionStatusSchema = z.object({
   submissionId: z.string().uuid(),
   userId: z.string().uuid(),
   problemId: z.string().uuid(),
   language: z.string(),
   sourceCode: z.string(),
-  status: z.enum([
-    'PENDING',
-    'RUNNING',
-    'ACCEPTED',
-    'WRONG_ANSWER',
-    'TIME_LIMIT_EXCEEDED',
-    'MEMORY_LIMIT_EXCEEDED',
-    'RUNTIME_ERROR',
-    'COMPILATION_ERROR',
-    'SYSTEM_ERROR',
-  ]),
+  status: SubmissionStatusValueSchema,
   result: z
     .object({
       passed: z.number(),
@@ -95,17 +94,7 @@ export const GetSubmissionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
   status: z
-    .enum([
-      'PENDING',
-      'RUNNING',
-      'ACCEPTED',
-      'WRONG_ANSWER',
-      'TIME_LIMIT_EXCEEDED',
-      'MEMORY_LIMIT_EXCEEDED',
-      'RUNTIME_ERROR',
-      'COMPILATION_ERROR',
-      'SYSTEM_ERROR',
-    ])
+    .preprocess(value => normalizeSubmissionStatus(value) ?? value, z.enum(SUBMISSION_STATUS_VALUES))
     .optional(),
   participationId: z.string().uuid().optional(),
 });

@@ -139,7 +139,6 @@ export function createExamRouter(): Router {
     requireTeacher,
     createExamRateLimit,
     validate(CreateExamSchema),
-    validate(CreateExamSchema),
     examController.createExam.bind(examController)
   );
 

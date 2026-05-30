@@ -19,6 +19,7 @@ import {
 import { FavoriteRepository } from '../repositories/favorite.repository';
 import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
 import { ProblemVisibility } from '@backend/shared/types';
+import { submissionMetadataInvalidator } from './submission-metadata-cache';
 
 type ChallengeServiceDependencies = {
   topicRepository: TopicRepository;
@@ -592,6 +593,8 @@ export class ChallengeService {
       logger.info('No testcases provided in updateData');
     }
 
+    submissionMetadataInvalidator.invalidateProblem(challengeId);
+
     return this.getChallengeById(challengeId, undefined, { showAllTestcases: true });
   }
 
@@ -627,6 +630,8 @@ export class ChallengeService {
     if (!deleted) {
       throw new NotFoundException(`Failed to delete challenge with ID ${challengeId}.`);
     }
+
+    submissionMetadataInvalidator.invalidateProblem(challengeId);
   }
 }
 

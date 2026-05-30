@@ -76,6 +76,33 @@ describe('SubmissionController SSE stream provider', () => {
     expect(closeHandlers).toHaveLength(1);
   });
 
+  it('cleans up SSE streams for canonical lower-case terminal updates', async () => {
+    const submissionEventStream: ISubmissionEventStream = {
+      on: jest.fn().mockReturnThis(),
+      removeListener: jest.fn().mockReturnThis(),
+    };
+    const controller = new SubmissionController({} as any, () => submissionEventStream);
+    const response = createMockResponse();
+    const request = {
+      params: { submissionId: 'submission-lowercase' },
+      on: jest.fn(),
+    };
+
+    await controller.streamSubmissionStatus(request as any, response as any, jest.fn());
+
+    const onUpdate = (submissionEventStream.on as jest.Mock).mock.calls[0][1];
+    onUpdate({
+      status: 'accepted',
+      results: [],
+    });
+
+    expect(submissionEventStream.removeListener).toHaveBeenCalledWith(
+      'submission_submission-lowercase',
+      onUpdate
+    );
+    expect(response.end).toHaveBeenCalledTimes(1);
+  });
+
   it('removes the listener when the request closes before a terminal update', async () => {
     const submissionEventStream: ISubmissionEventStream = {
       on: jest.fn().mockReturnThis(),

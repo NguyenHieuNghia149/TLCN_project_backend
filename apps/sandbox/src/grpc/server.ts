@@ -1,7 +1,12 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
-import { logger } from '@backend/shared/utils';
+import {
+  ESubmissionStatus,
+  fromGrpcSubmissionStatus,
+  toGrpcSubmissionStatus,
+} from '@backend/shared/types';
+import { JudgeUtils, logger } from '@backend/shared/utils';
 import { ISandboxService } from '../sandbox.service';
 
 const PROTO_PATH = path.resolve(__dirname, '../../../../packages/shared/proto/sandbox.proto');
@@ -25,77 +30,33 @@ function getJudgeProto(): any {
   return cachedJudgeProto;
 }
 
-
-function looksLikeCompilationFailure(normalized: string): boolean {
-  const sourceCoordinatePattern = /(?:^|\n)(?:wrapper|solution|main)\.(?:c|cc|cpp|cxx|java|kt|py):\d+/;
-
-  return (
-    normalized.includes('compilation') ||
-    normalized.includes('compile') ||
-    normalized.includes('syntaxerror:') ||
-    sourceCoordinatePattern.test(normalized) ||
-    (normalized.includes('error:') && (normalized.includes('note:') || normalized.includes('in function')))
-  );
-}
-function inferTestCaseStatus(result: any): string {
-  if (result.isPassed) {
-    return 'ACCEPTED';
-  }
-
-  const normalized = `${result.error || ''}\n${result.stderr || ''}`.toLowerCase();
-
-  if (normalized.includes('time limit exceeded') || normalized.includes('timeout')) {
-    return 'TIME_LIMIT_EXCEEDED';
-  }
-
-  if (normalized.includes('memory limit exceeded') || normalized.includes('out of memory')) {
-    return 'MEMORY_LIMIT_EXCEEDED';
-  }
-
-  if (looksLikeCompilationFailure(normalized)) {
-    return 'COMPILATION_ERROR';
-  }
-
-  if (
-    normalized.includes('runtime') ||
-    normalized.includes('process exited with code') ||
-    normalized.includes('wrapper envelope missing or malformed') ||
-    normalized.includes('invalid envelope')
-  ) {
-    return 'RUNTIME_ERROR';
-  }
-
-  return 'WRONG_ANSWER';
+function inferTestCaseStatus(result: any): ESubmissionStatus {
+  return JudgeUtils.determineTestCaseStatus(result);
 }
 
 function deriveOverallStatus(summaryStatus: string | undefined, results: any[]): string {
-  if (summaryStatus && summaryStatus.length > 0) {
-    return summaryStatus;
-  }
-
+  const normalizedSummaryStatus = fromGrpcSubmissionStatus(summaryStatus);
   if (results.length === 0) {
-    return 'SYSTEM_ERROR';
+    return toGrpcSubmissionStatus(normalizedSummaryStatus ?? ESubmissionStatus.SYSTEM_ERROR);
   }
 
-  if (results.every(result => result.status === 'ACCEPTED')) {
-    return 'ACCEPTED';
-  }
+  const passed = results.filter(
+    result => fromGrpcSubmissionStatus(result.status) === ESubmissionStatus.ACCEPTED,
+  ).length;
+  const status = JudgeUtils.determineFinalStatus(
+    {
+      passed,
+      total: results.length,
+      status: normalizedSummaryStatus,
+    },
+    results.map(result => ({
+      ok: fromGrpcSubmissionStatus(result.status) === ESubmissionStatus.ACCEPTED,
+      status: result.status,
+      error: result.error_message,
+    })),
+  );
 
-  const priorities = [
-    'COMPILATION_ERROR',
-    'TIME_LIMIT_EXCEEDED',
-    'MEMORY_LIMIT_EXCEEDED',
-    'RUNTIME_ERROR',
-    'WRONG_ANSWER',
-  ];
-
-  for (const status of priorities) {
-    if (results.some(result => result.status === status)) {
-      return status;
-    }
-  }
-
-  return 'WRONG_ANSWER';
+  return toGrpcSubmissionStatus(status);
 }
 
 export function createExecuteCodeHandler(
@@ -125,7 +86,7 @@ export function createExecuteCodeHandler(
       if (!result.success) {
         callback(null, {
           submission_id: req.submission_id,
-          overall_status: 'SYSTEM_ERROR',
+          overall_status: toGrpcSubmissionStatus(ESubmissionStatus.SYSTEM_ERROR),
           compile_error: result.error || '',
           results: [],
         });
@@ -134,7 +95,7 @@ export function createExecuteCodeHandler(
 
       const protoResults = (result.result?.results || []).map((r: any) => ({
         test_case_id: r.testcaseId || '',
-        status: inferTestCaseStatus(r),
+        status: toGrpcSubmissionStatus(inferTestCaseStatus(r)),
         time_taken_ms: Math.round(r.executionTime || 0),
         memory_used_kb: 0,
         actual_output: r.actualOutput || '',
@@ -143,7 +104,7 @@ export function createExecuteCodeHandler(
 
       const overallStatus = deriveOverallStatus(result.result?.summary?.status, protoResults);
       const compileError =
-        overallStatus === 'COMPILATION_ERROR'
+        fromGrpcSubmissionStatus(overallStatus) === ESubmissionStatus.COMPILATION_ERROR
           ? protoResults.find((row: any) => row.error_message)?.error_message || ''
           : '';
 

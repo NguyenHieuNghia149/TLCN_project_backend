@@ -1,5 +1,9 @@
 import { createExamService, ExamService } from '../../../apps/api/src/services/exam.service';
-import { InvalidPasswordException } from '../../../apps/api/src/exceptions/exam.exceptions';
+import {
+  ExamParticipationNotFoundException,
+  ExamTimeoutException,
+  InvalidPasswordException,
+} from '../../../apps/api/src/exceptions/exam.exceptions';
 
 /** Builds a dependency bag for ExamService tests with optional overrides. */
 function createExamDependencies(overrides: Partial<any> = {}) {
@@ -22,6 +26,7 @@ function createExamDependencies(overrides: Partial<any> = {}) {
 
 describe('ExamService dependency injection', () => {
   afterEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
     jest.restoreAllMocks();
   });
@@ -38,6 +43,7 @@ describe('ExamService dependency injection', () => {
     const notifyAllUsers = jest.fn().mockResolvedValue(undefined);
     const getNotificationPublisher = jest.fn(() => ({ notifyAllUsers }));
     const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue(null),
       createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
     } as any;
     const service = new ExamService(
@@ -79,6 +85,7 @@ describe('ExamService dependency injection', () => {
       notifyAllUsers: jest.fn().mockResolvedValue(undefined),
     }));
     const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue(null),
       createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
     } as any;
     const service = new ExamService(
@@ -363,6 +370,226 @@ describe('ExamService dependency injection', () => {
     ]);
   });
 
+  it('scores final exam submissions in one batch while preferring participation submissions', async () => {
+    const startedAt = new Date('2025-01-01T00:00:00.000Z');
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        duration: 60,
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        startTime: startedAt,
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([
+        { problemId: 'problem-a' },
+        { problemId: 'problem-b' },
+        { problemId: 'problem-c' },
+      ]),
+    } as any;
+    const submissionRepository = {
+      findLatestByParticipationAndProblems: jest.fn().mockResolvedValue([
+        { id: 'sub-a-participation', problemId: 'problem-a' },
+        { id: 'sub-c-participation', problemId: 'problem-c' },
+      ]),
+      findLatestByUserProblemsBetween: jest.fn().mockResolvedValue([
+        { id: 'sub-b-fallback', problemId: 'problem-b' },
+        { id: 'sub-c-fallback', problemId: 'problem-c' },
+      ]),
+      findLatestByParticipationAndProblem: jest.fn().mockImplementation((_participationId, problemId) =>
+        Promise.resolve(
+          problemId === 'problem-a'
+            ? { id: 'sub-a-participation', problemId: 'problem-a' }
+            : problemId === 'problem-c'
+              ? { id: 'sub-c-participation', problemId: 'problem-c' }
+              : null,
+        ),
+      ),
+      findLatestByUserProblemBetween: jest.fn().mockImplementation((_userId, problemId) =>
+        Promise.resolve(
+          problemId === 'problem-b'
+            ? { id: 'sub-b-fallback', problemId: 'problem-b' }
+            : problemId === 'problem-c'
+              ? { id: 'sub-c-fallback', problemId: 'problem-c' }
+              : null,
+        ),
+      ),
+    } as any;
+    const testcaseRepository = {
+      findByProblemIds: jest.fn().mockResolvedValue([
+        { id: 'tc-a', problemId: 'problem-a', point: 10 },
+        { id: 'tc-b', problemId: 'problem-b', point: 20 },
+        { id: 'tc-c', problemId: 'problem-c', point: 30 },
+      ]),
+      findByProblemId: jest.fn().mockImplementation((problemId: string) =>
+        Promise.resolve([{ id: `tc-${problemId.slice(-1)}`, problemId, point: problemId === 'problem-a' ? 10 : problemId === 'problem-b' ? 20 : 30 }]),
+      ),
+    } as any;
+    const resultSubmissionRepository = {
+      findBySubmissionIds: jest.fn().mockResolvedValue([
+        { submissionId: 'sub-a-participation', testcaseId: 'tc-a', isPassed: true },
+        { submissionId: 'sub-b-fallback', testcaseId: 'tc-b', isPassed: true },
+        { submissionId: 'sub-c-fallback', testcaseId: 'tc-c', isPassed: false },
+        { submissionId: 'sub-c-participation', testcaseId: 'tc-c', isPassed: true },
+      ]),
+      findBySubmissionId: jest.fn().mockImplementation((submissionId: string) =>
+        Promise.resolve(
+          submissionId === 'sub-a-participation'
+            ? [{ submissionId, testcaseId: 'tc-a', isPassed: true }]
+            : submissionId === 'sub-b-fallback'
+              ? [{ submissionId, testcaseId: 'tc-b', isPassed: true }]
+              : submissionId === 'sub-c-participation'
+                ? [{ submissionId, testcaseId: 'tc-c', isPassed: true }]
+                : [{ submissionId, testcaseId: 'tc-c', isPassed: false }],
+        ),
+      ),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({
+        examRepository,
+        examParticipationRepository,
+        examToProblemsRepository,
+        submissionRepository,
+        testcaseRepository,
+        resultSubmissionRepository,
+      }),
+    );
+
+    const score = await (service as any).calculateExamScore(
+      'participation-1',
+      'exam-1',
+      'user-1',
+    );
+
+    expect(score).toBe(60);
+    expect(submissionRepository.findLatestByParticipationAndProblems).toHaveBeenCalledTimes(1);
+    expect(submissionRepository.findLatestByParticipationAndProblems).toHaveBeenCalledWith(
+      'participation-1',
+      ['problem-a', 'problem-b', 'problem-c'],
+    );
+    expect(submissionRepository.findLatestByUserProblemsBetween).toHaveBeenCalledTimes(1);
+    expect(submissionRepository.findLatestByUserProblemsBetween).toHaveBeenCalledWith(
+      'user-1',
+      ['problem-a', 'problem-b', 'problem-c'],
+      startedAt,
+      new Date('2025-01-01T01:00:00.000Z'),
+    );
+    expect(resultSubmissionRepository.findBySubmissionIds).toHaveBeenCalledTimes(1);
+    expect(resultSubmissionRepository.findBySubmissionIds).toHaveBeenCalledWith([
+      'sub-b-fallback',
+      'sub-c-participation',
+      'sub-a-participation',
+    ]);
+    expect(testcaseRepository.findByProblemIds).toHaveBeenCalledTimes(1);
+    expect(testcaseRepository.findByProblemIds).toHaveBeenCalledWith([
+      'problem-a',
+      'problem-b',
+      'problem-c',
+    ]);
+  });
+
+  it('syncs session answers through the narrow sync state shape', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2025-01-01T00:05:00.000Z'));
+    const examParticipationRepository = {
+      findSyncStateById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        expiresAt: new Date('2025-01-01T00:30:00.000Z'),
+        currentAnswers: {
+          problemA: {
+            code: 'old',
+            updatedAt: '2025-01-01T00:00:00.000Z',
+          },
+        },
+      }),
+      updateSyncState: jest.fn().mockResolvedValue(true),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examParticipationRepository }));
+
+    const result = await service.syncSession('participation-1', {
+      problemA: {
+        code: 'new',
+        updatedAt: '2025-01-01T00:04:00.000Z',
+      },
+      problemB: {
+        code: 'answer',
+      },
+    });
+
+    expect(result).toBe(true);
+    expect(examParticipationRepository.findSyncStateById).toHaveBeenCalledWith('participation-1');
+    expect(examParticipationRepository.updateSyncState).toHaveBeenCalledWith('participation-1', {
+      currentAnswers: {
+        problemA: {
+          code: 'new',
+          updatedAt: '2025-01-01T00:04:00.000Z',
+        },
+        problemB: {
+          code: 'answer',
+        },
+      },
+      lastSyncedAt: new Date('2025-01-01T00:05:00.000Z'),
+    });
+    jest.useRealTimers();
+  });
+
+  it('throws when sync state is missing', async () => {
+    const examParticipationRepository = {
+      findSyncStateById: jest.fn().mockResolvedValue(null),
+      updateSyncState: jest.fn(),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examParticipationRepository }));
+
+    await expect(service.syncSession('missing-participation', {})).rejects.toBeInstanceOf(
+      ExamParticipationNotFoundException,
+    );
+    expect(examParticipationRepository.updateSyncState).not.toHaveBeenCalled();
+  });
+
+  it('throws timeout when syncing an expired session', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2025-01-01T00:31:00.000Z'));
+    const examParticipationRepository = {
+      findSyncStateById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        expiresAt: new Date('2025-01-01T00:30:00.000Z'),
+        currentAnswers: {},
+      }),
+      updateSyncState: jest.fn(),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examParticipationRepository }));
+
+    await expect(service.syncSession('participation-1', {})).rejects.toBeInstanceOf(
+      ExamTimeoutException,
+    );
+    expect(examParticipationRepository.updateSyncState).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('returns false when sync state update affects no rows', async () => {
+    const examParticipationRepository = {
+      findSyncStateById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        expiresAt: new Date('2999-01-01T00:30:00.000Z'),
+        currentAnswers: {},
+      }),
+      updateSyncState: jest.fn().mockResolvedValue(false),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examParticipationRepository }));
+
+    await expect(service.syncSession('participation-1', {})).resolves.toBe(false);
+  });
+
   it('only scans exams with active participations when finalizing expirations', async () => {
     const startTime = new Date('2025-01-01T00:00:00.000Z');
     const endDate = new Date('2025-01-01T02:00:00.000Z');
@@ -618,6 +845,7 @@ describe('ExamService exam password storage', () => {
 
   it('stores the exam password as registrationPassword when creating an exam', async () => {
     const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue(null),
       createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
     } as any;
     const service = new ExamService(createExamDependencies({ examRepository }));
@@ -659,6 +887,111 @@ describe('ExamService exam password storage', () => {
       }),
       expect.any(Array),
     );
+  });
+
+  it('generates a bounded slug for legacy exam create when slug is absent', async () => {
+    const longTitle = `${'Midterm Final! '.repeat(40)}###`;
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue(null),
+      createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    jest.spyOn(service, 'getExamById').mockResolvedValue({
+      id: 'exam-1',
+      title: longTitle,
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    } as any);
+
+    await service.createExam({
+      title: longTitle,
+      password: 'plain-password',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+    } as any);
+
+    const createInput = examRepository.createExamWithChallenges.mock.calls[0]?.[0];
+    expect(createInput.slug).toMatch(/^midterm-final.*-[a-f0-9]{6}$/);
+    expect(createInput.slug.length).toBeLessThanOrEqual(255);
+    expect(examRepository.findBySlug).toHaveBeenCalledWith(createInput.slug);
+  });
+
+  it('retries generated legacy exam slugs when candidates collide', async () => {
+    const examRepository = {
+      findBySlug: jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'existing-exam' })
+        .mockResolvedValueOnce(null),
+      createExamWithChallenges: jest.fn().mockResolvedValue('exam-1'),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    jest.spyOn(service, 'getExamById').mockResolvedValue({
+      id: 'exam-1',
+      title: 'Midterm Final!',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    } as any);
+
+    await service.createExam({
+      title: 'Midterm Final!',
+      password: 'plain-password',
+      duration: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2025-01-01T01:00:00.000Z',
+      isVisible: false,
+      maxAttempts: 1,
+      challenges: [],
+    } as any);
+
+    expect(examRepository.findBySlug).toHaveBeenCalledTimes(2);
+    expect(examRepository.createExamWithChallenges.mock.calls[0]?.[0].slug).toMatch(
+      /^midterm-final-[a-f0-9]{6}$/
+    );
+  });
+
+  it('stops legacy exam slug generation after five collisions', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({ id: 'existing-exam' }),
+      createExamWithChallenges: jest.fn(),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examRepository }));
+
+    await expect(
+      service.createExam({
+        title: 'Midterm Final!',
+        password: 'plain-password',
+        duration: 60,
+        startDate: '2025-01-01T00:00:00.000Z',
+        endDate: '2025-01-01T01:00:00.000Z',
+        isVisible: false,
+        maxAttempts: 1,
+        challenges: [],
+      } as any)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'EXAM_SLUG_GENERATION_CONFLICT',
+    });
+
+    expect(examRepository.findBySlug).toHaveBeenCalledTimes(5);
+    expect(examRepository.createExamWithChallenges).not.toHaveBeenCalled();
   });
 
   it('validates exam join password against registrationPassword', async () => {

@@ -18,6 +18,28 @@ describe('sandbox Dockerfile runtime dependencies', () => {
     expect(dockerfile).toContain('libjackson2-core-java');
     expect(dockerfile).toContain('libjackson2-databind-java');
   });
+
+  it('installs Node dependencies from the lockfile without package lifecycle scripts', () => {
+    const dockerfilePath = path.resolve(process.cwd(), 'docker', 'Dockerfile.sandbox');
+    const dockerfile = fs.readFileSync(dockerfilePath, 'utf8');
+    const lockfileInstallCount = (dockerfile.match(/RUN npm ci --ignore-scripts/g) ?? []).length;
+
+    expect(dockerfile).toContain('FROM node:22-bookworm-slim AS builder');
+    expect(lockfileInstallCount).toBe(1);
+    expect(dockerfile).toContain('FROM node:22-bookworm-slim AS production-deps');
+    expect(dockerfile).toContain('https://deb.nodesource.com/setup_22.x');
+    expect(dockerfile).not.toContain('node:20.9.0');
+    expect(dockerfile).not.toContain('node:24-bookworm-slim');
+    expect(dockerfile).not.toContain('bullseye');
+    expect(dockerfile).not.toContain('setup_20.x');
+    expect(dockerfile).not.toContain('setup_24.x');
+    expect(dockerfile).toContain('RUN npm ci --omit=dev --ignore-scripts');
+    expect(dockerfile).toContain('COPY --from=production-deps /app/node_modules ./node_modules');
+    expect(dockerfile).not.toContain('COPY --from=builder /app/package-lock.json ./package-lock.json');
+    expect(dockerfile).not.toContain('RUN npm prune --omit=dev --ignore-scripts');
+    expect(dockerfile).not.toContain('RUN npm install');
+    expect(dockerfile).not.toContain('RUN npm install --omit=dev --ignore-scripts');
+  });
 });
 
 describe('sandbox Java runtime configuration', () => {

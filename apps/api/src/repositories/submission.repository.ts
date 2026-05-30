@@ -164,6 +164,30 @@ export class SubmissionRepository extends BaseRepository<
     return (row as SubmissionRecord) || null;
   }
 
+  async findLatestByParticipationAndProblems(
+    participationId: string,
+    problemIds: string[],
+  ): Promise<SubmissionRecord[]> {
+    if (problemIds.length === 0) return [];
+
+    const rows = await this.db
+      .selectDistinctOn([submissions.problemId], {
+        ...getTableColumns(submissions),
+        language: languages.key,
+      })
+      .from(submissions)
+      .innerJoin(languages, eq(submissions.languageId, languages.id))
+      .where(
+        and(
+          eq(submissions.examParticipationId, participationId),
+          inArray(submissions.problemId, problemIds),
+        ),
+      )
+      .orderBy(submissions.problemId, desc(submissions.submittedAt));
+
+    return rows as SubmissionRecord[];
+  }
+
   async findLatestByUserProblemBetween(
     userId: string,
     problemId: string,
@@ -183,6 +207,34 @@ export class SubmissionRepository extends BaseRepository<
       .limit(1);
 
     return (row as SubmissionRecord) || null;
+  }
+
+  async findLatestByUserProblemsBetween(
+    userId: string,
+    problemIds: string[],
+    start: Date,
+    end: Date,
+  ): Promise<SubmissionRecord[]> {
+    if (problemIds.length === 0) return [];
+
+    const rows = await this.db
+      .selectDistinctOn([submissions.problemId], {
+        ...getTableColumns(submissions),
+        language: languages.key,
+      })
+      .from(submissions)
+      .innerJoin(languages, eq(submissions.languageId, languages.id))
+      .where(
+        and(
+          eq(submissions.userId, userId),
+          inArray(submissions.problemId, problemIds),
+          sql`${submissions.submittedAt} >= ${start}`,
+          sql`${submissions.submittedAt} <= ${end}`,
+        ),
+      )
+      .orderBy(submissions.problemId, desc(submissions.submittedAt));
+
+    return rows as SubmissionRecord[];
   }
 
   override async findMany(

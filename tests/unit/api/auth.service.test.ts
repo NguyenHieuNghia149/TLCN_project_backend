@@ -1,4 +1,5 @@
-import { JWTUtils, PasswordUtils } from '@backend/shared/utils';
+import { JWTUtils, PasswordUtils, TokenUtils } from '@backend/shared/utils';
+import { timeAsyncStage } from '@backend/api/services/performance-tracing';
 import {
   AuthService,
   createAuthService,
@@ -8,10 +9,28 @@ import { EMailService, otpStore } from '@backend/api/services/email.service';
 import { UserRepository } from '@backend/api/repositories/user.repository';
 import { TokenRepository } from '@backend/api/repositories/token.repository';
 
+jest.mock('@backend/api/services/performance-tracing', () => ({
+  timeAsyncStage: jest.fn((_scope: string, _stage: string, fn: () => Promise<unknown>) => fn()),
+}));
+
+function mockSessionTokenGeneration(
+  accessToken: string = 'access-token',
+  refreshToken: string = 'opaque-refresh-token',
+): void {
+  jest.spyOn(JWTUtils, 'generateAccessToken').mockReturnValue(accessToken);
+  jest.spyOn(JWTUtils, 'getTokenExpiration').mockReturnValue(new Date(Date.now() + 60_000));
+  jest.spyOn(TokenUtils, 'generateOpaqueRefreshToken').mockReturnValue(refreshToken);
+}
+
+function waitForLastLoginAuditTick(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
+}
+
 describe('AuthService', () => {
   const originalGoogleClientId = process.env.GOOGLE_CLIENT_ID;
 
-  afterEach(() => {
+  afterEach(async () => {
+    await waitForLastLoginAuditTick();
     jest.clearAllMocks();
     jest.restoreAllMocks();
     otpStore.clear();
@@ -114,11 +133,7 @@ describe('AuthService', () => {
 
   it('returns a minimal user session from password login without loading rank', async () => {
     jest.spyOn(PasswordUtils, 'comparePassword').mockResolvedValue(true);
-    jest.spyOn(JWTUtils, 'generateTokenPair').mockReturnValue({
-      accessToken: 'access-token',
-      refreshToken: 'refresh-token',
-      expiresIn: 3600,
-    });
+    mockSessionTokenGeneration('access-token', 'opaque-refresh-token');
 
     const userRepository = {
       findByEmail: jest.fn().mockResolvedValue({
@@ -157,14 +172,232 @@ describe('AuthService', () => {
     expect(result.user).not.toHaveProperty('rankingPoint');
   });
 
+  it('creates password login sessions with explicit access JWT and opaque refresh token', async () => {
+    jest.spyOn(PasswordUtils, 'comparePassword').mockResolvedValue(true);
+    mockSessionTokenGeneration('password-access-token', 'password-refresh-token');
+
+    const userRepository = {
+      findByEmail: jest.fn().mockResolvedValue({
+        id: 'user-1',
+        email: 'login@example.com',
+        password: 'hashed-password',
+        firstName: 'Login',
+        lastName: 'User',
+        avatar: null,
+        role: 'user',
+        status: 'active',
+        lastLoginAt: null,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+      updateLastLogin: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const tokenRepository = {
+      createRefreshToken: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    const result = await service.login({
+      email: 'login@example.com',
+      password: 'StrongPass1!',
+      rememberMe: false,
+    } as any);
+
+    expect(JWTUtils.generateAccessToken).toHaveBeenCalledWith('user-1', 'login@example.com', 'user');
+    expect(TokenUtils.generateOpaqueRefreshToken).toHaveBeenCalledTimes(1);
+    expect(tokenRepository.createRefreshToken).toHaveBeenCalledWith({
+      token: 'password-refresh-token',
+      userId: 'user-1',
+      expiresAt: expect.any(Date),
+    });
+    expect(result.tokens).toEqual({
+      accessToken: 'password-access-token',
+      refreshToken: 'password-refresh-token',
+      expiresIn: expect.any(Number),
+    });
+  });
+
+  it('instruments password login async stages', async () => {
+    jest.spyOn(PasswordUtils, 'comparePassword').mockResolvedValue(true);
+    mockSessionTokenGeneration('access-token', 'opaque-refresh-token');
+
+    const userRepository = {
+      findByEmail: jest.fn().mockResolvedValue({
+        id: 'user-1',
+        email: 'login@example.com',
+        password: 'hashed-password',
+        firstName: 'Login',
+        lastName: 'User',
+        avatar: null,
+        role: 'user',
+        status: 'active',
+        lastLoginAt: null,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+      updateLastLogin: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const tokenRepository = {
+      createRefreshToken: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    await service.login({
+      email: 'login@example.com',
+      password: 'StrongPass1!',
+      rememberMe: false,
+    } as any);
+    await waitForLastLoginAuditTick();
+
+    expect(timeAsyncStage).toHaveBeenCalledTimes(4);
+    expect(timeAsyncStage).toHaveBeenNthCalledWith(
+      1,
+      'auth.login',
+      'findByEmail',
+      expect.any(Function),
+    );
+    expect(timeAsyncStage).toHaveBeenNthCalledWith(
+      2,
+      'auth.login',
+      'bcrypt.compare',
+      expect.any(Function),
+    );
+    expect(timeAsyncStage).toHaveBeenNthCalledWith(
+      3,
+      'auth.login',
+      'createRefreshToken',
+      expect.any(Function),
+    );
+    expect(timeAsyncStage).toHaveBeenNthCalledWith(
+      4,
+      'auth.login',
+      'updateLastLogin',
+      expect.any(Function),
+    );
+  });
+
+  it('does not block password login response on last-login audit update', async () => {
+    jest.spyOn(PasswordUtils, 'comparePassword').mockResolvedValue(true);
+    mockSessionTokenGeneration('access-token', 'opaque-refresh-token');
+
+    const userRepository = {
+      findByEmail: jest.fn().mockResolvedValue({
+        id: 'user-1',
+        email: 'login@example.com',
+        password: 'hashed-password',
+        firstName: 'Login',
+        lastName: 'User',
+        avatar: null,
+        role: 'user',
+        status: 'active',
+        lastLoginAt: null,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+      updateLastLogin: jest.fn(
+        () =>
+          new Promise<void>(() => {
+            // Deliberately unresolved: login should not wait for this audit update.
+          }),
+      ),
+    } as any;
+    const tokenRepository = {
+      createRefreshToken: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    const result = await Promise.race([
+      service.login({
+        email: 'login@example.com',
+        password: 'StrongPass1!',
+        rememberMe: false,
+      } as any),
+      new Promise(resolve => setTimeout(() => resolve('timed-out'), 25)),
+    ]);
+
+    expect(result).not.toBe('timed-out');
+    expect(userRepository.updateLastLogin).not.toHaveBeenCalled();
+    expect(tokenRepository.createRefreshToken).toHaveBeenCalledTimes(1);
+
+    await waitForLastLoginAuditTick();
+
+    expect(userRepository.updateLastLogin).toHaveBeenCalledWith('user-1');
+    expect(tokenRepository.createRefreshToken).toHaveBeenCalledTimes(1);
+    expect(tokenRepository.createRefreshToken.mock.invocationCallOrder[0]).toBeLessThan(
+      userRepository.updateLastLogin.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('bounds password login last-login audit writes so they do not flood the database pool', async () => {
+    jest.spyOn(PasswordUtils, 'comparePassword').mockResolvedValue(true);
+    mockSessionTokenGeneration('access-token', 'opaque-refresh-token');
+
+    const userRepository = {
+      findByEmail: jest.fn(async (email: string) => {
+        const userIndex = email.match(/\d+/)?.[0] ?? '1';
+        return {
+          id: `user-${userIndex}`,
+          email,
+          password: 'hashed-password',
+          firstName: 'Login',
+          lastName: 'User',
+          avatar: null,
+          role: 'user',
+          status: 'active',
+          lastLoginAt: null,
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        };
+      }),
+      updateLastLogin: jest.fn(
+        () =>
+          new Promise<void>(() => {
+            // Deliberately unresolved: this models a slow hosted DB audit write.
+          }),
+      ),
+    } as any;
+    const tokenRepository = {
+      createRefreshToken: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        service.login({
+          email: `login${index + 1}@example.com`,
+          password: 'StrongPass1!',
+          rememberMe: false,
+        } as any),
+      ),
+    );
+
+    expect(userRepository.updateLastLogin).not.toHaveBeenCalled();
+
+    await waitForLastLoginAuditTick();
+
+    expect(userRepository.updateLastLogin).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the injected Google identity client for Google login', async () => {
     process.env.GOOGLE_CLIENT_ID = 'google-client-id';
     jest.spyOn(PasswordUtils, 'hashPassword').mockResolvedValue('google-password');
-    jest.spyOn(JWTUtils, 'generateTokenPair').mockReturnValue({
-      accessToken: 'access-token',
-      refreshToken: 'refresh-token',
-      expiresIn: 3600,
-    });
+    mockSessionTokenGeneration('google-access-token', 'google-refresh-token');
 
     const googleIdentityClient: IGoogleIdentityClient = {
       verifyIdToken: jest.fn().mockResolvedValue({
@@ -231,17 +464,8 @@ describe('AuthService', () => {
   });
 
   it('returns a minimal user session from refresh without loading rank', async () => {
-    jest.spyOn(JWTUtils, 'verifyRefreshToken').mockReturnValue({
-      userId: 'user-1',
-      email: 'login@example.com',
-      role: 'user',
-      type: 'refresh',
-    } as any);
-    jest.spyOn(JWTUtils, 'generateTokenPair').mockReturnValue({
-      accessToken: 'rotated-access-token',
-      refreshToken: 'rotated-refresh-token',
-      expiresIn: 3600,
-    });
+    jest.spyOn(JWTUtils, 'generateAccessToken').mockReturnValue('rotated-access-token');
+    jest.spyOn(JWTUtils, 'getTokenExpiration').mockReturnValue(new Date(Date.now() + 60_000));
 
     const userRepository = {
       findByIdOrThrow: jest.fn().mockResolvedValue({
@@ -259,6 +483,8 @@ describe('AuthService', () => {
     } as any;
     const tokenRepository = {
       findByToken: jest.fn().mockResolvedValue({
+        token: 'stored-refresh-token',
+        userId: 'user-1',
         expiresAt: new Date(Date.now() + 60_000),
       }),
     } as any;
@@ -274,6 +500,48 @@ describe('AuthService', () => {
     expect(userRepository.getUserRank).not.toHaveBeenCalled();
     expect(result.user).not.toHaveProperty('rank');
     expect(result.user).not.toHaveProperty('rankingPoint');
+  });
+
+  it('refreshes an access token from the stored opaque refresh token without JWT verification', async () => {
+    jest.spyOn(JWTUtils, 'generateAccessToken').mockReturnValue('new-access-token');
+    jest.spyOn(JWTUtils, 'getTokenExpiration').mockReturnValue(new Date(Date.now() + 60_000));
+
+    const userRepository = {
+      findByIdOrThrow: jest.fn().mockResolvedValue({
+        id: 'user-from-store',
+        email: 'login@example.com',
+        firstName: 'Login',
+        lastName: 'User',
+        avatar: null,
+        role: 'user',
+        status: 'active',
+        lastLoginAt: null,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      }),
+    } as any;
+    const tokenRepository = {
+      findByToken: jest.fn().mockResolvedValue({
+        token: 'stored-refresh-token',
+        userId: 'user-from-store',
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    } as any;
+    const service = new AuthService({
+      userRepository,
+      tokenRepository,
+      emailService: {} as EMailService,
+      googleIdentityClient: undefined,
+    });
+
+    const result = await service.refreshToken({ refreshToken: 'stored-refresh-token' });
+
+    expect((JWTUtils as any).verifyRefreshToken).toBeUndefined();
+    expect(userRepository.findByIdOrThrow).toHaveBeenCalledWith('user-from-store');
+    expect(result.tokens).toEqual({
+      accessToken: 'new-access-token',
+      refreshToken: 'stored-refresh-token',
+      expiresIn: expect.any(Number),
+    });
   });
 
   it('creates an auth service instance from the factory', () => {

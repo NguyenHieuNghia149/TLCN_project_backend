@@ -19,13 +19,13 @@ describe('Submission HTTP integration on post-migration routes', () => {
       getQueueStatus: jest.fn().mockResolvedValue({ queueLength: 3, isHealthy: true }),
       submitCode: jest.fn().mockResolvedValue({
         submissionId: SUBMISSION_ID,
-        status: 'PENDING',
+        status: 'pending',
         queuePosition: 1,
         estimatedWaitTime: 30,
       }),
       runCode: jest.fn().mockResolvedValue({
         submissionId: SUBMISSION_ID,
-        status: 'PENDING',
+        status: 'pending',
         message: 'Queued for execution',
       }),
       getSubmissionStatus: jest.fn(),
@@ -39,7 +39,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
       if (options?.emitTerminalStreamEvent) {
         setImmediate(() => {
           submissionEventStream.emit(`submission_${SUBMISSION_ID}`, {
-            status: 'ACCEPTED',
+            status: 'accepted',
             message: 'done',
           });
         });
@@ -115,7 +115,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
     expect(response.body.data).toMatchObject({
       message: 'Submission created successfully',
       submissionId: SUBMISSION_ID,
-      status: 'PENDING',
+      status: 'pending',
     });
     expect(service.submitCode).toHaveBeenCalledWith({
       sourceCode: 'print(1)',
@@ -172,7 +172,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('text/event-stream');
     expect(response.text).toContain('data:');
-    expect(response.text).toContain('ACCEPTED');
+    expect(response.text).toContain('accepted');
     expect(getSseService).toHaveBeenCalledTimes(1);
   });
 

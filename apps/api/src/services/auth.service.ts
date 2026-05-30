@@ -1,4 +1,4 @@
-import { JWTUtils, PasswordUtils } from '@backend/shared/utils';
+import { JWTUtils, logger, PasswordUtils, TokenUtils } from '@backend/shared/utils';
 import {
   AuthResponse,
   ChangePasswordInput,
@@ -21,6 +21,7 @@ import { EStatus } from '@backend/shared/types';
 import { createEMailService, EMailService, otpStore } from './email.service';
 import { EUserRole } from '@backend/shared/types';
 import { OAuth2Client } from 'google-auth-library';
+import { timeAsyncStage } from './performance-tracing';
 
 export interface IGoogleIdentityClient {
   verifyIdToken(options: {
@@ -49,11 +50,31 @@ type CreateAuthServiceOptions = {
   googleIdentityClient?: IGoogleIdentityClient;
 };
 
+function readPositiveIntegerEnv(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export class AuthService {
   private userRepository: UserRepository;
   private tokenRepository: TokenRepository;
   private emailService: EMailService;
   private googleClient?: IGoogleIdentityClient;
+  private pendingLastLoginAuditUserIds = new Set<string>();
+  private activeLastLoginAuditCount = 0;
+  private lastLoginAuditDrainScheduled = false;
+  private readonly lastLoginAuditConcurrency = readPositiveIntegerEnv(
+    process.env.AUTH_LAST_LOGIN_AUDIT_CONCURRENCY,
+    2,
+  );
+  private readonly lastLoginAuditMaxPending = readPositiveIntegerEnv(
+    process.env.AUTH_LAST_LOGIN_AUDIT_MAX_PENDING,
+    1000,
+  );
 
   constructor({
     userRepository,
@@ -113,12 +134,16 @@ export class AuthService {
   }
 
   async login(dto: LoginInput): Promise<AuthResponse> {
-    const user = await this.userRepository.findByEmail(dto.email);
+    const user = await timeAsyncStage('auth.login', 'findByEmail', () =>
+      this.userRepository.findByEmail(dto.email),
+    );
     if (!user) {
       throw new InvalidCredentialsException('User with this email does not exist');
     }
 
-    const isPasswordValid = await PasswordUtils.comparePassword(dto.password, user.password);
+    const isPasswordValid = await timeAsyncStage('auth.login', 'bcrypt.compare', () =>
+      PasswordUtils.comparePassword(dto.password, user.password),
+    );
     if (!isPasswordValid) {
       throw new InvalidCredentialsException('Invalid email or password');
     }
@@ -127,15 +152,18 @@ export class AuthService {
       throw new InvalidCredentialsException('Account is not active');
     }
 
-    await this.userRepository.updateLastLogin(user.id);
+    const accessToken = JWTUtils.generateAccessToken(user.id, user.email, user.role);
+    const refreshToken = TokenUtils.generateOpaqueRefreshToken();
 
-    const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
+    await timeAsyncStage('auth.login', 'createRefreshToken', () =>
+      this.tokenRepository.createRefreshToken({
+        token: refreshToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + (dto.rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000),
+      }),
+    );
 
-    await this.tokenRepository.createRefreshToken({
-      token: tokens.refreshToken,
-      userId: user.id,
-      expiresAt: new Date(Date.now() + (dto.rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000),
-    });
+    this.recordLastLogin(user.id);
 
     return {
       user: {
@@ -150,11 +178,81 @@ export class AuthService {
         createdAt: user.createdAt.toISOString(),
       },
       tokens: {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        expiresIn: tokens.expiresIn,
+        accessToken,
+        refreshToken,
+        expiresIn: this.getAccessTokenExpiresIn(accessToken),
       },
     };
+  }
+
+  private recordLastLogin(userId: string): void {
+    if (
+      !this.pendingLastLoginAuditUserIds.has(userId) &&
+      this.pendingLastLoginAuditUserIds.size >= this.lastLoginAuditMaxPending
+    ) {
+      logger.warn('Dropping last-login audit because the audit queue is full', {
+        userId,
+        pending: this.pendingLastLoginAuditUserIds.size,
+        maxPending: this.lastLoginAuditMaxPending,
+      });
+      return;
+    }
+
+    this.pendingLastLoginAuditUserIds.add(userId);
+    this.scheduleLastLoginAuditDrain();
+  }
+
+  private scheduleLastLoginAuditDrain(): void {
+    if (this.lastLoginAuditDrainScheduled) {
+      return;
+    }
+
+    this.lastLoginAuditDrainScheduled = true;
+    setImmediate(() => {
+      this.lastLoginAuditDrainScheduled = false;
+      this.drainLastLoginAuditQueue();
+    });
+  }
+
+  private drainLastLoginAuditQueue(): void {
+    while (
+      this.activeLastLoginAuditCount < this.lastLoginAuditConcurrency &&
+      this.pendingLastLoginAuditUserIds.size > 0
+    ) {
+      const userId = this.pendingLastLoginAuditUserIds.values().next().value;
+      if (!userId) {
+        return;
+      }
+
+      this.pendingLastLoginAuditUserIds.delete(userId);
+      this.activeLastLoginAuditCount += 1;
+
+      void timeAsyncStage('auth.login', 'updateLastLogin', () =>
+        this.userRepository.updateLastLogin(userId),
+      )
+        .catch(error => {
+          logger.warn('Failed to record last login', {
+            userId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          this.activeLastLoginAuditCount -= 1;
+
+          if (this.pendingLastLoginAuditUserIds.size > 0) {
+            this.scheduleLastLoginAuditDrain();
+          }
+        });
+    }
+  }
+
+  private getAccessTokenExpiresIn(accessToken: string): number {
+    const expiresAt = JWTUtils.getTokenExpiration(accessToken);
+    if (!expiresAt) {
+      return 15 * 60 * 1000;
+    }
+
+    return Math.max(expiresAt.getTime() - Date.now(), 0);
   }
 
   async loginWithGoogle(dto: GoogleLoginInput): Promise<AuthResponse> {
@@ -204,9 +302,15 @@ export class AuthService {
     const ensuredUser = user as NonNullable<typeof user>;
     await this.userRepository.updateLastLogin(ensuredUser.id);
 
-    const tokens = JWTUtils.generateTokenPair(ensuredUser.id, ensuredUser.email, ensuredUser.role);
+    const accessToken = JWTUtils.generateAccessToken(
+      ensuredUser.id,
+      ensuredUser.email,
+      ensuredUser.role,
+    );
+    const refreshToken = TokenUtils.generateOpaqueRefreshToken();
+
     await this.tokenRepository.createRefreshToken({
-      token: tokens.refreshToken,
+      token: refreshToken,
       userId: ensuredUser.id,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
@@ -224,16 +328,14 @@ export class AuthService {
         lastLoginAt: ensuredUser.lastLoginAt ? ensuredUser.lastLoginAt.toISOString() : null,
       },
       tokens: {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        expiresIn: tokens.expiresIn,
+        accessToken,
+        refreshToken,
+        expiresIn: this.getAccessTokenExpiresIn(accessToken),
       },
     };
   }
 
   async refreshToken(dto: RefreshTokenInput): Promise<AuthResponse> {
-    const payload = JWTUtils.verifyRefreshToken(dto.refreshToken);
-
     const storedToken = await this.tokenRepository.findByToken(dto.refreshToken);
     if (!storedToken) {
       throw new TokenExpiredException('Refresh token not found or revoked');
@@ -244,12 +346,12 @@ export class AuthService {
       throw new TokenExpiredException('Refresh token expired');
     }
 
-    const user = await this.userRepository.findByIdOrThrow(payload.userId);
+    const user = await this.userRepository.findByIdOrThrow(storedToken.userId);
     if (user.status !== EStatus.ACTIVE) {
       throw new InvalidCredentialsException('Account is not active');
     }
 
-    const rotated = JWTUtils.generateTokenPair(user.id, user.email, user.role);
+    const accessToken = JWTUtils.generateAccessToken(user.id, user.email, user.role);
 
     return {
       user: {
@@ -264,9 +366,9 @@ export class AuthService {
         createdAt: user.createdAt.toISOString(),
       },
       tokens: {
-        accessToken: rotated.accessToken,
-        refreshToken: rotated.refreshToken,
-        expiresIn: rotated.expiresIn,
+        accessToken,
+        refreshToken: dto.refreshToken,
+        expiresIn: this.getAccessTokenExpiresIn(accessToken),
       },
     };
   }

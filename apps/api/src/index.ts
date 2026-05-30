@@ -1,6 +1,6 @@
 import { DatabaseService, registerDatabaseProcessHandlers } from '@backend/shared/db/connection';
 import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
-import { logger } from '@backend/shared/utils';
+import { logger, PasswordUtils } from '@backend/shared/utils';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -140,6 +140,12 @@ export async function startApiServer(): Promise<{
   server: Server;
 }> {
   config();
+
+  logger.info('Runtime config', {
+    uvThreadpoolSize: process.env.UV_THREADPOOL_SIZE ?? 'node-default',
+    bcryptRounds: PasswordUtils.getSaltRounds(),
+    nodeEnv: process.env.NODE_ENV,
+  });
 
   const app = createApiApp();
   const server = createServer(app);
