@@ -1,0 +1,184 @@
+# Shared backend build graph for api, worker, and sandbox compose targets.
+# The heavy dependency/build stages are intentionally chained so
+# `docker compose build api worker sandbox` does not run multiple `npm ci`
+# jobs at once on Docker Desktop.
+
+FROM node:22-bookworm-slim AS node-runtime
+
+FROM node:22-trixie-slim AS shared-builder
+
+WORKDIR /app
+ENV NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+    NPM_CONFIG_MAXSOCKETS=6
+
+COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
+COPY tsconfig.json ./
+
+RUN npm ci --ignore-scripts
+
+COPY . .
+
+RUN node ./node_modules/typescript/bin/tsc -p apps/api/tsconfig.json && \
+    node ./node_modules/typescript/bin/tsc -p apps/worker/tsconfig.json && \
+    node ./node_modules/typescript/bin/tsc -p apps/sandbox/tsconfig.json && \
+    touch /tmp/shared-builder-ready
+
+FROM node:22-trixie-slim AS shared-production-deps
+
+WORKDIR /app
+ENV NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+    NPM_CONFIG_MAXSOCKETS=6
+
+COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
+COPY --from=shared-builder /tmp/shared-builder-ready /tmp/shared-builder-ready
+
+RUN npm ci --omit=dev --ignore-scripts && \
+    touch /tmp/shared-production-deps-ready
+
+FROM shared-builder AS api-runtime-files
+
+RUN mkdir -p /runtime/workspace /runtime/packages/shared/db/migrations/meta && \
+    touch /runtime/packages/shared/db/migrations/meta/_journal.json
+
+FROM gcr.io/distroless/cc-debian12 AS api
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=shared-production-deps /app/node_modules ./node_modules
+
+COPY --from=shared-builder /app/apps/api/dist ./apps/api/dist
+COPY --from=shared-builder /app/apps/api/dist/packages/shared ./packages/shared/dist
+COPY --from=shared-builder /app/apps/sandbox/dist ./apps/sandbox/dist
+COPY --from=shared-builder /app/packages/shared/db/migrations ./packages/shared/db/migrations/
+COPY --from=api-runtime-files /runtime/packages/shared/db/migrations/meta ./packages/shared/db/migrations/meta
+COPY --from=api-runtime-files /runtime/workspace ./workspace
+COPY config ./config
+COPY config ./apps/api/config
+COPY security ./security
+COPY .env ./
+
+ENV NODE_ENV=production
+ENV PORT=3001
+
+CMD ["/usr/local/bin/node", "apps/api/dist/apps/api/src/index.js"]
+
+FROM gcr.io/distroless/cc-debian12 AS worker
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=shared-production-deps /app/node_modules ./node_modules
+
+COPY --from=shared-builder /app/apps/api/dist ./apps/api/dist
+COPY --from=shared-builder /app/apps/worker/dist ./apps/worker/dist
+COPY --from=shared-builder /app/apps/worker/dist/packages/shared ./packages/shared/dist
+COPY --from=shared-builder /app/packages/shared/proto ./packages/shared/proto
+COPY --from=shared-builder /app/packages/shared/proto ./apps/worker/dist/packages/shared/proto
+COPY config ./config
+COPY security ./security
+COPY .env ./
+
+ENV NODE_ENV=production
+
+CMD ["/usr/local/bin/node", "apps/worker/dist/apps/worker/src/worker.server.js"]
+
+FROM ubuntu:24.04 AS sandbox-nsjail-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    build-essential \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libnl-route-3-dev \
+    libtool \
+    make \
+    pkg-config \
+    flex \
+    bison \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth=1 https://github.com/google/nsjail.git /tmp/nsjail && \
+    cd /tmp/nsjail && \
+    make
+
+FROM ubuntu:24.04 AS sandbox
+
+COPY --from=shared-production-deps /tmp/shared-production-deps-ready /tmp/shared-production-deps-ready
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    gcc \
+    g++ \
+    nlohmann-json3-dev \
+    openjdk-17-jdk-headless \
+    libprotobuf32t64 \
+    libnl-route-3-200 \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG JACKSON_VERSION=2.17.3
+
+RUN mkdir -p /usr/share/java && \
+    curl -fsSL "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/${JACKSON_VERSION}/jackson-annotations-${JACKSON_VERSION}.jar" -o /usr/share/java/jackson-annotations.jar && \
+    curl -fsSL "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/${JACKSON_VERSION}/jackson-core-${JACKSON_VERSION}.jar" -o /usr/share/java/jackson-core.jar && \
+    curl -fsSL "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/${JACKSON_VERSION}/jackson-databind-${JACKSON_VERSION}.jar" -o /usr/share/java/jackson-databind.jar
+
+COPY --from=sandbox-nsjail-builder /tmp/nsjail/nsjail /usr/bin/nsjail
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+COPY apps/worker/package*.json ./apps/worker/
+COPY apps/sandbox/package*.json ./apps/sandbox/
+COPY packages/shared/package*.json ./packages/shared/
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=shared-production-deps /app/node_modules ./node_modules
+
+COPY --from=shared-builder /app/apps/api/dist ./apps/api/dist
+COPY --from=shared-builder /app/apps/sandbox/dist ./apps/sandbox/dist
+COPY --from=shared-builder /app/apps/sandbox/dist/packages/shared ./packages/shared/dist
+COPY --from=shared-builder /app/packages/shared/proto ./packages/shared/proto
+COPY --from=shared-builder /app/packages/shared/proto ./apps/sandbox/dist/packages/shared/proto
+COPY config ./config
+COPY config ./apps/sandbox/config
+COPY security ./security
+COPY .env ./
+
+RUN mkdir -p /app/workspace && chmod 777 /app/workspace
+
+ENV NODE_ENV=production
+ENV SANDBOX_PORT=4000
+ENV WORKSPACE_DIR=/app/workspace
+
+CMD ["/usr/local/bin/node", "apps/sandbox/dist/apps/sandbox/src/sandbox.server.js"]

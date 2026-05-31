@@ -35,7 +35,7 @@ import {
 import { ESubmissionStatus } from '@backend/shared/types';
 import { ChallengeService, createChallengeService } from './challenge.service';
 import { createNotificationService } from './notification.service';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 const EXAM_SLUG_MAX_LENGTH = 255;
 const EXAM_SLUG_SUFFIX_LENGTH = 6;
@@ -299,7 +299,7 @@ export class ExamService {
   }
 
   private buildSlugCandidate(title: string): string {
-    const suffix = uuidv4().replace(/-/g, '').slice(0, EXAM_SLUG_SUFFIX_LENGTH).toLowerCase();
+    const suffix = randomUUID().replace(/-/g, '').slice(0, EXAM_SLUG_SUFFIX_LENGTH).toLowerCase();
     const maxBaseLength = EXAM_SLUG_MAX_LENGTH - suffix.length - 1;
     const base = this.buildSlugBase(title).slice(0, maxBaseLength).replace(/-$/g, '') || 'exam';
 

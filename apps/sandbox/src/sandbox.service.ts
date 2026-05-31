@@ -1,9 +1,9 @@
 import { FsUtils, JudgeUtils, StringUtils, logger } from '@backend/shared/utils';
 import { isDeepStrictEqual } from 'node:util';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as yaml from 'yaml';
-import { v4 as uuidv4 } from 'uuid';
 import { SandboxConfig as GlobalSandboxConfig } from '../../../config/sandbox.config';
 import { ExecutionResult, ExecutionConfig } from '@backend/shared/validations/submission.validation';
 import { getMonitoringService } from '@backend/shared/runtime/code-monitoring';
@@ -120,7 +120,7 @@ export class SandboxService {
   }
 
   async executeCode(config: ExecutionConfig): Promise<SandboxResponse> {
-    const executionId = uuidv4();
+    const executionId = randomUUID();
     const jobDir = path.join(this.workspaceDir, executionId);
     const startTime = Date.now();
 

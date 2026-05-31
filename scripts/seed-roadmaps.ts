@@ -1,7 +1,7 @@
 import { getDb } from '@backend/shared/db';
 import { roadmaps, roadmapItems, users, lessons } from '@backend/shared/db/schema';
 import { eq } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 async function seedRoadmaps() {
   const db = getDb();
@@ -71,7 +71,7 @@ async function seedRoadmaps() {
     }> = [];
 
     for (const sample of roadmapSamples) {
-      const roadmapId = uuidv4();
+      const roadmapId = randomUUID();
       const newRoadmap = {
         id: roadmapId,
         title: sample.title,
@@ -91,7 +91,7 @@ async function seedRoadmaps() {
         if (existingLessons.length > 0) {
           const itemsToAdd = existingLessons.slice(0, 3);
           const itemInserts = itemsToAdd.map((lesson, index) => ({
-            id: uuidv4(),
+            id: randomUUID(),
             roadmapId: roadmapId,
             itemType: 'lesson' as const,
             itemId: lesson.id,

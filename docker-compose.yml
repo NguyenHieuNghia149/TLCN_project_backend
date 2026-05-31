@@ -33,7 +33,8 @@
   api:
     build:
       context: .
-      dockerfile: docker/Dockerfile.api
+      dockerfile: docker/Dockerfile.backend
+      target: api
     expose:
       - '3001'
     ports:
@@ -86,7 +87,8 @@
   sandbox:
     build:
       context: .
-      dockerfile: docker/Dockerfile.sandbox
+      dockerfile: docker/Dockerfile.backend
+      target: sandbox
     expose:
       - '4000'
     environment:
@@ -118,7 +120,8 @@
   worker:
     build:
       context: .
-      dockerfile: docker/Dockerfile.worker
+      dockerfile: docker/Dockerfile.backend
+      target: worker
     environment:
       - NODE_ENV=${NODE_ENV}
       - DATABASE_URL=${DATABASE_URL}
