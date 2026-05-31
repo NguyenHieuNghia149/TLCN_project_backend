@@ -167,6 +167,24 @@ describe('docker compose runtime path', () => {
     expect(dockerfile).toContain('CMD ["/usr/local/bin/node", "apps/api/dist/apps/api/src/index.js"]');
   });
 
+  it('preserves the Drizzle migration journal copied from source', () => {
+    const dockerfile = fs.readFileSync(path.resolve(process.cwd(), 'docker/Dockerfile.backend'), 'utf8');
+    const journal = fs.readFileSync(
+      path.resolve(process.cwd(), 'packages/shared/db/migrations/meta/_journal.json'),
+      'utf8',
+    );
+
+    expect(() => JSON.parse(journal)).not.toThrow();
+    expect(journal.trim().length).toBeGreaterThan(0);
+    expect(dockerfile).toContain(
+      'COPY --from=shared-builder /app/packages/shared/db/migrations ./packages/shared/db/migrations/',
+    );
+    expect(dockerfile).not.toContain('touch /runtime/packages/shared/db/migrations/meta/_journal.json');
+    expect(dockerfile).not.toContain(
+      'COPY --from=api-runtime-files /runtime/packages/shared/db/migrations/meta ./packages/shared/db/migrations/meta',
+    );
+  });
+
   it('serializes heavy backend Docker stages for multi-target compose builds', () => {
     const dockerfile = fs.readFileSync(path.resolve(process.cwd(), 'docker/Dockerfile.backend'), 'utf8');
 

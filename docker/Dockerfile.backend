@@ -53,8 +53,7 @@ RUN npm ci --omit=dev --ignore-scripts && \
 
 FROM shared-builder AS api-runtime-files
 
-RUN mkdir -p /runtime/workspace /runtime/packages/shared/db/migrations/meta && \
-    touch /runtime/packages/shared/db/migrations/meta/_journal.json
+RUN mkdir -p /runtime/workspace
 
 FROM gcr.io/distroless/cc-debian12 AS api
 
@@ -72,7 +71,6 @@ COPY --from=shared-builder /app/apps/api/dist ./apps/api/dist
 COPY --from=shared-builder /app/apps/api/dist/packages/shared ./packages/shared/dist
 COPY --from=shared-builder /app/apps/sandbox/dist ./apps/sandbox/dist
 COPY --from=shared-builder /app/packages/shared/db/migrations ./packages/shared/db/migrations/
-COPY --from=api-runtime-files /runtime/packages/shared/db/migrations/meta ./packages/shared/db/migrations/meta
 COPY --from=api-runtime-files /runtime/workspace ./workspace
 COPY config ./config
 COPY config ./apps/api/config
