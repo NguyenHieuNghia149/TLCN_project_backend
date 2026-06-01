@@ -27,6 +27,8 @@ describe('wrapper generator recursive function signatures', () => {
 
     expect(wrapper).toContain('const std::vector<std::optional<int>> root = payload.at("root").get<std::vector<std::optional<int>>>();');
     expect(wrapper).toContain('#include <optional>');
+    expect(wrapper).toContain('struct adl_serializer<std::optional<T>>');
+    expect(wrapper).toContain('value = std::nullopt;');
   });
 
   it('builds Java wrappers for nested array inputs with TypeReference readers', () => {

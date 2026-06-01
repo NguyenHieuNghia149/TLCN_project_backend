@@ -304,7 +304,7 @@ export class ChallengeService {
       id: string;
       title: string;
       description: string | null;
-      difficult: string;
+      difficulty: string;
       createdAt: Date | string;
       totalPoints: number;
       isSolved: boolean;
@@ -342,7 +342,7 @@ export class ChallengeService {
         id: p.id,
         title: p.title,
         description: p.description,
-        difficult: p.difficult,
+        difficulty: p.difficult,
         createdAt: p.createdAt,
         totalPoints: pointsMap[p.id] ?? 0,
         isSolved: userId ? solvedSet.has(p.id) : false,
@@ -377,7 +377,7 @@ export class ChallengeService {
       id: string;
       title: string;
       description: string | null;
-      difficult: string;
+      difficulty: string;
       createdAt: Date | string;
       totalPoints: number;
       isSolved: boolean;
@@ -416,7 +416,7 @@ export class ChallengeService {
         id: p.id,
         title: p.title,
         description: p.description,
-        difficult: p.difficult,
+        difficulty: p.difficult,
         createdAt: p.createdAt,
         totalPoints: pointsMap[p.id] ?? 0,
         isSolved: userId ? solvedSet.has(p.id) : false,

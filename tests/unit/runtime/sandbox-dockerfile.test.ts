@@ -40,6 +40,7 @@ describe('sandbox Dockerfile runtime dependencies', () => {
     const dockerfile = readSandboxStage();
 
     expect(dockerfile).toContain('apt-get install -y --no-install-recommends');
+    expect(dockerfile).toMatch(/^\s+python3 \\$/m);
     expect(dockerfile).toContain('openjdk-17-jdk-headless');
     expect(dockerfile).toContain('libprotobuf32t64');
     expect(dockerfile).toContain('libnl-route-3-200');

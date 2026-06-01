@@ -122,6 +122,56 @@ describe('ChallengeService derived testcase display', () => {
     expect(result).toEqual(['array', 'hash-table']);
   });
 
+  it('maps topic problem list difficulty to the public difficulty field', async () => {
+    const topicRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'topic-1' }),
+    } as any;
+    const problemRepository = {
+      findByTopicWithCursor: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'problem-3sum',
+            title: '3Sum',
+            description: 'desc',
+            difficult: 'medium',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+        nextCursor: null,
+      }),
+    } as any;
+    const testcaseRepository = {
+      sumPointsByProblemIds: jest.fn().mockResolvedValue({ 'problem-3sum': 30 }),
+    } as any;
+    const submissionRepository = {
+      getAcceptedProblemIdsByUser: jest.fn(),
+    } as any;
+    const favoriteRepository = {
+      getFavoriteProblemIds: jest.fn(),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        topicRepository,
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        favoriteRepository,
+      }),
+    );
+
+    const result = await service.listProblemsByTopicInfinite({
+      topicId: 'topic-1',
+      userId: undefined,
+    });
+
+    expect(result.items[0]).toMatchObject({
+      id: 'problem-3sum',
+      difficulty: 'medium',
+      totalPoints: 30,
+    });
+    expect(result.items[0]).not.toHaveProperty('difficult');
+  });
+
   it('derives testcase input and output from JSON instead of cached DB text', () => {
     const service = new ChallengeService(createChallengeDependencies());
     const response = (service as any).mapToChallengeResponse({
