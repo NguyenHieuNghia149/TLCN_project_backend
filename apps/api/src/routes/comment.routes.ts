@@ -4,12 +4,14 @@ import { authenticationToken, optionalAuth } from '@backend/api/middlewares/auth
 import { rateLimitMiddleware } from '@backend/api/middlewares/ratelimit.middleware';
 import { createCommentService } from '@backend/api/services/comment.service';
 import { createCommentLikeService } from '@backend/api/services/commentLike.service';
+import { createNotificationService } from '@backend/api/services/notification.service';
 
 /** Creates the comment router without constructing controllers at import time. */
 export function createCommentRouter(): Router {
   const router = Router();
-  const commentService = createCommentService();
-  const commentLikeService = createCommentLikeService();
+  const notificationService = createNotificationService();
+  const commentService = createCommentService(notificationService);
+  const commentLikeService = createCommentLikeService(notificationService);
   const controller = new CommentController(commentService, commentLikeService);
 
   const generalLimit = rateLimitMiddleware({

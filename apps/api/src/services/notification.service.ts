@@ -66,11 +66,17 @@ export class NotificationService {
       metadata,
     };
 
+    console.log('[NOTIFICATION] Creating notification for user:', userId, 'type:', typeEnum, 'title:', title);
     const created = await this.notificationRepository.create(newNotification as any);
+    console.log('[NOTIFICATION] Notification saved to DB with ID:', created.id);
 
     const socketService = this.getSocketService();
     if (socketService) {
+      console.log('[NOTIFICATION] Socket service available, emitting to user:', userId);
       socketService.emitToUser(userId, 'notification_new', created);
+      console.log('[NOTIFICATION] Notification emitted via socket');
+    } else {
+      console.log('[NOTIFICATION] Socket service is NULL - notification saved to DB but not emitted');
     }
 
     return created;
