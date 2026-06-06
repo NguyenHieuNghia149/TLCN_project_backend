@@ -1,18 +1,29 @@
 import { CommentLikeRepository } from '../repositories/commentLike.repository';
 import { CommentRepository } from '../repositories/comment.repository';
+import { UserRepository } from '../repositories/user.repository';
 import { CommentLikeResponse, CommentLikeStatus, BatchLikeStatusResult } from '@backend/shared/types/comment.types';
 import { logger } from '@backend/shared/utils';
+import { NotificationService } from './notification.service';
+import { ENotificationType } from '@backend/shared/types';
+
+type CommentLikeServiceDependencies = {
+  commentLikeRepository: CommentLikeRepository;
+  commentRepository: CommentRepository;
+  userRepository?: UserRepository;
+  notificationService?: NotificationService;
+};
 
 export class CommentLikeService {
   private commentLikeRepository: CommentLikeRepository;
   private commentRepository: CommentRepository;
+  private userRepository: UserRepository | null;
+  private notificationService: NotificationService | null;
 
-  constructor(deps: {
-    commentLikeRepository: CommentLikeRepository;
-    commentRepository: CommentRepository;
-  }) {
+  constructor(deps: CommentLikeServiceDependencies) {
     this.commentLikeRepository = deps.commentLikeRepository;
     this.commentRepository = deps.commentRepository;
+    this.userRepository = deps.userRepository || null;
+    this.notificationService = deps.notificationService || null;
   }
 
   /**
@@ -51,6 +62,64 @@ export class CommentLikeService {
       await this.commentLikeRepository.addLike(commentId, userId);
       // Increment count atomically  
       await this.commentRepository.incrementLikeCount(commentId);
+      
+      // Send notification to comment author
+      if (this.notificationService && comment.userId !== userId) {
+        try {
+          
+          // Get liker user info
+          let likerName = 'Someone';
+          if (this.userRepository) {
+            const likerUser = await this.userRepository.findById(userId);
+            if (likerUser) {
+              likerName = [likerUser.firstName, likerUser.lastName].filter(Boolean).join(' ') || likerUser.email;
+            }
+          }
+          
+          // Get updated like count
+          const updatedComment = await this.commentRepository.findById(commentId);
+          const likeCount = updatedComment?.likeCount ?? 1;
+          
+          // Use fresh comment data for link (with lessonId/problemId)
+          const commentForLink = comment; // Already fetched at line 41
+          
+          // Format title and message based on like count
+          let title: string;
+          let message: string;
+          if (likeCount === 1) {
+            title = `${likerName} liked your comment`;
+            message = `${likerName} liked your comment`;
+          } else {
+            const othersCount = likeCount - 1;
+            title = `${likerName} and ${othersCount} other${othersCount > 1 ? 's' : ''} liked your comment`;
+            message = `${likerName} and ${othersCount} other${othersCount > 1 ? 's' : ''} liked your comment`;
+          }
+          
+          // Build metadata with link
+          const metadata: any = {
+            commentId: comment.id,
+            actionType: 'like',
+          };
+          
+          if (comment.lessonId) {
+            metadata.lessonId = comment.lessonId;
+            metadata.link = `/lessons/${comment.lessonId}`;
+          } else if (comment.problemId) {
+            metadata.problemId = comment.problemId;
+            metadata.link = `/problems/${comment.problemId}`;
+          }
+          
+          await this.notificationService.notifyUser(
+            comment.userId,
+            ENotificationType.COMMENT,
+            title,
+            message,
+            metadata
+          );
+        } catch (error) {
+          logger.error('Failed to send like notification', error);
+        }
+      }
       
       logger.info({
         action: 'COMMENT_LIKE',
@@ -145,9 +214,11 @@ export class CommentLikeService {
 }
 
 /** Creates a CommentLikeService with concrete repository dependencies */
-export function createCommentLikeService(): CommentLikeService {
+export function createCommentLikeService(notificationService?: NotificationService): CommentLikeService {
   return new CommentLikeService({
     commentLikeRepository: new CommentLikeRepository(),
     commentRepository: new CommentRepository(),
+    userRepository: new UserRepository(),
+    notificationService,
   });
 }

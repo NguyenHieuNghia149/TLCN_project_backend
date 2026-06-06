@@ -3,19 +3,79 @@ import {
   CommentWithUser,
   CommentWithReplies,
 } from '../repositories/comment.repository';
+import { UserRepository } from '../repositories/user.repository';
 import { CommentInsert, CommentEntity } from '@backend/shared/db/schema';
 import { CommentPinResponse } from '@backend/shared/types/comment.types';
 import { logger } from '@backend/shared/utils';
+import { NotificationService } from './notification.service';
+import { ENotificationType } from '@backend/shared/types';
+
+type CommentServiceDependencies = {
+  commentRepository: CommentRepository;
+  userRepository?: UserRepository;
+  notificationService?: NotificationService;
+};
 
 export class CommentService {
   private repo: CommentRepository;
+  private userRepository: UserRepository | null;
+  private notificationService: NotificationService | null;
 
-  constructor(deps: { commentRepository: CommentRepository }) {
+  constructor(deps: CommentServiceDependencies) {
     this.repo = deps.commentRepository;
+    this.userRepository = deps.userRepository || null;
+    this.notificationService = deps.notificationService || null;
   }
 
   async createComment(payload: CommentInsert): Promise<CommentEntity> {
     const created = await this.repo.create(payload as CommentInsert);
+
+    // Send notification if this is a reply to another comment
+    if (created.parentCommentId && this.notificationService) {
+      try {
+        const parentComment = await this.repo.findById(created.parentCommentId);
+        if (parentComment && parentComment.userId !== created.userId) {
+          
+          // Get replier user info
+          let replierName = 'Someone';
+          if (this.userRepository) {
+            const replierUser = await this.userRepository.findById(created.userId);
+            if (replierUser) {
+              replierName = [replierUser.firstName, replierUser.lastName].filter(Boolean).join(' ') || replierUser.email;
+            }
+          }
+          
+          const title = `${replierName} replied to your comment`;
+          const message = `${replierName} replied to your comment`;
+          
+          // Build metadata with link
+          const metadata: any = {
+            commentId: created.id,
+            parentId: created.parentCommentId,
+            actionType: 'reply',
+          };
+          
+          if (created.lessonId) {
+            metadata.lessonId = created.lessonId;
+            metadata.link = `/lessons/${created.lessonId}`;
+          } else if (created.problemId) {
+            metadata.problemId = created.problemId;
+            metadata.link = `/problems/${created.problemId}`;
+          }
+          
+          await this.notificationService.notifyUser(
+            parentComment.userId,
+            ENotificationType.COMMENT,
+            title,
+            message,
+            metadata
+          );
+        }
+      } catch (error) {
+        logger.error('Failed to send reply notification', error);
+      }
+    }
+
     return created;
   }
 
@@ -88,7 +148,49 @@ export class CommentService {
     const pinnedAt = new Date();
     await this.repo.pinComment(commentId, adminUserId, pinnedAt);
 
-    // 5. Log operation
+    // 5. Send notification to comment author
+    if (this.notificationService && comment.userId !== adminUserId) {
+      try {
+        
+        // Get admin user info
+        let adminName = 'Admin';
+        if (this.userRepository) {
+          const adminUser = await this.userRepository.findById(adminUserId);
+          if (adminUser) {
+            adminName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ') || adminUser.email;
+          }
+        }
+        
+        const title = 'Your comment was pinned';
+        const message = `Your comment has been pinned by ${adminName}`;
+        
+        // Build metadata with link
+        const metadata: any = {
+          commentId: comment.id,
+          actionType: 'pin',
+        };
+        
+        if (comment.lessonId) {
+          metadata.lessonId = comment.lessonId;
+          metadata.link = `/lessons/${comment.lessonId}`;
+        } else if (comment.problemId) {
+          metadata.problemId = comment.problemId;
+          metadata.link = `/problems/${comment.problemId}`;
+        }
+        
+        await this.notificationService.notifyUser(
+          comment.userId,
+          ENotificationType.COMMENT,
+          title,
+          message,
+          metadata
+        );
+      } catch (error) {
+        logger.error('Failed to send pin notification', error);
+      }
+    }
+
+    // 6. Log operation
     logger.info({
       action: 'COMMENT_PINNED',
       commentId,
@@ -162,8 +264,10 @@ export class CommentService {
 }
 
 /** Creates a CommentService with concrete repository dependencies. */
-export function createCommentService(): CommentService {
+export function createCommentService(notificationService?: NotificationService): CommentService {
   return new CommentService({
     commentRepository: new CommentRepository(),
+    userRepository: new UserRepository(),
+    notificationService,
   });
 }

@@ -60,7 +60,10 @@ export class WebSocketService implements IWebSocketNotifier {
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {
-    this.io.to(`user_${userId}`).emit(event, data);
+    const sockets = this.connectedClients.get(userId);
+    if (sockets && sockets.size > 0) {
+      this.io.to(`user_${userId}`).emit(event, data);
+    }
   }
 
   getConnectedClientsCount(): number {

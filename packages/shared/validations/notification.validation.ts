@@ -26,6 +26,7 @@ export const NotificationMetadataSchemas = {
       commentId: z.string(),
       postId: z.string().optional(),
       parentId: z.string().optional(),
+      actionType: z.enum(['reply', 'like', 'pin']).optional(),
     })
     .optional(),
   // Add other types as needed
