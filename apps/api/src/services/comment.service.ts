@@ -34,9 +34,7 @@ export class CommentService {
     if (created.parentCommentId && this.notificationService) {
       try {
         const parentComment = await this.repo.findById(created.parentCommentId);
-        console.log('[COMMENT] Reply created, parent:', parentComment?.userId, 'reply author:', created.userId);
         if (parentComment && parentComment.userId !== created.userId) {
-          console.log('[COMMENT] Sending reply notification to user:', parentComment.userId);
           
           // Get replier user info
           let replierName = 'Someone';
@@ -72,16 +70,10 @@ export class CommentService {
             message,
             metadata
           );
-          console.log('[COMMENT] Reply notification sent successfully');
-        } else {
-          console.log('[COMMENT] Skipping notification: same author or no parent comment');
         }
       } catch (error) {
         logger.error('Failed to send reply notification', error);
-        console.error('[COMMENT] Notification error:', error);
       }
-    } else {
-      console.log('[COMMENT] Skipping notification: no parent or no notificationService');
     }
 
     return created;
@@ -159,7 +151,6 @@ export class CommentService {
     // 5. Send notification to comment author
     if (this.notificationService && comment.userId !== adminUserId) {
       try {
-        console.log('[PIN] Sending pin notification to comment author:', comment.userId);
         
         // Get admin user info
         let adminName = 'Admin';
@@ -194,13 +185,9 @@ export class CommentService {
           message,
           metadata
         );
-        console.log('[PIN] Pin notification sent successfully');
       } catch (error) {
         logger.error('Failed to send pin notification', error);
-        console.error('[PIN] Notification error:', error);
       }
-    } else {
-      console.log('[PIN] Skipping pin notification:', { hasService: !!this.notificationService, sameAuthor: comment.userId === adminUserId });
     }
 
     // 6. Log operation

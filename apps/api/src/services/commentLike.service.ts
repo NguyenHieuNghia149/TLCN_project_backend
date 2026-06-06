@@ -66,7 +66,6 @@ export class CommentLikeService {
       // Send notification to comment author
       if (this.notificationService && comment.userId !== userId) {
         try {
-          console.log('[LIKE] Sending like notification to comment author:', comment.userId);
           
           // Get liker user info
           let likerName = 'Someone';
@@ -117,13 +116,9 @@ export class CommentLikeService {
             message,
             metadata
           );
-          console.log('[LIKE] Like notification sent successfully');
         } catch (error) {
           logger.error('Failed to send like notification', error);
-          console.error('[LIKE] Notification error:', error);
         }
-      } else {
-        console.log('[LIKE] Skipping like notification:', { hasService: !!this.notificationService, sameAuthor: comment.userId === userId });
       }
       
       logger.info({
