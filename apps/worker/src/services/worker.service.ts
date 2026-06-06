@@ -4,7 +4,7 @@ import {
   canonicalizeStructuredValue,
   logger,
 } from '@backend/shared/utils';
-import { ESubmissionStatus } from '@backend/shared/types';
+import { ESubmissionStatus, fromGrpcSubmissionStatus } from '@backend/shared/types';
 import { SubmissionResult } from '@backend/shared/validations/submission.validation';
 import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
 import type { QueueJob } from '@backend/shared/runtime/judge-queue';
@@ -346,17 +346,17 @@ export class WorkerService implements IWorkerService {
     return this.mapGrpcResponseToLegacy(grpcResponse);
   }
 
-  private buildFallbackErrorMessage(status: string, compileError: string): string {
+  private buildFallbackErrorMessage(status: ESubmissionStatus, compileError: string): string {
     switch (status) {
-      case 'TIME_LIMIT_EXCEEDED':
+      case ESubmissionStatus.TIME_LIMIT_EXCEEDED:
         return 'Time limit exceeded';
-      case 'MEMORY_LIMIT_EXCEEDED':
+      case ESubmissionStatus.MEMORY_LIMIT_EXCEEDED:
         return 'Memory limit exceeded';
-      case 'COMPILATION_ERROR':
+      case ESubmissionStatus.COMPILATION_ERROR:
         return compileError || 'Compilation failed';
-      case 'RUNTIME_ERROR':
+      case ESubmissionStatus.RUNTIME_ERROR:
         return 'Runtime error';
-      case 'WRONG_ANSWER':
+      case ESubmissionStatus.WRONG_ANSWER:
         return 'Wrong Answer';
       default:
         return compileError || 'Sandbox execution failed';
@@ -368,7 +368,8 @@ export class WorkerService implements IWorkerService {
       throw new Error('Sandbox returned an empty response');
     }
 
-    if (grpcResponse.overall_status === 'SYSTEM_ERROR') {
+    const overallStatus = fromGrpcSubmissionStatus(grpcResponse.overall_status);
+    if (overallStatus === ESubmissionStatus.SYSTEM_ERROR) {
       throw new Error(grpcResponse.compile_error || 'Sandbox system error');
     }
 
@@ -386,9 +387,9 @@ export class WorkerService implements IWorkerService {
         errorMessage = errorMessage.substring(0, maxLength) + '\n... [TRUNCATED]';
       }
 
-      const status = String(r.status || 'WRONG_ANSWER');
+      const status = fromGrpcSubmissionStatus(r.status) ?? ESubmissionStatus.WRONG_ANSWER;
       const normalizedError =
-        status === 'ACCEPTED'
+        status === ESubmissionStatus.ACCEPTED
           ? null
           : errorMessage || this.buildFallbackErrorMessage(status, compileError);
 
@@ -397,7 +398,7 @@ export class WorkerService implements IWorkerService {
         input: '',
         expectedOutput: '',
         actualOutput,
-        isPassed: status === 'ACCEPTED',
+        isPassed: status === ESubmissionStatus.ACCEPTED,
         executionTime: r.time_taken_ms,
         memoryUse: r.memory_used_kb,
         error: normalizedError,
@@ -429,7 +430,7 @@ export class WorkerService implements IWorkerService {
         passed,
         total,
         successRate: total > 0 ? ((passed / total) * 100).toFixed(2) : '0.00',
-        status: grpcResponse.overall_status,
+        status: overallStatus ?? ESubmissionStatus.SYSTEM_ERROR,
       },
       results,
       compileError: compileError || null,

@@ -198,5 +198,35 @@ describe('JudgeQueueService lazy initialization', () => {
     expect(mockQueues[0]!.add).toHaveBeenCalledTimes(1);
     expect(mockRedisClients[1]!.ping).toHaveBeenCalledTimes(1);
   });
+
+  it('bounds failed job retention so failed queue entries cannot accumulate indefinitely', async () => {
+    const runtime = require('../../../packages/shared/runtime/judge-queue');
+    const service = runtime.getJudgeQueueService();
+
+    await service.addJob({
+      submissionId: 'submission-1',
+      userId: 'user-1',
+      problemId: 'problem-1',
+      code: 'print(1)',
+      language: 'python',
+      functionSignature: {
+        name: 'solve',
+        args: [],
+        returnType: { type: 'integer' },
+      },
+      testcases: [],
+      timeLimit: 1000,
+      memoryLimit: '128m',
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(mockQueues[0]!.add.mock.calls[0]?.[2]).toMatchObject({
+      removeOnComplete: true,
+      removeOnFail: {
+        count: 1000,
+        age: 86400,
+      },
+    });
+  });
 });
 

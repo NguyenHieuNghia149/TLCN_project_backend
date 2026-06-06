@@ -19,6 +19,7 @@ import {
 import { FavoriteRepository } from '../repositories/favorite.repository';
 import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
 import { ProblemVisibility } from '@backend/shared/types';
+import { submissionMetadataInvalidator } from './submission-metadata-cache';
 
 type ChallengeServiceDependencies = {
   topicRepository: TopicRepository;
@@ -303,7 +304,7 @@ export class ChallengeService {
       id: string;
       title: string;
       description: string | null;
-      difficult: string;
+      difficulty: string;
       createdAt: Date | string;
       totalPoints: number;
       isSolved: boolean;
@@ -341,7 +342,7 @@ export class ChallengeService {
         id: p.id,
         title: p.title,
         description: p.description,
-        difficult: p.difficult,
+        difficulty: p.difficult,
         createdAt: p.createdAt,
         totalPoints: pointsMap[p.id] ?? 0,
         isSolved: userId ? solvedSet.has(p.id) : false,
@@ -376,7 +377,7 @@ export class ChallengeService {
       id: string;
       title: string;
       description: string | null;
-      difficult: string;
+      difficulty: string;
       createdAt: Date | string;
       totalPoints: number;
       isSolved: boolean;
@@ -415,7 +416,7 @@ export class ChallengeService {
         id: p.id,
         title: p.title,
         description: p.description,
-        difficult: p.difficult,
+        difficulty: p.difficult,
         createdAt: p.createdAt,
         totalPoints: pointsMap[p.id] ?? 0,
         isSolved: userId ? solvedSet.has(p.id) : false,
@@ -592,6 +593,8 @@ export class ChallengeService {
       logger.info('No testcases provided in updateData');
     }
 
+    submissionMetadataInvalidator.invalidateProblem(challengeId);
+
     return this.getChallengeById(challengeId, undefined, { showAllTestcases: true });
   }
 
@@ -627,6 +630,8 @@ export class ChallengeService {
     if (!deleted) {
       throw new NotFoundException(`Failed to delete challenge with ID ${challengeId}.`);
     }
+
+    submissionMetadataInvalidator.invalidateProblem(challengeId);
   }
 }
 

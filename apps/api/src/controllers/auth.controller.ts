@@ -78,14 +78,13 @@ export class AuthController {
   async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const refreshToken = req.cookies.refreshToken;
 
-    if (!refreshToken) {
+    if (typeof refreshToken !== 'string' || refreshToken.trim().length === 0) {
       throw new AuthenticationException('Refresh token not found');
     }
 
     const result = await this.authService.refreshToken({ refreshToken });
 
-    // Set rotated refresh token cookie
-    res.cookie('refreshToken', refreshToken, {
+    res.cookie('refreshToken', result.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',

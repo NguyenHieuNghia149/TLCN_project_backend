@@ -1254,9 +1254,12 @@ export class ExamAccessService {
       await this.deps.examInviteRepository.markUsed(invite.id, verifiedAt);
     }
 
-    const tokens = JWTUtils.generateTokenPair(user.id, user.email, user.role);
+    const accessToken = JWTUtils.generateAccessToken(user.id, user.email, user.role);
+    const refreshToken = TokenUtils.generateOpaqueRefreshToken();
+    const accessTokenExpiresAt = JWTUtils.getTokenExpiration(accessToken);
+
     await this.deps.tokenRepository.createRefreshToken({
-      token: tokens.refreshToken,
+      token: refreshToken,
       userId: user.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
@@ -1275,7 +1278,13 @@ export class ExamAccessService {
 
     return {
       ...accessState,
-      tokens,
+      tokens: {
+        accessToken,
+        refreshToken,
+        expiresIn: accessTokenExpiresAt
+          ? Math.max(accessTokenExpiresAt.getTime() - Date.now(), 0)
+          : 15 * 60 * 1000,
+      },
     };
   }
 
@@ -1332,20 +1341,64 @@ export class ExamAccessService {
     }
 
     if (session.status === 'started' && session.participationId) {
-      const existingParticipation = await this.deps.examParticipationRepository.findById(
-        session.participationId,
-      );
-      if (!existingParticipation) {
-        throw new ExamParticipationNotFoundException('Participation not found');
-      }
-
-      return {
-        participationId: existingParticipation.id,
-        expiresAt: this.asIsoString(existingParticipation.expiresAt),
-        firstChallengeId: await this.findFirstChallengeId(existingParticipation.examId),
-      };
+      return this.resumeStartedEntrySession(session, participant, userId);
     }
 
+    return this.startNewEntrySession(session, participant, userId, examPassword);
+  }
+
+  private async resumeStartedEntrySession(session: any, participant: any, userId: string) {
+    if (!participant || participant.userId !== userId) {
+      throw new AuthorizationException('Unauthorized entry session');
+    }
+
+    if (participant.accessStatus === 'revoked' || participant.accessStatus === 'completed') {
+      throw new AuthorizationException('Participant cannot resume this exam');
+    }
+
+    if (!session.participationId) {
+      throw new ExamParticipationNotFoundException('Participation not found');
+    }
+
+    const existingParticipation = await this.deps.examParticipationRepository.findById(
+      session.participationId,
+    );
+    if (!existingParticipation) {
+      throw new ExamParticipationNotFoundException('Participation not found');
+    }
+
+    if (
+      existingParticipation.userId !== userId ||
+      `${existingParticipation.participantId ?? participant.id}` !== `${participant.id}`
+    ) {
+      throw new AuthorizationException('Unauthorized entry session');
+    }
+
+    if (!this.isParticipationInProgress(existingParticipation)) {
+      throw new AuthorizationException('Participation is not active');
+    }
+
+    if (
+      existingParticipation.expiresAt &&
+      Date.now() > new Date(existingParticipation.expiresAt).getTime()
+    ) {
+      await this.finalizeExpiredParticipation(existingParticipation.id);
+      throw new AuthorizationException('Participation has expired');
+    }
+
+    return {
+      participationId: existingParticipation.id,
+      expiresAt: this.asIsoString(existingParticipation.expiresAt),
+      firstChallengeId: await this.findFirstChallengeId(existingParticipation.examId),
+    };
+  }
+
+  private async startNewEntrySession(
+    session: any,
+    participant: any,
+    userId: string,
+    examPassword?: string,
+  ) {
     const exam = await this.deps.examRepository.findById(session.examId);
     if (!exam) {
       throw new ExamNotFoundException();
@@ -1407,20 +1460,66 @@ export class ExamAccessService {
 
     const startedAt = new Date();
     const expiresAt = this.computeParticipationExpiresAt(startedAt, exam.duration, exam.endDate);
-    const participation = await this.deps.examParticipationRepository.createAttempt({
-      examId: exam.id,
-      participantId: participant.id,
-      userId,
-      startTime: startedAt,
-      expiresAt,
-      attemptNumber: attemptsUsed + 1,
-    });
+    const attemptNumber = attemptsUsed + 1;
+    const atomicStart =
+      this.deps.examEntrySessionRepository.createAttemptAndMarkStartedIfEligible;
+    let participation = null;
 
-    if (!participation) {
-      throw new AppException('Failed to create participation', 500, 'PARTICIPATION_CREATE_FAILED');
+    if (typeof atomicStart === 'function') {
+      const startResult = await atomicStart.call(this.deps.examEntrySessionRepository, {
+        entrySessionId: session.id,
+        examId: exam.id,
+        participantId: participant.id,
+        userId,
+        startTime: startedAt,
+        expiresAt,
+        attemptNumber,
+      });
+
+      if (!startResult) {
+        const reloadedSession = this.deps.examEntrySessionRepository.findById
+          ? await this.deps.examEntrySessionRepository.findById(session.id)
+          : null;
+        if (reloadedSession?.status === 'started' && reloadedSession.participationId) {
+          return this.resumeStartedEntrySession(reloadedSession, participant, userId);
+        }
+
+        throw new AppException(
+          'Failed to start entry session due to concurrent update',
+          409,
+          'ENTRY_SESSION_START_CONFLICT',
+          {
+            entrySessionId: session.id,
+          },
+        );
+      }
+
+      participation = startResult.participation;
+    } else {
+      participation = await this.deps.examParticipationRepository.createAttempt({
+        examId: exam.id,
+        participantId: participant.id,
+        userId,
+        startTime: startedAt,
+        expiresAt,
+        attemptNumber,
+      });
+
+      if (!participation) {
+        throw new AppException(
+          'Failed to create participation',
+          500,
+          'PARTICIPATION_CREATE_FAILED',
+        );
+      }
+
+      await this.deps.examEntrySessionRepository.markStarted(
+        session.id,
+        participation.id,
+        startedAt,
+      );
     }
 
-    await this.deps.examEntrySessionRepository.markStarted(session.id, participation.id, startedAt);
     await this.deps.examParticipantRepository.updateAccessStatus(participant.id, 'active');
     await this.writeAuditLog({
       examId: exam.id,
@@ -1431,7 +1530,7 @@ export class ExamAccessService {
       targetId: participation.id,
       metadata: {
         entrySessionId: session.id,
-        attemptNumber: attemptsUsed + 1,
+        attemptNumber,
       },
     });
 

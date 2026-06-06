@@ -1,6 +1,7 @@
 import { ValidationException } from '../exceptions/auth.exceptions';
 import { NotFoundException } from '../exceptions/solution.exception';
 import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
+import { submissionMetadataInvalidator } from './submission-metadata-cache';
 
 import {
   LanguageCatalogEntry,
@@ -36,6 +37,8 @@ export class SupportedLanguageService {
     if (!updated) {
       throw new NotFoundException(`Language with ID ${id} not found.`);
     }
+
+    submissionMetadataInvalidator.invalidateLanguage(updated.key);
 
     return this.mapLanguageRow(updated);
   }

@@ -35,6 +35,11 @@ import {
 import { ESubmissionStatus } from '@backend/shared/types';
 import { ChallengeService, createChallengeService } from './challenge.service';
 import { createNotificationService } from './notification.service';
+import { randomUUID } from 'node:crypto';
+
+const EXAM_SLUG_MAX_LENGTH = 255;
+const EXAM_SLUG_SUFFIX_LENGTH = 6;
+const EXAM_SLUG_MAX_ATTEMPTS = 5;
 
 export interface INotificationPublisher {
   notifyAllUsers(type: string, title: string, message: string, metadata?: unknown): Promise<void>;
@@ -204,19 +209,21 @@ export class ExamService {
   async syncSession(sessionId: string, answers: any, clientTimestamp?: string): Promise<boolean> {
     const now = new Date();
 
-    const existing = await this.examParticipationRepository.findById(sessionId);
+    const existing = await this.examParticipationRepository.findSyncStateById(sessionId);
     if (!existing) {
       throw new ExamParticipationNotFoundException();
     }
 
+    if (existing.expiresAt && existing.expiresAt < now) {
+      throw new ExamTimeoutException();
+    }
+
     const merged = this.mergeAnswers(existing.currentAnswers || {}, answers || {});
 
-    const updated = await this.examParticipationRepository.updateParticipation(sessionId, {
+    return this.examParticipationRepository.updateSyncState(sessionId, {
       currentAnswers: merged,
       lastSyncedAt: now,
     });
-
-    return !!updated;
   }
 
   private mergeAnswers(existingAnswers: any, incomingAnswers: any): any {
@@ -281,13 +288,49 @@ export class ExamService {
       : examGlobalEnd;
   }
 
+  private buildSlugBase(title: string): string {
+    const base = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    return base || 'exam';
+  }
+
+  private buildSlugCandidate(title: string): string {
+    const suffix = randomUUID().replace(/-/g, '').slice(0, EXAM_SLUG_SUFFIX_LENGTH).toLowerCase();
+    const maxBaseLength = EXAM_SLUG_MAX_LENGTH - suffix.length - 1;
+    const base = this.buildSlugBase(title).slice(0, maxBaseLength).replace(/-$/g, '') || 'exam';
+
+    return `${base}-${suffix}`;
+  }
+
+  private async generateUniqueLegacySlug(title: string): Promise<string> {
+    for (let attempt = 0; attempt < EXAM_SLUG_MAX_ATTEMPTS; attempt++) {
+      const candidate = this.buildSlugCandidate(title);
+      const existing = await this.examRepository.findBySlug(candidate);
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    throw new BaseException(
+      'Could not generate a unique exam slug',
+      409,
+      'EXAM_SLUG_GENERATION_CONFLICT'
+    );
+  }
+
   async createExam(examData: CreateExamInput): Promise<ExamResponse> {
     const { challenges, ...examFields } = examData;
+    const slug = await this.generateUniqueLegacySlug(examFields.title);
 
     // Delegate the full create-with-challenges operation to the repository so
     // the service does not open transactions or interact with the DB directly.
     const createdExamId = await this.examRepository.createExamWithChallenges(
       {
+        slug,
         title: examFields.title,
         registrationPassword: examFields.password,
         duration: examFields.duration,
@@ -1164,36 +1207,60 @@ export class ExamService {
       );
     }
 
-    let totalScore = 0;
+    const participationSubs = await this.submissionRepository.findLatestByParticipationAndProblems(
+      participationId,
+      problemIds,
+    );
 
-    for (const problemId of problemIds) {
-      // Try participation-scoped latest submission first
-      let sub = await this.submissionRepository.findLatestByParticipationAndProblem(
-        participationId,
-        problemId
-      );
+    const fallbackSubs =
+      participationStart && effectiveEnd
+        ? await this.submissionRepository.findLatestByUserProblemsBetween(
+            userId,
+            problemIds,
+            participationStart,
+            effectiveEnd,
+          )
+        : [];
 
-      // If not found, fallback to submissions by user within participation window
-      if (!sub && participationStart && effectiveEnd) {
-        const latestByTime = await this.submissionRepository.findLatestByUserProblemBetween(
-          userId,
-          problemId,
-          participationStart,
-          effectiveEnd
-        );
-        if (latestByTime) sub = latestByTime;
+    const selectedByProblem = new Map<string, any>();
+    for (const sub of fallbackSubs) selectedByProblem.set(sub.problemId, sub);
+    // Participation-linked submissions are authoritative and override fallback rows.
+    for (const sub of participationSubs) selectedByProblem.set(sub.problemId, sub);
+
+    const selectedSubmissionIds = Array.from(selectedByProblem.values()).map(sub => sub.id);
+    const [allResults, allTestcases] = await Promise.all([
+      selectedSubmissionIds.length
+        ? this.resultSubmissionRepository.findBySubmissionIds(selectedSubmissionIds)
+        : Promise.resolve([]),
+      this.testcaseRepository.findByProblemIds(problemIds),
+    ]);
+
+    const resultsBySubmissionId = new Map<string, Map<string, any>>();
+    for (const result of allResults as any[]) {
+      if (!resultsBySubmissionId.has(result.submissionId)) {
+        resultsBySubmissionId.set(result.submissionId, new Map());
       }
+      resultsBySubmissionId.get(result.submissionId)!.set(result.testcaseId, result);
+    }
 
-      if (sub && sub.id) {
-        const results = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
-        const testcases = await this.testcaseRepository.findByProblemId(problemId);
+    const testcasesByProblemId = new Map<string, any[]>();
+    for (const testcase of allTestcases as any[]) {
+      if (!testcasesByProblemId.has(testcase.problemId)) {
+        testcasesByProblemId.set(testcase.problemId, []);
+      }
+      testcasesByProblemId.get(testcase.problemId)!.push(testcase);
+    }
 
-        const tcMap = new Map(results.map((r: any) => [(r as Record<string, any>).testcaseId, r]));
-        for (const tc of testcases) {
-          const r = tcMap.get(tc.id);
-          if (r && (r as Record<string, any>).isPassed) {
-            totalScore += tc.point || 0;
-          }
+    let totalScore = 0;
+    for (const problemId of problemIds) {
+      const sub = selectedByProblem.get(problemId);
+      if (!sub?.id) continue;
+
+      const tcMap = resultsBySubmissionId.get(sub.id) ?? new Map<string, any>();
+      for (const tc of testcasesByProblemId.get(problemId) ?? []) {
+        const result = tcMap.get(tc.id);
+        if (result?.isPassed) {
+          totalScore += tc.point || 0;
         }
       }
     }

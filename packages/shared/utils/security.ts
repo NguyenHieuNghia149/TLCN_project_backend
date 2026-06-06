@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { z } from 'zod';
+import { logger } from './logger';
 
 // Password validation schema
 export const passwordSchema = z
@@ -13,10 +14,48 @@ export const passwordSchema = z
 
 // Password hashing utilities
 export class PasswordUtils {
-  private static readonly SALT_ROUNDS = 12;
+  static readonly DEFAULT_SALT_ROUNDS = 12;
+  private static readonly MIN_SALT_ROUNDS = 4;
+  private static readonly MAX_SALT_ROUNDS = 14;
+  private static readonly warnedLowRounds = new Set<number>();
+
+  static getSaltRounds(): number {
+    const rawRounds = process.env.BCRYPT_SALT_ROUNDS;
+    if (rawRounds === undefined || rawRounds === '') {
+      return this.DEFAULT_SALT_ROUNDS;
+    }
+
+    const bcryptRounds = Number(rawRounds);
+    if (
+      !Number.isInteger(bcryptRounds) ||
+      bcryptRounds < this.MIN_SALT_ROUNDS ||
+      bcryptRounds > this.MAX_SALT_ROUNDS
+    ) {
+      throw new Error('Invalid BCRYPT_SALT_ROUNDS. Expected integer between 4 and 14.');
+    }
+
+    if (process.env.NODE_ENV === 'production' && bcryptRounds < this.DEFAULT_SALT_ROUNDS) {
+      throw new Error('BCRYPT_SALT_ROUNDS cannot be below 12 in production.');
+    }
+
+    if (bcryptRounds < this.DEFAULT_SALT_ROUNDS && !this.warnedLowRounds.has(bcryptRounds)) {
+      this.warnedLowRounds.add(bcryptRounds);
+      logger.warn('BCRYPT_SALT_ROUNDS is below production strength', {
+        bcryptRounds,
+        minimumProductionRounds: this.DEFAULT_SALT_ROUNDS,
+        nodeEnv: process.env.NODE_ENV,
+      });
+    }
+
+    return bcryptRounds;
+  }
 
   static async hashPassword(password: string): Promise<string> {
-    return bcrypt.hash(password, this.SALT_ROUNDS);
+    return bcrypt.hash(password, this.getSaltRounds());
+  }
+
+  static resetSaltRoundWarningForTests(): void {
+    this.warnedLowRounds.clear();
   }
 
   static async comparePassword(password: string, hashedPassword: string): Promise<boolean> {
@@ -67,8 +106,8 @@ export class TokenUtils {
     return this.generateSecureToken(32);
   }
 
-  static generateRefreshToken(): string {
-    return this.generateSecureToken(64);
+  static generateOpaqueRefreshToken(): string {
+    return crypto.randomUUID();
   }
 }
 

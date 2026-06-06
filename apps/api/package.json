@@ -10,8 +10,8 @@
     "./src/*": "./dist/apps/api/src/*.js"
   },
   "scripts": {
-    "dev": "ts-node -r tsconfig-paths/register src/index.ts",
-    "start": "node dist/apps/api/src/index.js",
+    "dev": "node ../../scripts/run-with-env.js ts-node -r tsconfig-paths/register src/index.ts",
+    "start": "node ../../scripts/run-with-env.js node dist/apps/api/src/index.js",
     "build": "tsc -p tsconfig.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

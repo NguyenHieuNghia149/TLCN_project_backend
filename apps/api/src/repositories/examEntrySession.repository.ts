@@ -4,9 +4,14 @@ import {
   examEntrySessions,
   ExamEntrySessionEntity,
   ExamEntrySessionInsert,
+  examParticipations,
+  ExamParticipationEntity,
 } from '@backend/shared/db/schema';
+import { EExamParticipationStatus } from '@backend/shared/types';
 
 import { BaseRepository } from './base.repository';
+
+class EntrySessionStartConflictError extends Error {}
 
 export class ExamEntrySessionRepository extends BaseRepository<
   typeof examEntrySessions,
@@ -137,6 +142,70 @@ export class ExamEntrySessionRepository extends BaseRepository<
       .returning();
 
     return updated || null;
+  }
+
+  async createAttemptAndMarkStartedIfEligible(input: {
+    entrySessionId: string;
+    examId: string;
+    participantId: string;
+    userId: string;
+    startTime: Date;
+    expiresAt: Date;
+    attemptNumber: number;
+  }): Promise<{
+    participation: ExamParticipationEntity;
+    entrySession: ExamEntrySessionEntity;
+  } | null> {
+    try {
+      return await this.db.transaction(async (tx: any) => {
+        const [participation] = await tx
+          .insert(examParticipations)
+          .values({
+            examId: input.examId,
+            participantId: input.participantId,
+            userId: input.userId,
+            startTime: input.startTime,
+            expiresAt: input.expiresAt,
+            attemptNumber: input.attemptNumber,
+            status: EExamParticipationStatus.IN_PROGRESS,
+            scoreStatus: 'pending',
+          })
+          .returning();
+
+        if (!participation) {
+          throw new Error('Failed to create exam participation');
+        }
+
+        const [entrySession] = await tx
+          .update(examEntrySessions)
+          .set({
+            participationId: participation.id,
+            status: 'started',
+            lastSeenAt: input.startTime,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(examEntrySessions.id, input.entrySessionId),
+              eq(examEntrySessions.status, 'eligible'),
+              isNull(examEntrySessions.participationId),
+            ),
+          )
+          .returning();
+
+        if (!entrySession) {
+          throw new EntrySessionStartConflictError();
+        }
+
+        return { participation, entrySession };
+      });
+    } catch (error) {
+      if (error instanceof EntrySessionStartConflictError) {
+        return null;
+      }
+
+      throw error;
+    }
   }
 
   async markExpired(id: string): Promise<ExamEntrySessionEntity | null> {

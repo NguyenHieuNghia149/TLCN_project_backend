@@ -5,6 +5,9 @@ import Redis from 'ioredis';
 import { FunctionSignature } from '../types';
 import { logger } from '../utils';
 
+const DEFAULT_REMOVE_ON_FAIL_COUNT = 1000;
+const DEFAULT_REMOVE_ON_FAIL_AGE_SECONDS = 24 * 60 * 60;
+
 export interface QueueJobTestcase {
   id: string;
   point: number;
@@ -28,13 +31,41 @@ export interface QueueJob {
 }
 
 export class JudgeQueueError extends Error {
-  readonly code = 'QUEUE_ERROR';
-  readonly statusCode = 500;
+  readonly code = 'JUDGE_QUEUE_UNAVAILABLE';
+  readonly statusCode = 503;
 
   constructor(message: string) {
     super(message);
     this.name = 'JudgeQueueError';
   }
+}
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name];
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    logger.warn(`[JudgeQueueService] Invalid ${name}; using fallback`, { value: rawValue, fallback });
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function getFailedJobRetention() {
+  return {
+    count: parsePositiveIntegerEnv(
+      'JUDGE_QUEUE_REMOVE_ON_FAIL_COUNT',
+      DEFAULT_REMOVE_ON_FAIL_COUNT,
+    ),
+    age: parsePositiveIntegerEnv(
+      'JUDGE_QUEUE_REMOVE_ON_FAIL_AGE_SECONDS',
+      DEFAULT_REMOVE_ON_FAIL_AGE_SECONDS,
+    ),
+  };
 }
 
 interface IJudgeQueuePublisher {
@@ -118,7 +149,7 @@ export class JudgeQueueService {
       return await this.queue!.add(job.jobType || 'SUBMISSION', job, {
         jobId: job.submissionId,
         removeOnComplete: true,
-        removeOnFail: false,
+        removeOnFail: getFailedJobRetention(),
         attempts: 3,
         backoff: {
           type: 'exponential',

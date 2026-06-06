@@ -17,6 +17,7 @@ import { UserRepository } from '../repositories/user.repository';
 import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
 import { createExamRepository, ExamRepository } from '../repositories/exam.repository';
 import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
+import { submissionMetadataCaches } from './submission-metadata-cache';
 // Removed direct schema entity imports - using validation types instead
 import { PaginationOptions } from '../repositories/base.repository';
 import axios from 'axios';
@@ -48,6 +49,23 @@ type SubmissionServiceDependencies = {
   getQueueService: () => ISubmissionQueueService;
 }
 
+const DEFAULT_JUDGE_QUEUE_MAX_BACKLOG = 5000;
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name];
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    logger.warn(`Invalid ${name}; using fallback`, { value: rawValue, fallback });
+    return fallback;
+  }
+
+  return parsed;
+}
+
 export class SubmissionService {
   private submissionRepository: SubmissionRepository;
   private resultSubmissionRepository: ResultSubmissionRepository;
@@ -58,6 +76,10 @@ export class SubmissionService {
   private examRepository: ExamRepository;
   private supportedLanguageRepository: SupportedLanguageRepository;
   private readonly queueServiceFactory: () => ISubmissionQueueService;
+  // Problem/testcase/language edits during an exam can briefly see stale cache data;
+  // targeted admin invalidation and a short TTL keep that tradeoff bounded.
+  private readonly problemMetadataCache = submissionMetadataCaches.problem;
+  private readonly languageCache = submissionMetadataCaches.language;
 
   constructor(deps: SubmissionServiceDependencies) {
     this.submissionRepository = deps.submissionRepository;
@@ -93,6 +115,8 @@ export class SubmissionService {
       );
     }
 
+    const queueLength = await this.ensureQueueCanAcceptJob();
+
     const submission = await this.submissionRepository.create({
       sourceCode: input.sourceCode,
       languageId: activeLanguage.id,
@@ -102,17 +126,16 @@ export class SubmissionService {
       ...(examParticipationId ? { examParticipationId } : {}),
     });
 
-    const queueLength = await this.getQueueLengthSafely();
     const estimatedWaitTime = queueLength * 30;
 
     const job = this.prepareQueueJob({ ...submission, language: input.language }, problem, testcases);
 
-    const enqueued = await this.addJobToQueueSafely(job);
+    await this.addPersistedSubmissionJobOrFail(job, submission.id, input.problemId);
 
     return {
       submissionId: submission.id,
       status: ESubmissionStatus.PENDING,
-      queuePosition: enqueued ? queueLength + 1 : 0,
+      queuePosition: queueLength + 1,
       estimatedWaitTime,
     };
   }
@@ -124,6 +147,7 @@ export class SubmissionService {
     const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
     this.assertFunctionSignatureLanguage(problem, input.language);
     await this.requireActiveExecutableLanguage(input.language);
+    await this.ensureQueueCanAcceptJob();
 
     const submissionId = crypto.randomUUID();
 
@@ -140,7 +164,15 @@ export class SubmissionService {
       'RUN_CODE'
     );
 
-    await this.getQueueService().addJob(job);
+    try {
+      await this.getQueueService().addJob(job);
+    } catch (error) {
+      throw this.buildQueueUnavailableException('Run-code job could not be queued', {
+        submissionId,
+        problemId: input.problemId,
+        error,
+      });
+    }
 
     return {
       submissionId,
@@ -150,19 +182,21 @@ export class SubmissionService {
   }
 
   private async requireActiveExecutableLanguage(language: string) {
-    const activeLanguage = await this.supportedLanguageRepository.findActiveExecutableLanguageByKey(
-      language,
-    );
-
-    if (!activeLanguage) {
-      throw new BaseException(
-        `Language ${language} is inactive or unsupported.`,
-        400,
-        'LANGUAGE_NOT_ACTIVE',
+    return this.languageCache.getOrLoad(`language:${language}`, async () => {
+      const activeLanguage = await this.supportedLanguageRepository.findActiveExecutableLanguageByKey(
+        language,
       );
-    }
 
-    return activeLanguage;
+      if (!activeLanguage) {
+        throw new BaseException(
+          `Language ${language} is inactive or unsupported.`,
+          400,
+          'LANGUAGE_NOT_ACTIVE',
+        );
+      }
+
+      return activeLanguage;
+    });
   }
 
   private assertFunctionSignatureLanguage(problem: any, language: string): void {
@@ -201,37 +235,39 @@ export class SubmissionService {
   }
 
   private async validateProblemAndTestcases(problemId: string) {
-    const problem = await this.problemRepository.findById(problemId);
-    if (!problem) {
-      throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
-    }
+    return this.problemMetadataCache.getOrLoad(`problem:${problemId}`, async () => {
+      const problem = await this.problemRepository.findById(problemId);
+      if (!problem) {
+        throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
+      }
 
-    if (!problem.functionSignature) {
-      throw new BaseException(
-        'Problem functionSignature is not configured',
-        500,
-        'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+      if (!problem.functionSignature) {
+        throw new BaseException(
+          'Problem functionSignature is not configured',
+          500,
+          'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+        );
+      }
+
+      const testcases = await this.testcaseRepository.findByProblemId(problemId);
+      if (testcases.length === 0) {
+        throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
+      }
+
+      const missingStructuredTestcase = testcases.find(
+        testcase => testcase.inputJson === null || testcase.outputJson === null
       );
-    }
 
-    const testcases = await this.testcaseRepository.findByProblemId(problemId);
-    if (testcases.length === 0) {
-      throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
-    }
+      if (missingStructuredTestcase) {
+        throw new BaseException(
+          'Problem testcases are missing structured function-signature data',
+          500,
+          'FUNCTION_SIGNATURE_TESTCASE_INVALID'
+        );
+      }
 
-    const missingStructuredTestcase = testcases.find(
-      testcase => testcase.inputJson === null || testcase.outputJson === null
-    );
-
-    if (missingStructuredTestcase) {
-      throw new BaseException(
-        'Problem testcases are missing structured function-signature data',
-        500,
-        'FUNCTION_SIGNATURE_TESTCASE_INVALID'
-      );
-    }
-
-    return { problem, testcases };
+      return { problem, testcases };
+    });
   }
 
   private async validateExamParticipation(
@@ -305,13 +341,70 @@ export class SubmissionService {
     }
   }
 
-  private async addJobToQueueSafely(job: QueueJob): Promise<boolean> {
+  private getMaxQueueBacklog(): number {
+    return parsePositiveIntegerEnv('JUDGE_QUEUE_MAX_BACKLOG', DEFAULT_JUDGE_QUEUE_MAX_BACKLOG);
+  }
+
+  private async ensureQueueCanAcceptJob(): Promise<number> {
+    const queueLength = await this.getQueueLengthSafely();
+    const maxBacklog = this.getMaxQueueBacklog();
+
+    if (queueLength >= maxBacklog) {
+      throw new BaseException(
+        'Judge queue is saturated. Please retry shortly.',
+        503,
+        'JUDGE_QUEUE_SATURATED',
+        {
+          queueLength,
+          maxBacklog,
+        },
+      );
+    }
+
+    return queueLength;
+  }
+
+  private async addPersistedSubmissionJobOrFail(
+    job: QueueJob,
+    submissionId: string,
+    problemId: string,
+  ): Promise<void> {
     try {
       await this.getQueueService().addJob(job);
-      return true;
-    } catch (err) {
-      return false;
+    } catch (error) {
+      logger.error('Failed to enqueue persisted submission', {
+        submissionId,
+        problemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      try {
+        await this.submissionRepository.updateStatus(submissionId, ESubmissionStatus.SYSTEM_ERROR);
+      } catch (statusError) {
+        logger.error('Failed to mark submission as system_error after queue enqueue failure', {
+          submissionId,
+          problemId,
+          error: statusError instanceof Error ? statusError.message : String(statusError),
+        });
+      }
+
+      throw this.buildQueueUnavailableException('Submission could not be queued for judging', {
+        submissionId,
+        problemId,
+        error,
+      });
     }
+  }
+
+  private buildQueueUnavailableException(
+    message: string,
+    details: { submissionId: string; problemId: string; error: unknown },
+  ): BaseException {
+    return new BaseException(message, 503, 'SUBMISSION_QUEUE_UNAVAILABLE', {
+      submissionId: details.submissionId,
+      problemId: details.problemId,
+      cause: details.error instanceof Error ? details.error.message : String(details.error),
+    });
   }
 
   private isCompletedStatus(status: string): boolean {
@@ -512,6 +605,7 @@ export class SubmissionService {
     const { problem, testcases } = await this.validateProblemAndTestcases(submission.problemId);
     const job = this.prepareQueueJob(submission, problem, testcases, 'SUBMISSION');
 
+    await this.ensureQueueCanAcceptJob();
     await this.getQueueService().addJob(job);
 
     return true;

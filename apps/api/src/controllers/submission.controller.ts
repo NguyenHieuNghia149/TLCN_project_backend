@@ -10,6 +10,7 @@ import {
   CreateSubmissionInput,
   GetSubmissionsQuery,
 } from '@backend/shared/validations/submission.validation';
+import { isTerminalSubmissionStatus } from '@backend/shared/types';
 import { SubmissionService } from '@backend/api/services/submission.service';
 import { ISubmissionEventStream } from '@backend/api/services/sse.service';
 
@@ -90,26 +91,7 @@ export class SubmissionController {
 
       res.write(`data: ${JSON.stringify(data)}\n\n`);
 
-      const terminalStatuses = [
-        'ACCEPTED',
-        'WRONG_ANSWER',
-        'TIME_LIMIT_EXCEEDED',
-        'MEMORY_LIMIT_EXCEEDED',
-        'RUNTIME_ERROR',
-        'COMPILATION_ERROR',
-        'SYSTEM_ERROR',
-        'INTERNAL_ERROR',
-        'WA',
-        'TLE',
-        'MLE',
-        'CE',
-        'RE',
-      ];
-
-      if (
-        terminalStatuses.includes(data.status) ||
-        terminalStatuses.includes(data.overall_status)
-      ) {
+      if (isTerminalSubmissionStatus(data.status) || isTerminalSubmissionStatus(data.overall_status)) {
         cleanup();
         res.end();
       }

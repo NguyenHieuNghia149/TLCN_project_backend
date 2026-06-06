@@ -24,7 +24,6 @@ export const ExamParticipantAccessStatusSchema = z.enum([
 
 export const ExamEntrySessionStatusSchema = z.enum([
   'opened',
-  'verified',
   'eligible',
   'started',
   'expired',

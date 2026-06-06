@@ -3,6 +3,7 @@ import {
   ISubmissionQueueService,
   SubmissionService,
 } from '../../../apps/api/src/services/submission.service';
+import { submissionMetadataCaches } from '../../../apps/api/src/services/submission-metadata-cache';
 import { SubmissionRepository } from '../../../apps/api/src/repositories/submission.repository';
 import { ResultSubmissionRepository } from '../../../apps/api/src/repositories/result-submission.repository';
 import { TestcaseRepository } from '../../../apps/api/src/repositories/testcase.repository';
@@ -45,6 +46,9 @@ describe('SubmissionService JSON-first queue payload', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    submissionMetadataCaches.problem.clear();
+    submissionMetadataCaches.language.clear();
+    delete process.env.JUDGE_QUEUE_MAX_BACKLOG;
   });
 
   it('creates a submission service without a module-level singleton export', () => {
@@ -229,6 +233,140 @@ describe('SubmissionService JSON-first queue payload', () => {
     );
   });
 
+  it('rejects submitCode before persistence when the judge queue backlog is saturated', async () => {
+    process.env.JUDGE_QUEUE_MAX_BACKLOG = '2';
+    const submissionRepository = {
+      create: jest.fn(),
+    } as any;
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue({
+        id: 'lang-python',
+        key: 'python',
+        isActive: true,
+      }),
+    } as any;
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn().mockResolvedValue(undefined),
+      getQueueLength: jest.fn().mockResolvedValue(2),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 2, isHealthy: true }),
+    };
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        submissionRepository,
+        problemRepository,
+        testcaseRepository,
+        supportedLanguageRepository,
+        getQueueService: () => queueService,
+      }),
+    );
+
+    await expect(
+      service.submitCode({
+        sourceCode: 'print(1)',
+        language: 'python',
+        problemId: 'problem-1',
+        userId: 'user-1',
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'JUDGE_QUEUE_SATURATED',
+    });
+
+    expect(submissionRepository.create).not.toHaveBeenCalled();
+    expect(queueService.addJob).not.toHaveBeenCalled();
+  });
+
+  it('marks persisted submissions as system_error when queue insertion fails', async () => {
+    const submissionRepository = {
+      create: jest.fn().mockResolvedValue({
+        id: 'submission-1',
+        languageId: 'lang-python',
+        sourceCode: 'print(1)',
+        problemId: 'problem-1',
+        userId: 'user-1',
+        status: 'pending',
+        submittedAt: new Date(),
+      }),
+      updateStatus: jest.fn().mockResolvedValue({
+        id: 'submission-1',
+        status: 'system_error',
+      }),
+    } as any;
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue({
+        id: 'lang-python',
+        key: 'python',
+        isActive: true,
+      }),
+    } as any;
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn().mockRejectedValue(new Error('Redis OOM')),
+      getQueueLength: jest.fn().mockResolvedValue(0),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 0, isHealthy: true }),
+    };
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        submissionRepository,
+        problemRepository,
+        testcaseRepository,
+        supportedLanguageRepository,
+        getQueueService: () => queueService,
+      }),
+    );
+
+    await expect(
+      service.submitCode({
+        sourceCode: 'print(1)',
+        language: 'python',
+        problemId: 'problem-1',
+        userId: 'user-1',
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'SUBMISSION_QUEUE_UNAVAILABLE',
+      details: expect.objectContaining({ submissionId: 'submission-1' }),
+    });
+
+    expect(submissionRepository.updateStatus).toHaveBeenCalledWith(
+      'submission-1',
+      'system_error',
+    );
+  });
+
   it('rejects submitCode when the language is not active in the catalog', async () => {
     const problemRepository = {
       findById: jest.fn().mockResolvedValue({
@@ -272,5 +410,180 @@ describe('SubmissionService JSON-first queue payload', () => {
     ).rejects.toThrow('Language python is inactive or unsupported.');
 
     expect(submissionRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('reuses problem testcase and language metadata across runCode calls', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+        timeLimit: 1000,
+        memoryLimit: '128m',
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue({
+        id: 'lang-python',
+        key: 'python',
+        isActive: true,
+      }),
+    } as any;
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn().mockResolvedValue(undefined),
+      getQueueLength: jest.fn().mockResolvedValue(0),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 0, isHealthy: true }),
+    };
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        problemRepository,
+        testcaseRepository,
+        supportedLanguageRepository,
+        getQueueService: () => queueService,
+      }),
+    );
+
+    await service.runCode({
+      sourceCode: 'print(1)',
+      language: 'python',
+      problemId: 'problem-1',
+      userId: 'user-1',
+    });
+    await service.runCode({
+      sourceCode: 'print(2)',
+      language: 'python',
+      problemId: 'problem-1',
+      userId: 'user-1',
+    });
+
+    expect(problemRepository.findById).toHaveBeenCalledTimes(1);
+    expect(testcaseRepository.findByProblemId).toHaveBeenCalledTimes(1);
+    expect(supportedLanguageRepository.findActiveExecutableLanguageByKey).toHaveBeenCalledTimes(1);
+    expect(queueService.addJob).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects runCode before enqueue when the judge queue backlog is saturated', async () => {
+    process.env.JUDGE_QUEUE_MAX_BACKLOG = '1';
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+        timeLimit: 1000,
+        memoryLimit: '128m',
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue({
+        id: 'lang-python',
+        key: 'python',
+        isActive: true,
+      }),
+    } as any;
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn().mockResolvedValue(undefined),
+      getQueueLength: jest.fn().mockResolvedValue(1),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 1, isHealthy: true }),
+    };
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        problemRepository,
+        testcaseRepository,
+        supportedLanguageRepository,
+        getQueueService: () => queueService,
+      }),
+    );
+
+    await expect(
+      service.runCode({
+        sourceCode: 'print(1)',
+        language: 'python',
+        problemId: 'problem-1',
+        userId: 'user-1',
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'JUDGE_QUEUE_SATURATED',
+    });
+
+    expect(queueService.addJob).not.toHaveBeenCalled();
+  });
+
+  it('rejects runCode when queue insertion fails because there is no persisted submission to recover', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: signature,
+        timeLimit: 1000,
+        memoryLimit: '128m',
+      }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemId: jest.fn().mockResolvedValue([
+        {
+          id: 'testcase-1',
+          inputJson: { nums: [2, 7], target: 9 },
+          outputJson: [0, 1],
+          point: 10,
+          isPublic: true,
+        },
+      ]),
+    } as any;
+    const supportedLanguageRepository = {
+      findActiveExecutableLanguageByKey: jest.fn().mockResolvedValue({
+        id: 'lang-python',
+        key: 'python',
+        isActive: true,
+      }),
+    } as any;
+    const queueService: ISubmissionQueueService = {
+      addJob: jest.fn().mockRejectedValue(new Error('Redis unavailable')),
+      getQueueLength: jest.fn().mockResolvedValue(0),
+      getQueueStatus: jest.fn().mockResolvedValue({ length: 0, isHealthy: false }),
+    };
+    const service = new SubmissionService(
+      createSubmissionDependencies({
+        problemRepository,
+        testcaseRepository,
+        supportedLanguageRepository,
+        getQueueService: () => queueService,
+      }),
+    );
+
+    await expect(
+      service.runCode({
+        sourceCode: 'print(1)',
+        language: 'python',
+        problemId: 'problem-1',
+        userId: 'user-1',
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'SUBMISSION_QUEUE_UNAVAILABLE',
+      details: expect.objectContaining({
+        problemId: 'problem-1',
+        cause: 'Redis unavailable',
+      }),
+    });
   });
 });

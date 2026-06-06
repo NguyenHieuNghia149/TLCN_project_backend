@@ -38,6 +38,49 @@ describe('JudgeUtils', () => {
         ESubmissionStatus.WRONG_ANSWER
       );
     });
+
+    it('should return SYSTEM_ERROR when there are no test results', () => {
+      expect(JudgeUtils.determineFinalStatus({ passed: 0, total: 0 }, [])).toBe(
+        ESubmissionStatus.SYSTEM_ERROR
+      );
+    });
+
+    it('should apply global priority over first failing result order', () => {
+      const summary = { passed: 0, total: 2 };
+
+      expect(
+        JudgeUtils.determineFinalStatus(summary, [
+          { ok: false, error: null },
+          { ok: false, error: 'Execution timeout exceeded 1000ms' },
+        ])
+      ).toBe(ESubmissionStatus.TIME_LIMIT_EXCEEDED);
+
+      expect(
+        JudgeUtils.determineFinalStatus(summary, [
+          { ok: false, error: 'Process exited with code 1' },
+          { ok: false, error: 'Compilation Error: missing semicolon' },
+        ])
+      ).toBe(ESubmissionStatus.COMPILATION_ERROR);
+
+      expect(
+        JudgeUtils.determineFinalStatus(summary, [
+          { ok: false, error: null },
+          { ok: false, error: 'Memory limit exceeded' },
+        ])
+      ).toBe(ESubmissionStatus.MEMORY_LIMIT_EXCEEDED);
+    });
+
+    it('should honor explicit per-result statuses when available', () => {
+      expect(
+        JudgeUtils.determineFinalStatus(
+          { passed: 0, total: 2 },
+          [
+            { ok: false, status: 'WRONG_ANSWER' },
+            { ok: false, status: 'runtime_error' },
+          ]
+        )
+      ).toBe(ESubmissionStatus.RUNTIME_ERROR);
+    });
   });
 
   describe('calculateScore', () => {

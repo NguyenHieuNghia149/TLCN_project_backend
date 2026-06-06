@@ -160,6 +160,137 @@ describe('sandbox gRPC ExecuteCode handler', () => {
       ],
     });
   });
+
+  it('formats lower-case sandbox summary status as upper-case at the gRPC boundary', async () => {
+    sandboxService.executeCode.mockResolvedValue({
+      success: true,
+      result: {
+        summary: {
+          passed: 1,
+          total: 1,
+          successRate: '100.00',
+          status: 'accepted',
+        },
+        results: [
+          {
+            testcaseId: 'tc-1',
+            input: '{}',
+            isPassed: true,
+            executionTime: 3,
+            actualOutput: '1',
+            error: null,
+            stderr: '',
+          },
+        ],
+        processingTime: 1,
+      },
+    });
+
+    const callback = jest.fn();
+    const executeCode = createExecuteCodeHandler(sandboxService);
+
+    await executeCode(
+      {
+        request: {
+          submission_id: 'submission-lower-summary',
+          source_code: 'print(1)',
+          language: 'python',
+          time_limit_ms: 1000,
+          memory_limit_kb: 131072,
+          test_cases: [
+            {
+              id: 'tc-1',
+              input: '{}',
+              expected_output: '1',
+            },
+          ],
+        },
+      } as any,
+      callback as any
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({
+        overall_status: 'ACCEPTED',
+        results: [
+          expect.objectContaining({
+            status: 'ACCEPTED',
+          }),
+        ],
+      })
+    );
+  });
+
+  it('derives overall status from global result priority instead of legacy summary order', async () => {
+    sandboxService.executeCode.mockResolvedValue({
+      success: true,
+      result: {
+        summary: {
+          passed: 0,
+          total: 2,
+          successRate: '0.00',
+          status: 'WRONG_ANSWER',
+        },
+        results: [
+          {
+            testcaseId: 'tc-1',
+            input: '{}',
+            isPassed: false,
+            executionTime: 1,
+            actualOutput: '',
+            error: 'Process exited with code 1',
+            stderr: '',
+          },
+          {
+            testcaseId: 'tc-2',
+            input: '{}',
+            isPassed: false,
+            executionTime: 0,
+            actualOutput: '',
+            error: 'Compilation Error: missing semicolon',
+            stderr: '',
+          },
+        ],
+        processingTime: 1,
+      },
+    });
+
+    const callback = jest.fn();
+    const executeCode = createExecuteCodeHandler(sandboxService);
+
+    await executeCode(
+      {
+        request: {
+          submission_id: 'submission-priority',
+          source_code: 'class Solution {}',
+          language: 'cpp',
+          time_limit_ms: 1000,
+          memory_limit_kb: 131072,
+          test_cases: [
+            {
+              id: 'tc-1',
+              input: '{}',
+              expected_output: '1',
+            },
+            {
+              id: 'tc-2',
+              input: '{}',
+              expected_output: '2',
+            },
+          ],
+        },
+      } as any,
+      callback as any
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({
+        overall_status: 'COMPILATION_ERROR',
+      })
+    );
+  });
 });
 
 

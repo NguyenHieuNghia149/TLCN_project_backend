@@ -283,6 +283,23 @@ describe('shared db connection bootstrap', () => {
     expect(poolInstances[1]?.config).toEqual(config);
   });
 
+  it('reads database pool status counters without opening a connection', () => {
+    const pool = createPoolInstance({ totalCount: 2, idleCount: 1, waitingCount: 3 });
+    const { connectionModule } = loadConnectionModule();
+
+    expect(connectionModule.readDatabasePoolStatus(pool as unknown as import('pg').Pool)).toEqual({
+      totalCount: expect.any(Number),
+      idleCount: expect.any(Number),
+      waitingCount: expect.any(Number),
+    });
+    expect(connectionModule.readDatabasePoolStatus(pool as unknown as import('pg').Pool)).toEqual({
+      totalCount: 2,
+      idleCount: 1,
+      waitingCount: 3,
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
   it('sanitizes pool error logs instead of serializing the raw pg client object', () => {
     const { connectionModule, logger, poolInstances } = loadConnectionModule();
 

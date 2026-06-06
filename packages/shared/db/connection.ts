@@ -26,6 +26,12 @@ export interface DatabaseConfig {
 export type DatabaseType = ReturnType<typeof createDatabaseClient>;
 export type TransactionType = Parameters<Parameters<DatabaseType['transaction']>[0]>[0];
 
+export type DatabasePoolStatus = {
+  totalCount: number;
+  idleCount: number;
+  waitingCount: number;
+};
+
 export type DatabaseServiceInstance = {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
@@ -150,6 +156,15 @@ export function getDatabasePool(): Pool {
   }
 
   return databasePoolInstance;
+}
+
+/** Reads PostgreSQL pool counters without mutating the pool. */
+export function readDatabasePoolStatus(pool: Pool = getDatabasePool()): DatabasePoolStatus {
+  return {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  };
 }
 
 /** Returns the shared Drizzle client singleton, creating it on first access. */

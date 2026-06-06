@@ -8,6 +8,7 @@ import { SubmissionRepository } from '../../../apps/api/src/repositories/submiss
 import { SolutionApproachRepository } from '../../../apps/api/src/repositories/solutionApproach.repository';
 import { FavoriteRepository } from '../../../apps/api/src/repositories/favorite.repository';
 import { FunctionSignature, ProblemVisibility } from '@backend/shared/types';
+import { submissionMetadataInvalidator } from '../../../apps/api/src/services/submission-metadata-cache';
 
 /** Builds a dependency bag for ChallengeService tests with optional overrides. */
 function createChallengeDependencies(overrides: Partial<any> = {}) {
@@ -119,6 +120,56 @@ describe('ChallengeService derived testcase display', () => {
     expect(topicRepository.findById).toHaveBeenCalledWith('topic-1');
     expect(problemRepository.getTagsByTopicId).toHaveBeenCalledWith('topic-1');
     expect(result).toEqual(['array', 'hash-table']);
+  });
+
+  it('maps topic problem list difficulty to the public difficulty field', async () => {
+    const topicRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'topic-1' }),
+    } as any;
+    const problemRepository = {
+      findByTopicWithCursor: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'problem-3sum',
+            title: '3Sum',
+            description: 'desc',
+            difficult: 'medium',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+        nextCursor: null,
+      }),
+    } as any;
+    const testcaseRepository = {
+      sumPointsByProblemIds: jest.fn().mockResolvedValue({ 'problem-3sum': 30 }),
+    } as any;
+    const submissionRepository = {
+      getAcceptedProblemIdsByUser: jest.fn(),
+    } as any;
+    const favoriteRepository = {
+      getFavoriteProblemIds: jest.fn(),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        topicRepository,
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        favoriteRepository,
+      }),
+    );
+
+    const result = await service.listProblemsByTopicInfinite({
+      topicId: 'topic-1',
+      userId: undefined,
+    });
+
+    expect(result.items[0]).toMatchObject({
+      id: 'problem-3sum',
+      difficulty: 'medium',
+      totalPoints: 30,
+    });
+    expect(result.items[0]).not.toHaveProperty('difficult');
   });
 
   it('derives testcase input and output from JSON instead of cached DB text', () => {
@@ -650,6 +701,78 @@ describe('ChallengeService multilingual solution approach support', () => {
       description: 'Updated description',
       isVisible: true,
     });
+  });
+
+  it('invalidates submission problem metadata after a successful challenge update', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        title: 'Two Sum',
+        functionSignature: baseSignature,
+      }),
+      update: jest.fn().mockResolvedValue({ id: 'problem-1' }),
+    } as any;
+    const submissionRepository = {
+      findByProblemId: jest.fn().mockResolvedValue({ data: [] }),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({ problemRepository, submissionRepository }) as any,
+    );
+    jest.spyOn(service as any, 'getChallengeById').mockResolvedValue({
+      problem: {},
+      testcases: [],
+      solution: null,
+    });
+    const invalidateSpy = jest
+      .spyOn(submissionMetadataInvalidator, 'invalidateProblem')
+      .mockImplementation(() => undefined);
+
+    await service.updateChallenge('problem-1', { title: 'Updated Two Sum' } as any);
+
+    expect(invalidateSpy).toHaveBeenCalledWith('problem-1');
+    expect((service as any).getChallengeById).toHaveBeenCalled();
+    const invalidateCallOrder = invalidateSpy.mock.invocationCallOrder[0]!;
+    const getChallengeCallOrder = ((service as any).getChallengeById as jest.Mock)
+      .mock.invocationCallOrder[0]!;
+    expect(invalidateCallOrder).toBeLessThan(getChallengeCallOrder);
+  });
+
+  it('invalidates submission problem metadata after a successful challenge delete', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        functionSignature: baseSignature,
+      }),
+      delete: jest.fn().mockResolvedValue(true),
+    } as any;
+    const submissionRepository = {
+      findByProblemId: jest.fn().mockResolvedValue({ data: [] }),
+    } as any;
+    const solutionRepository = {
+      deleteByProblemId: jest.fn().mockResolvedValue(true),
+    } as any;
+    const testcaseRepository = {
+      deleteByProblemId: jest.fn().mockResolvedValue(true),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        problemRepository,
+        submissionRepository,
+        solutionRepository,
+        testcaseRepository,
+      }) as any,
+    );
+    const invalidateSpy = jest
+      .spyOn(submissionMetadataInvalidator, 'invalidateProblem')
+      .mockImplementation(() => undefined);
+
+    await service.deleteChallenge('problem-1');
+
+    expect(invalidateSpy).toHaveBeenCalledWith('problem-1');
+    expect(problemRepository.delete).toHaveBeenCalledWith('problem-1');
+    const deleteCallOrder = problemRepository.delete.mock.invocationCallOrder[0]!;
+    const invalidateCallOrder = invalidateSpy.mock.invocationCallOrder[0]!;
+    expect(deleteCallOrder).toBeLessThan(invalidateCallOrder);
   });
 });
 

@@ -7,7 +7,10 @@ import { examParticipations } from './examParticipations';
 import { languages } from './languages';
 import { problems } from './problem';
 import { users } from './user';
-import { ESubmissionStatus } from '@backend/shared/types/submissionStatus.enum';
+import {
+  ESubmissionStatus,
+  SUBMISSION_STATUS_VALUES,
+} from '@backend/shared/types/submissionStatus.enum';
 
 export const submissions = pgTable(
   'submissions',
@@ -53,18 +56,8 @@ export type SubmissionInsert = typeof submissions.$inferInsert;
 export const insertSubmissionSchema = createInsertSchema(submissions, {
   sourceCode: z.string().min(1),
   status: z
-    .enum([
-      'PENDING',
-      'RUNNING',
-      'ACCEPTED',
-      'WRONG_ANSWER',
-      'TIME_LIMIT_EXCEEDED',
-      'MEMORY_LIMIT_EXCEEDED',
-      'RUNTIME_ERROR',
-      'COMPILATION_ERROR',
-      'SYSTEM_ERROR',
-    ])
-    .default('PENDING'),
+    .enum(SUBMISSION_STATUS_VALUES)
+    .default(ESubmissionStatus.PENDING),
   languageId: z.string().uuid(),
   submittedAt: z.string().optional(),
   judgedAt: z.string().optional(),

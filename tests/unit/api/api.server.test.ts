@@ -29,6 +29,7 @@ describe('api server bootstrap factories', () => {
 
     jest.doMock('@backend/shared/utils', () => ({
       logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+      PasswordUtils: { getSaltRounds: jest.fn(() => 12) },
     }));
     jest.doMock('dotenv', () => ({ config }));
     jest.doMock('http', () => ({ ...jest.requireActual('http'), createServer }));
@@ -78,6 +79,7 @@ describe('api server bootstrap factories', () => {
 
     jest.doMock('@backend/shared/utils', () => ({
       logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+      PasswordUtils: { getSaltRounds: jest.fn(() => 12) },
     }));
     jest.doMock('../../../apps/api/src/routes', () => ({ registerRoutes }));
     jest.doMock('../../../apps/api/src/routes/admin', () => ({ createAdminRouter }));
@@ -156,6 +158,7 @@ describe('api server bootstrap factories', () => {
 
     jest.doMock('@backend/shared/utils', () => ({
       logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+      PasswordUtils: { getSaltRounds: jest.fn(() => 12) },
     }));
     jest.doMock('dotenv', () => ({ config }));
     jest.doMock('http', () => ({ ...jest.requireActual('http'), createServer }));

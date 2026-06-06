@@ -1,6 +1,7 @@
 import {
   AdminExamListQuerySchema,
   CreateAdminExamSchema,
+  ExamEntrySessionStatusSchema,
   ExamEntrySessionStartBodySchema,
   ExamSessionSyncSchema,
   PublicExamRegisterSchema,
@@ -74,6 +75,11 @@ describe('exam access validation', () => {
 
     expect(ExamEntrySessionStartBodySchema.parse({})).toEqual({});
     expect(ExamEntrySessionStartBodySchema.parse(undefined)).toEqual({});
+  });
+
+  it('accepts canonical entry-session statuses and rejects the legacy verified status', () => {
+    expect(ExamEntrySessionStatusSchema.safeParse('eligible').success).toBe(true);
+    expect(ExamEntrySessionStatusSchema.safeParse('verified').success).toBe(false);
   });
 
   it('rejects password-required create payloads without an exam password', () => {

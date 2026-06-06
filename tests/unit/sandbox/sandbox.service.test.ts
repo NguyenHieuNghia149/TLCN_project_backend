@@ -1,21 +1,26 @@
-jest.mock('@backend/shared/utils', () => ({
-  FsUtils: {
-    exists: jest.fn(),
-    ensureDir: jest.fn(),
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-    chmod: jest.fn(),
-    remove: jest.fn(),
-  },
-  StringUtils: {
-    trimOutput: jest.fn((output: string) => String(output).trim()),
-  },
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
+jest.mock('@backend/shared/utils', () => {
+  const actual = jest.requireActual('@backend/shared/utils');
+
+  return {
+    ...actual,
+    FsUtils: {
+      exists: jest.fn(),
+      ensureDir: jest.fn(),
+      readFile: jest.fn(),
+      writeFile: jest.fn(),
+      chmod: jest.fn(),
+      remove: jest.fn(),
+    },
+    StringUtils: {
+      trimOutput: jest.fn((output: string) => String(output).trim()),
+    },
+    logger: {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    },
+  };
+});
 
 jest.mock('yaml', () => ({
   parse: jest.fn(),
