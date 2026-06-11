@@ -1,4 +1,5 @@
-import { UserRepository } from '../../../apps/api/src/repositories/user.repository';
+import { UserRepository } from '@backend/api/repositories/user.repository';
+import { users } from '@backend/shared/db/schema';
 
 describe('UserRepository - Ban/Unban Methods', () => {
   let repository: UserRepository;
@@ -11,64 +12,101 @@ describe('UserRepository - Ban/Unban Methods', () => {
     jest.clearAllMocks();
   });
 
-  describe('banUser', () => {
-    it('should call update with ban fields', async () => {
-      // Mock the update method
-      const updateSpy = jest
-        .spyOn(repository as any, 'db' as any)
-        .mockImplementation(() => ({
-          update: jest.fn(),
-        }));
+  function installUpdateDbMock() {
+    const mockWhere = jest.fn(async () => ({ rowCount: 1 }));
+    const mockSet = jest.fn(() => ({ where: mockWhere }));
+    const mockUpdate = jest.fn(() => ({ set: mockSet }));
+    (repository as any).db = { update: mockUpdate };
+    return { mockUpdate, mockSet, mockWhere };
+  }
 
-      const userId = 'user-123';
-      const banReason = 'Violation of community standards';
-      const bannedByAdminId = 'admin-1';
+  function installSelectWhereDbMock<T>(rows: T[]) {
+    const mockWhere = jest.fn(async () => rows);
+    const mockFrom = jest.fn(() => ({ where: mockWhere }));
+    const mockSelect = jest.fn(() => ({ from: mockFrom }));
+    (repository as any).db = { select: mockSelect };
+    return { mockSelect, mockFrom, mockWhere };
+  }
 
-      // Act - just verify it doesn't throw
-      await expect(
-        repository.banUser(userId, banReason, bannedByAdminId)
-      ).resolves.toBeUndefined();
-    });
+  it('sets ban fields when banning a user', async () => {
+    const { mockUpdate, mockSet, mockWhere } = installUpdateDbMock();
+
+    await repository.banUser(
+      'user-123',
+      'Violation of community standards',
+      'admin-1',
+    );
+
+    expect(mockUpdate).toHaveBeenCalledWith(users);
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'banned',
+        banReason: 'Violation of community standards',
+        bannedByAdminId: 'admin-1',
+        bannedAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(mockWhere).toHaveBeenCalledWith(expect.objectContaining({}));
   });
 
-  describe('unbanUser', () => {
-    it('should call update to clear ban fields', async () => {
-      const userId = 'user-456';
+  it('clears ban fields when unbanning a user', async () => {
+    const { mockUpdate, mockSet, mockWhere } = installUpdateDbMock();
 
-      // Act - just verify it doesn't throw
-      await expect(repository.unbanUser(userId)).resolves.toBeUndefined();
-    });
+    await repository.unbanUser('user-456');
+
+    expect(mockUpdate).toHaveBeenCalledWith(users);
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'active',
+        banReason: null,
+        bannedAt: null,
+        bannedByAdminId: null,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(mockWhere).toHaveBeenCalledWith(expect.objectContaining({}));
   });
 
-  describe('countBannedUsers', () => {
-    it('should return count of banned users', async () => {
-      // Act
-      const count = await repository.countBannedUsers();
+  it('returns the count of banned users', async () => {
+    installSelectWhereDbMock([{ count: 3 }]);
 
-      // Assert
-      expect(typeof count).toBe('number');
-      expect(count).toBeGreaterThanOrEqual(0);
-    });
+    await expect(repository.countBannedUsers()).resolves.toBe(3);
   });
 
-  describe('getBannedUsers', () => {
-    it('should return paginated list of banned users', async () => {
-      // Act
-      const result = await repository.getBannedUsers(10, 0);
+  it('returns zero when the count query has no row', async () => {
+    installSelectWhereDbMock([]);
 
-      // Assert
-      expect(Array.isArray(result)).toBe(true);
-    });
+    await expect(repository.countBannedUsers()).resolves.toBe(0);
   });
 
-  describe('getUsersBannedByAdmin', () => {
-    it('should return users banned by specific admin', async () => {
-      // Act
-      const adminId = 'admin-1';
-      const result = await repository.getUsersBannedByAdmin(adminId, 10);
+  it('returns paginated banned users without touching the real database', async () => {
+    const rows = [{ id: 'user-1', status: 'banned' }];
+    const mockOffset = jest.fn(async () => rows);
+    const mockLimit = jest.fn(() => ({ offset: mockOffset }));
+    const mockOrderBy = jest.fn(() => ({ limit: mockLimit }));
+    const mockWhere = jest.fn(() => ({ orderBy: mockOrderBy }));
+    const mockFrom = jest.fn(() => ({ where: mockWhere }));
+    const mockSelect = jest.fn(() => ({ from: mockFrom }));
+    (repository as any).db = { select: mockSelect };
 
-      // Assert
-      expect(Array.isArray(result)).toBe(true);
-    });
+    await expect(repository.getBannedUsers(10, 5)).resolves.toEqual(rows);
+
+    expect(mockLimit).toHaveBeenCalledWith(10);
+    expect(mockOffset).toHaveBeenCalledWith(5);
+  });
+
+  it('returns users banned by a specific admin without touching the real database', async () => {
+    const rows = [{ id: 'user-2', status: 'banned', bannedByAdminId: 'admin-1' }];
+    const mockLimit = jest.fn(async () => rows);
+    const mockOrderBy = jest.fn(() => ({ limit: mockLimit }));
+    const mockWhere = jest.fn(() => ({ orderBy: mockOrderBy }));
+    const mockFrom = jest.fn(() => ({ where: mockWhere }));
+    const mockSelect = jest.fn(() => ({ from: mockFrom }));
+    (repository as any).db = { select: mockSelect };
+
+    await expect(repository.getUsersBannedByAdmin('admin-1', 7)).resolves.toEqual(rows);
+
+    expect(mockLimit).toHaveBeenCalledWith(7);
   });
 });

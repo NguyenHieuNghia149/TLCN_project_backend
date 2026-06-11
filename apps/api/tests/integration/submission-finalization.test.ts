@@ -29,7 +29,10 @@ function createCleanupState(): CleanupState {
   return { submissionIds: [], problemIds: [], userIds: [] };
 }
 
-describe('SubmissionRepository.finalizeSubmissionResult', () => {
+const describeDbIntegration =
+  process.env.RUN_DB_INTEGRATION_TESTS === 'true' ? describe : describe.skip;
+
+describeDbIntegration('SubmissionRepository.finalizeSubmissionResult', () => {
   const repository = new SubmissionRepository();
   let cleanup = createCleanupState();
 

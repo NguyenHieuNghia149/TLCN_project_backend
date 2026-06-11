@@ -1,5 +1,6 @@
 import { AdminUserService, createAdminUserService } from '@backend/api/services/admin/adminUser.service';
 import { AdminUserRepository } from '@backend/api/repositories/admin/adminUser.repository';
+import { UserRepository } from '@backend/api/repositories/user.repository';
 
 describe('AdminUserService', () => {
   afterEach(() => {
@@ -12,7 +13,11 @@ describe('AdminUserService', () => {
     const adminUserRepository = {
       list: jest.fn().mockResolvedValue(result),
     } as any;
-    const service = new AdminUserService({ adminUserRepository });
+    const service = new AdminUserService({
+      adminUserRepository,
+      userRepository: {} as any,
+      emailService: {} as any,
+    });
 
     const response = await service.listUsers({
       filters: { search: undefined },
@@ -28,5 +33,6 @@ describe('AdminUserService', () => {
 
     expect(service).toBeInstanceOf(AdminUserService);
     expect((service as any).repo).toBeInstanceOf(AdminUserRepository);
+    expect((service as any).userRepository).toBeInstanceOf(UserRepository);
   });
 });

@@ -69,11 +69,22 @@ describe('API controller route composition', () => {
       'getReplies',
       'updateComment',
       'deleteComment',
+      'pinComment',
+      'unpinComment',
+      'toggleLikeComment',
+      'getCommentLikeStatus',
+      'getBatchLikeStatus',
     ]);
+    const notificationServiceInstance = {};
+    const commentLikeServiceInstance = {};
+    const createNotificationService = jest.fn(() => notificationServiceInstance);
     const createCommentService = jest.fn(() => serviceInstance);
+    const createCommentLikeService = jest.fn(() => commentLikeServiceInstance);
     const CommentController = jest.fn(() => controllerInstance);
 
+    jest.doMock('@backend/api/services/notification.service', () => ({ createNotificationService }));
     jest.doMock('@backend/api/services/comment.service', () => ({ createCommentService }));
+    jest.doMock('@backend/api/services/commentLike.service', () => ({ createCommentLikeService }));
     jest.doMock('@backend/api/controllers/comment.controller', () => ({ CommentController }));
 
     let createCommentRouter!: typeof import('@backend/api/routes/comment.routes').createCommentRouter;
@@ -83,8 +94,13 @@ describe('API controller route composition', () => {
 
     const router = createCommentRouter();
 
-    expect(createCommentService).toHaveBeenCalledTimes(1);
-    expect(CommentController).toHaveBeenCalledWith(serviceInstance);
+    expect(createNotificationService).toHaveBeenCalledTimes(1);
+    expect(createCommentService).toHaveBeenCalledWith(notificationServiceInstance);
+    expect(createCommentLikeService).toHaveBeenCalledWith(notificationServiceInstance);
+    expect(CommentController).toHaveBeenCalledWith(
+      serviceInstance,
+      commentLikeServiceInstance,
+    );
     expect(typeof (router as Router).use).toBe('function');
   });
 
