@@ -91,11 +91,15 @@ export class ExamAccessController {
       return;
     }
 
-    const result = await this.examAccessService.startEntrySession(
-      id,
-      userId,
-      req.body?.examPassword,
-    );
+    const proctoringStartInput = this.extractProctoringStartInput(req.body);
+    const result = proctoringStartInput
+      ? await this.examAccessService.startEntrySession(
+          id,
+          userId,
+          req.body?.examPassword,
+          proctoringStartInput,
+        )
+      : await this.examAccessService.startEntrySession(id, userId, req.body?.examPassword);
     res.status(200).json(result);
   }
 
@@ -137,7 +141,41 @@ export class ExamAccessController {
       return;
     }
 
-    const result = await this.examAccessService.submitActiveParticipation(slug, userId);
+    const proctoringSubmitInput = this.extractProctoringSubmitInput(req.body);
+    const result = proctoringSubmitInput
+      ? await this.examAccessService.submitActiveParticipation(slug, userId, proctoringSubmitInput)
+      : await this.examAccessService.submitActiveParticipation(slug, userId);
     res.status(200).json(result);
+  }
+
+  private extractProctoringStartInput(body: any) {
+    if (
+      !body?.clientSessionId &&
+      !body?.consentRecordId &&
+      !body?.precheckId &&
+      !body?.bypassCode &&
+      !body?.bypassCodeId
+    ) {
+      return undefined;
+    }
+
+    return {
+      clientSessionId: body.clientSessionId,
+      consentRecordId: body.consentRecordId,
+      precheckId: body.precheckId,
+      bypassCode: body.bypassCode,
+      bypassCodeId: body.bypassCodeId,
+    };
+  }
+
+  private extractProctoringSubmitInput(body: any) {
+    if (!body?.submitAttemptId && !body?.finalFlushReceiptId) {
+      return undefined;
+    }
+
+    return {
+      submitAttemptId: body.submitAttemptId,
+      finalFlushReceiptId: body.finalFlushReceiptId,
+    };
   }
 }

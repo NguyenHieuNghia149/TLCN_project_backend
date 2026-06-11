@@ -250,6 +250,20 @@ export const ExamEntrySessionStartBodySchema = z.preprocess(
   value => value ?? {},
   z.object({
     examPassword: z.string().max(255, 'Password is too long.').optional(),
+    clientSessionId: z.string().min(1).max(100).optional(),
+    consentRecordId: z.string().uuid('Invalid consent record ID format.').optional(),
+    precheckId: z.string().uuid('Invalid precheck ID format.').optional(),
+    bypassCode: z.string().min(4).max(128).optional(),
+    bypassCodeId: z.string().uuid('Invalid bypass code ID format.').optional(),
+  }),
+);
+
+export const ExamSubmitBodySchema = z.preprocess(
+  value => value ?? {},
+  z.object({
+    participationId: z.string().min(1, 'Participation ID is required.').optional(),
+    submitAttemptId: z.string().min(1).max(100).optional(),
+    finalFlushReceiptId: z.string().uuid('Invalid final flush receipt ID format.').optional(),
   }),
 );
 
@@ -333,4 +347,5 @@ export type PublicExamOtpVerifyInput = z.infer<typeof PublicExamOtpVerifySchema>
 export type ExamEntrySessionStartBodyInput = z.infer<
   typeof ExamEntrySessionStartBodySchema
 >;
+export type ExamSubmitBodyInput = z.infer<typeof ExamSubmitBodySchema>;
 export type AdminExamAddParticipantsInput = z.infer<typeof AdminExamAddParticipantsSchema>;

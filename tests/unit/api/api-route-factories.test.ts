@@ -27,15 +27,20 @@ describe('API route registrar', () => {
     const createAdminLessonRouter = createFactoryMock();
     const createAdminTopicRouter = createFactoryMock();
     const createDashboardRouter = createFactoryMock();
+    const createAdminRoadmapRouter = createFactoryMock();
+    const createUserRouter = createFactoryMock();
     const createCommentRouter = createFactoryMock();
     const createLearningProcessRouter = createFactoryMock();
     const createLearnedLessonRouter = createFactoryMock();
     const createPublicExamRouter = createFactoryMock();
     const createAdminExamRouter = createFactoryMock();
+    const createAdminProctoringRouter = createFactoryMock();
     const createExamAccessRouter = createFactoryMock();
+    const createProctoringRouter = createFactoryMock();
     const createExamRouter = createFactoryMock();
     const createLeaderboardRouter = createFactoryMock();
     const createNotificationRouter = createFactoryMock();
+    const createRoadmapRouter = createFactoryMock();
 
     jest.doMock('../../../apps/api/src/middlewares/ratelimit.middleware', () => ({
       generalLimiter,
@@ -68,6 +73,10 @@ describe('API route registrar', () => {
     jest.doMock('../../../apps/api/src/routes/admin/dashboard.routes', () => ({
       createDashboardRouter,
     }));
+    jest.doMock('../../../apps/api/src/routes/admin/adminRoadmap.routes', () => ({
+      createAdminRoadmapRouter,
+    }));
+    jest.doMock('../../../apps/api/src/routes/user.routes', () => ({ createUserRouter }));
     jest.doMock('../../../apps/api/src/routes/comment.routes', () => ({ createCommentRouter }));
     jest.doMock('../../../apps/api/src/routes/learningprocess.routes', () => ({
       createLearningProcessRouter,
@@ -81,8 +90,14 @@ describe('API route registrar', () => {
     jest.doMock('../../../apps/api/src/routes/admin/adminExam.routes', () => ({
       createAdminExamRouter,
     }));
+    jest.doMock('../../../apps/api/src/routes/admin/adminProctoring.routes', () => ({
+      createAdminProctoringRouter,
+    }));
     jest.doMock('../../../apps/api/src/routes/examAccess.routes', () => ({
       createExamAccessRouter,
+    }));
+    jest.doMock('../../../apps/api/src/routes/proctoring.routes', () => ({
+      createProctoringRouter,
     }));
     jest.doMock('../../../apps/api/src/routes/exam.routes', () => ({ createExamRouter }));
     jest.doMock('../../../apps/api/src/routes/leaderboard.routes', () => ({
@@ -90,6 +105,9 @@ describe('API route registrar', () => {
     }));
     jest.doMock('../../../apps/api/src/routes/notification.routes', () => ({
       createNotificationRouter,
+    }));
+    jest.doMock('../../../apps/api/src/routes/roadmap.routes', () => ({
+      createRoadmapRouter,
     }));
     jest.doMock('@backend/shared/db/utils', () => ({
       DatabaseUtils: {
@@ -122,15 +140,20 @@ describe('API route registrar', () => {
       '/api/admin/lessons',
       '/api/admin/topics',
       '/api/admin/dashboard',
+      '/api/admin/roadmaps',
+      '/api/user',
       '/api/comments',
       '/api/learningprocess',
       '/api/learned-lessons',
       '/api/public/exams',
       '/api/admin/exams',
+      '/api/admin/exams',
+      '/api/exams',
       '/api/exams',
       '/api/exams',
       '/api/leaderboard',
       '/api/notifications',
+      '/api',
       '/api/health',
     ]);
   });

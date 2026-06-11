@@ -5,6 +5,7 @@ export * from './favorite.validation';
 export * from './leaderboard.validation';
 export * from './notification.validation';
 export * from './problem.validation';
+export * from './proctoring.validation';
 export * from './solution.validation';
 export * from './submission.validation';
 export * from './testcase.validation';

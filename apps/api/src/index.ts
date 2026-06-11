@@ -165,6 +165,19 @@ export async function startApiServer(): Promise<{
   const examAutoSubmitService = createExamAutoSubmitService();
   await examAutoSubmitService.start();
 
+  const { createProctoringTelemetryPersisterService } =
+    require('./services/proctoring/proctoring-telemetry-persister.service') as typeof import('./services/proctoring/proctoring-telemetry-persister.service');
+  const proctoringTelemetryPersister = createProctoringTelemetryPersisterService();
+  try {
+    await proctoringTelemetryPersister.start();
+    logger.info('Proctoring telemetry persister started');
+  } catch (error) {
+    logger.error(
+      'Proctoring telemetry persister failed to start (operational incident):',
+      (error as Error).message,
+    );
+  }
+
   getJudgeQueueService()
     .connect()
     .then(() => logger.info('Connected to Redis'))

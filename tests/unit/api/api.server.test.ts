@@ -17,6 +17,10 @@ describe('api server bootstrap factories', () => {
     const initializeWebSocket = jest.fn();
     const examAutoSubmitService = { start: jest.fn() };
     const createExamAutoSubmitService = jest.fn(() => examAutoSubmitService);
+    const proctoringTelemetryPersisterService = { start: jest.fn() };
+    const createProctoringTelemetryPersisterService = jest.fn(
+      () => proctoringTelemetryPersisterService,
+    );
     const submissionRecoveryService = { requeuePendingSubmission: jest.fn() };
     const createSubmissionService = jest.fn(() => submissionRecoveryService);
     const initializeWatchdogCron = jest.fn();
@@ -50,6 +54,10 @@ describe('api server bootstrap factories', () => {
     jest.doMock('../../../apps/api/src/services/websocket.service', () => ({
       initializeWebSocket,
     }));
+    jest.doMock(
+      '../../../apps/api/src/services/proctoring/proctoring-telemetry-persister.service',
+      () => ({ createProctoringTelemetryPersisterService }),
+    );
 
     jest.isolateModules(() => {
       require('../../../apps/api/src/index');
@@ -65,6 +73,8 @@ describe('api server bootstrap factories', () => {
     expect(initializeWebSocket).not.toHaveBeenCalled();
     expect(createExamAutoSubmitService).not.toHaveBeenCalled();
     expect(examAutoSubmitService.start).not.toHaveBeenCalled();
+    expect(createProctoringTelemetryPersisterService).not.toHaveBeenCalled();
+    expect(proctoringTelemetryPersisterService.start).not.toHaveBeenCalled();
     expect(createSubmissionService).not.toHaveBeenCalled();
     expect(initializeWatchdogCron).not.toHaveBeenCalled();
     expect(createAdminRouter).not.toHaveBeenCalled();
@@ -128,6 +138,14 @@ describe('api server bootstrap factories', () => {
       }),
     };
     const createExamAutoSubmitService = jest.fn(() => examAutoSubmitService);
+    const proctoringTelemetryPersisterService = {
+      start: jest.fn(async () => {
+        calls.push('proctoring-persister');
+      }),
+    };
+    const createProctoringTelemetryPersisterService = jest.fn(
+      () => proctoringTelemetryPersisterService,
+    );
     const submissionRecoveryService = { requeuePendingSubmission: jest.fn() };
     const createSubmissionService = jest.fn(() => submissionRecoveryService);
     const initializeWatchdogCron = jest.fn(receivedSubmissionRecoveryService => {
@@ -179,6 +197,10 @@ describe('api server bootstrap factories', () => {
     jest.doMock('../../../apps/api/src/services/websocket.service', () => ({
       initializeWebSocket,
     }));
+    jest.doMock(
+      '../../../apps/api/src/services/proctoring/proctoring-telemetry-persister.service',
+      () => ({ createProctoringTelemetryPersisterService }),
+    );
 
     let startApiServer!: typeof import('../../../apps/api/src/index').startApiServer;
     jest.isolateModules(() => {
@@ -196,6 +218,8 @@ describe('api server bootstrap factories', () => {
     expect(initializeWebSocket).toHaveBeenCalledTimes(1);
     expect(createExamAutoSubmitService).toHaveBeenCalledTimes(1);
     expect(examAutoSubmitService.start).toHaveBeenCalledTimes(1);
+    expect(createProctoringTelemetryPersisterService).toHaveBeenCalledTimes(1);
+    expect(proctoringTelemetryPersisterService.start).toHaveBeenCalledTimes(1);
     expect(getJudgeQueueService).toHaveBeenCalledTimes(1);
     expect(queueConnect).toHaveBeenCalledTimes(1);
     expect(createSubmissionService).toHaveBeenCalledTimes(1);
@@ -209,6 +233,7 @@ describe('api server bootstrap factories', () => {
       'migrate',
       'websocket',
       'exam',
+      'proctoring-persister',
       'queue',
       'watchdog',
       'admin',
