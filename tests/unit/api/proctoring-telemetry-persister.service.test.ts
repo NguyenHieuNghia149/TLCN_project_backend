@@ -175,7 +175,9 @@ describe('ProctoringTelemetryPersisterService', () => {
     };
     const { service } = createPersister({ redis, eventRepository });
 
-    await expect(service.processBatchOnce()).rejects.toThrow('database unavailable');
+    const result = await service.processBatchOnce();
+    expect(result.processedCount).toBe(0);
+    expect(result.insertedCount).toBe(0);
 
     expect(redis.xack).not.toHaveBeenCalled();
   });

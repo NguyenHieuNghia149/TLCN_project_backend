@@ -1,6 +1,10 @@
 import { ProctoringFinalFlushRepository } from '@backend/api/repositories/proctoring/proctoringFinalFlush.repository';
 
 import {
+  createProctoringMetricsService,
+  ProctoringMetricsService,
+} from './proctoring-metrics.service';
+import {
   createProctoringSummaryService,
   ProctoringSummaryService,
 } from './proctoring-summary.service';
@@ -25,6 +29,7 @@ type ProctoringSubmitGuardDependencies = {
   intervalMs?: number;
   maxAttempts?: number;
   summaryService?: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
+  metricsService?: Pick<ProctoringMetricsService, 'recordFinalFlushPollDuration' | 'incrementFinalFlushSuccess' | 'incrementFinalFlushTimeout' | 'incrementFinalFlushFailed'>;
 };
 
 const inFlightStatuses = new Set(['received', 'persisting']);
@@ -38,12 +43,14 @@ export class ProctoringSubmitGuardService {
   private readonly intervalMs: number;
   private readonly maxAttempts: number;
   private readonly summaryService: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
+  private readonly metricsService: Pick<ProctoringMetricsService, 'recordFinalFlushPollDuration' | 'incrementFinalFlushSuccess' | 'incrementFinalFlushTimeout' | 'incrementFinalFlushFailed'>;
 
   constructor(private readonly deps: ProctoringSubmitGuardDependencies) {
     this.sleep = deps.sleep ?? defaultSleep;
     this.intervalMs = deps.intervalMs ?? 500;
     this.maxAttempts = deps.maxAttempts ?? 10;
     this.summaryService = deps.summaryService ?? createProctoringSummaryService();
+    this.metricsService = deps.metricsService ?? createProctoringMetricsService();
   }
 
   async awaitFinalFlushReceipt(
@@ -53,11 +60,15 @@ export class ProctoringSubmitGuardService {
       return { status: 'skipped' };
     }
 
+    const pollStart = Date.now();
     let lastReceipt: any = null;
     for (let attempt = 0; attempt < this.maxAttempts; attempt += 1) {
       lastReceipt = await this.findReceipt(input);
 
       if (lastReceipt?.status === 'persisted') {
+        const elapsed = Date.now() - pollStart;
+        this.metricsService.recordFinalFlushPollDuration(elapsed);
+        this.metricsService.incrementFinalFlushSuccess();
         return { status: 'persisted', receiptId: lastReceipt.id };
       }
 
@@ -67,6 +78,13 @@ export class ProctoringSubmitGuardService {
             participationId: input.participationId,
             finalFlushStatus: lastReceipt.status,
           });
+        }
+        const elapsed = Date.now() - pollStart;
+        this.metricsService.recordFinalFlushPollDuration(elapsed);
+        if (lastReceipt.status === 'failed') {
+          this.metricsService.incrementFinalFlushFailed();
+        } else {
+          this.metricsService.incrementFinalFlushTimeout();
         }
         return {
           status: lastReceipt.status === 'failed' ? 'failed' : 'timeout',
@@ -91,6 +109,10 @@ export class ProctoringSubmitGuardService {
         finalFlushStatus: 'timeout',
       });
     }
+
+    const elapsed = Date.now() - pollStart;
+    this.metricsService.recordFinalFlushPollDuration(elapsed);
+    this.metricsService.incrementFinalFlushTimeout();
 
     return {
       status: 'timeout',

@@ -252,7 +252,7 @@ export class ProctoringAdminReviewService {
       evidence: {
         consent,
         precheck,
-        bypass,
+        bypass: (bypass ?? []).map(({ codeHash: _ch, ...rest }) => rest),
         finalFlush,
         dataRequests,
       },

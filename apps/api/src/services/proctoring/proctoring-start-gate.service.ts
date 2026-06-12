@@ -7,6 +7,16 @@ import { ProctoringSettingsRepository } from '@backend/api/repositories/proctori
 
 import { buildDefaultProctoringSettings } from './proctoring-settings.service';
 
+export class ProctoringBufferUnavailableError extends AppException {
+  constructor() {
+    super(
+      'Proctoring telemetry buffer is unavailable. Please try again.',
+      503,
+      'PROCTORING_BUFFER_UNAVAILABLE',
+    );
+  }
+}
+
 export type ProctoringStartInput = {
   clientSessionId?: string;
   consentRecordId?: string;
@@ -32,10 +42,15 @@ type ProctoringStartGateServiceDependencies = {
   precheckRepository: Pick<ProctoringPrecheckRepository, 'findById' | 'findValidPassedById'>;
   bypassRepository: Pick<ProctoringBypassRepository, 'findUsedGrant'>;
   sessionRepository: Pick<ProctoringSessionRepository, 'insert'>;
+  isBufferHealthy?: () => Promise<boolean>;
 };
 
 export class ProctoringStartGateService {
-  constructor(private readonly deps: ProctoringStartGateServiceDependencies) {}
+  private readonly isBufferHealthy: () => Promise<boolean>;
+
+  constructor(private readonly deps: ProctoringStartGateServiceDependencies) {
+    this.isBufferHealthy = deps.isBufferHealthy ?? (async () => true);
+  }
 
   async validateStartRequest(input: {
     exam: any;
@@ -55,6 +70,11 @@ export class ProctoringStartGateService {
         participantId: input.participant.id,
         userId: input.userId,
       };
+    }
+
+    const bufferHealthy = await this.isBufferHealthy();
+    if (!bufferHealthy) {
+      throw new ProctoringBufferUnavailableError();
     }
 
     const proctoring = input.proctoring ?? {};

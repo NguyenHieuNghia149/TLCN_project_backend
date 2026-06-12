@@ -333,9 +333,20 @@ export class ProctoringTelemetryPersisterService {
       });
     }
 
-    const bulkResult = await this.eventRepository.bulkInsertDedupe(
-      validEntries.map(entry => entry.insert)
-    );
+    let bulkResult: { insertedCount: number; dedupedCount: number };
+
+    try {
+      bulkResult = await this.eventRepository.bulkInsertDedupe(
+        validEntries.map(entry => entry.insert)
+      );
+    } catch (error) {
+      logger.warn(
+        '[ProctoringTelemetryPersister] bulkInsertDedupe failed, will retry:',
+        (error as Error).message,
+      );
+      return result;
+    }
+
     result.processedCount += validEntries.length;
     result.insertedCount += bulkResult.insertedCount;
     result.dedupedCount += bulkResult.dedupedCount;
