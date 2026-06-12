@@ -11,7 +11,10 @@ export class ProctoringSummaryRepository {
   constructor(private readonly database: any = db) {}
 
   async insert(values: ExamProctoringSummaryInsert): Promise<ExamProctoringSummaryEntity> {
-    const [created] = await this.database.insert(examProctoringSummaries).values(values).returning();
+    const [created] = await this.database
+      .insert(examProctoringSummaries)
+      .values(values)
+      .returning();
     return created;
   }
 
@@ -34,7 +37,7 @@ export class ProctoringSummaryRepository {
   }
 
   async upsertForParticipation(
-    values: ExamProctoringSummaryInsert,
+    values: ExamProctoringSummaryInsert
   ): Promise<ExamProctoringSummaryEntity> {
     const [row] = await this.database
       .insert(examProctoringSummaries)
@@ -45,6 +48,41 @@ export class ProctoringSummaryRepository {
           ...values,
           updatedAt: new Date(),
         },
+      })
+      .returning();
+    return row;
+  }
+
+  async upsertComputedForParticipation(
+    values: ExamProctoringSummaryInsert,
+    options: { preserveReviewerDecision?: boolean } = {}
+  ): Promise<ExamProctoringSummaryEntity> {
+    const preserveReviewerDecision = options.preserveReviewerDecision ?? true;
+    const setValues: Record<string, unknown> = {
+      examId: values.examId,
+      sessionId: values.sessionId ?? null,
+      riskScore: values.riskScore ?? 0,
+      riskLevel: values.riskLevel ?? 'low',
+      eventCountsJson: values.eventCountsJson ?? {},
+      velocityJson: values.velocityJson ?? {},
+      finalFlushStatus: values.finalFlushStatus ?? null,
+      lastEventCapturedAt: values.lastEventCapturedAt ?? null,
+      lastEventReceivedAt: values.lastEventReceivedAt ?? null,
+      deterministicSchemaVersion: values.deterministicSchemaVersion,
+      computedAt: values.computedAt,
+      updatedAt: new Date(),
+    };
+
+    if (!preserveReviewerDecision && values.reviewerDecision) {
+      setValues.reviewerDecision = values.reviewerDecision;
+    }
+
+    const [row] = await this.database
+      .insert(examProctoringSummaries)
+      .values(values)
+      .onConflictDoUpdate({
+        target: examProctoringSummaries.participationId,
+        set: setValues,
       })
       .returning();
     return row;

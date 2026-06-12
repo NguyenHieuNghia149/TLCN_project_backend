@@ -2,7 +2,6 @@ import os from 'os';
 
 import { ProctoringEventRepository } from '@backend/api/repositories/proctoring/proctoringEvent.repository';
 import { ProctoringFinalFlushRepository } from '@backend/api/repositories/proctoring/proctoringFinalFlush.repository';
-import { ProctoringSummaryRepository } from '@backend/api/repositories/proctoring/proctoringSummary.repository';
 import { ExamProctoringEventInsert } from '@backend/shared/db/schema';
 import { logger } from '@backend/shared/utils';
 
@@ -14,6 +13,11 @@ import {
   ProctoringRedisService,
   sanitizeTelemetryPayload,
 } from './proctoring-redis.service';
+import {
+  createProctoringSummaryService,
+  ProctoringSummaryService,
+} from './proctoring-summary.service';
+import { createProctoringAiJobService, ProctoringAiJobService } from './proctoring-ai-job.service';
 
 type RedisStreamEntry = [string, string[]];
 type RedisReadResponse = Array<[string, RedisStreamEntry[]]> | null;
@@ -32,7 +36,11 @@ type ProctoringTelemetryPersisterDependencies = {
   redisService?: Pick<ProctoringRedisService, 'getClient'>;
   eventRepository?: Pick<ProctoringEventRepository, 'bulkInsertDedupe'>;
   finalFlushRepository?: Pick<ProctoringFinalFlushRepository, 'transitionStatus'>;
-  summaryRepository?: Pick<ProctoringSummaryRepository, 'upsertForParticipation'>;
+  summaryService?: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
+  aiJobService?: Pick<
+    ProctoringAiJobService,
+    'enqueueTelemetryWindow' | 'enqueueFinalSubmitWindow'
+  >;
   streamShard?: number | string;
   groupName?: string;
   consumerName?: string;
@@ -170,11 +178,12 @@ function flattenReadResponse(response: RedisReadResponse): RedisStreamEntry[] {
 export class ProctoringTelemetryPersisterService {
   private readonly redisService: Pick<ProctoringRedisService, 'getClient'>;
   private readonly eventRepository: Pick<ProctoringEventRepository, 'bulkInsertDedupe'>;
-  private readonly finalFlushRepository: Pick<
-    ProctoringFinalFlushRepository,
-    'transitionStatus'
+  private readonly finalFlushRepository: Pick<ProctoringFinalFlushRepository, 'transitionStatus'>;
+  private readonly summaryService: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
+  private readonly aiJobService: Pick<
+    ProctoringAiJobService,
+    'enqueueTelemetryWindow' | 'enqueueFinalSubmitWindow'
   >;
-  private readonly summaryRepository: Pick<ProctoringSummaryRepository, 'upsertForParticipation'>;
   private readonly streamKey: string;
   private readonly groupName: string;
   private readonly consumerName: string;
@@ -191,9 +200,9 @@ export class ProctoringTelemetryPersisterService {
     this.redis = deps.redis ?? null;
     this.redisService = deps.redisService ?? createProctoringRedisService();
     this.eventRepository = deps.eventRepository ?? new ProctoringEventRepository();
-    this.finalFlushRepository =
-      deps.finalFlushRepository ?? new ProctoringFinalFlushRepository();
-    this.summaryRepository = deps.summaryRepository ?? new ProctoringSummaryRepository();
+    this.finalFlushRepository = deps.finalFlushRepository ?? new ProctoringFinalFlushRepository();
+    this.summaryService = deps.summaryService ?? createProctoringSummaryService();
+    this.aiJobService = deps.aiJobService ?? createProctoringAiJobService();
     this.streamKey = getProctoringTelemetryStreamKey(deps.streamShard ?? 0);
     this.groupName = deps.groupName ?? PROCTORING_TELEMETRY_CONSUMER_GROUP;
     this.consumerName = deps.consumerName ?? defaultConsumerName();
@@ -250,7 +259,7 @@ export class ProctoringTelemetryPersisterService {
       this.blockMs,
       'STREAMS',
       this.streamKey,
-      '>',
+      '>'
     );
 
     return this.processEntries(flattenReadResponse(response));
@@ -265,7 +274,7 @@ export class ProctoringTelemetryPersisterService {
       this.minIdleMs,
       '0-0',
       'COUNT',
-      this.batchSize,
+      this.batchSize
     );
 
     return this.processEntries(response[1] ?? []);
@@ -288,7 +297,7 @@ export class ProctoringTelemetryPersisterService {
   }
 
   private async processEntries(
-    entries: RedisStreamEntry[],
+    entries: RedisStreamEntry[]
   ): Promise<ProctoringTelemetryPersisterResult> {
     if (entries.length === 0) {
       return emptyResult();
@@ -313,7 +322,7 @@ export class ProctoringTelemetryPersisterService {
     }
 
     const finalFlushReceiptIds = Array.from(
-      new Set(validEntries.map(entry => entry.finalFlushReceiptId).filter(Boolean)),
+      new Set(validEntries.map(entry => entry.finalFlushReceiptId).filter(Boolean))
     ) as string[];
 
     for (const receiptId of finalFlushReceiptIds) {
@@ -325,17 +334,15 @@ export class ProctoringTelemetryPersisterService {
     }
 
     const bulkResult = await this.eventRepository.bulkInsertDedupe(
-      validEntries.map(entry => entry.insert),
+      validEntries.map(entry => entry.insert)
     );
     result.processedCount += validEntries.length;
     result.insertedCount += bulkResult.insertedCount;
     result.dedupedCount += bulkResult.dedupedCount;
 
-    await this.upsertSummaries(validEntries);
-
     for (const receiptId of finalFlushReceiptIds) {
       const acceptedCount = validEntries.filter(
-        entry => entry.finalFlushReceiptId === receiptId,
+        entry => entry.finalFlushReceiptId === receiptId
       ).length;
       await this.finalFlushRepository.transitionStatus({
         receiptId,
@@ -350,20 +357,16 @@ export class ProctoringTelemetryPersisterService {
       });
     }
 
+    await this.recomputeSummaries(validEntries);
+    await this.enqueueAiJobs(validEntries);
+
     await this.afterDurableWriteBeforeAck?.();
-    await redis.xack(
-      this.streamKey,
-      this.groupName,
-      ...validEntries.map(entry => entry.streamId),
-    );
+    await redis.xack(this.streamKey, this.groupName, ...validEntries.map(entry => entry.streamId));
 
     return result;
   }
 
-  private async deadLetterMalformedEntry(
-    entry: RedisStreamEntry,
-    error: Error,
-  ): Promise<void> {
+  private async deadLetterMalformedEntry(entry: RedisStreamEntry, error: Error): Promise<void> {
     const redis = await this.getRedis();
     const fields = decodeFields(entry[1]);
     await redis.xadd(
@@ -376,11 +379,11 @@ export class ProctoringTelemetryPersisterService {
       'error',
       error.message,
       'raw',
-      fields.event ?? JSON.stringify(fields),
+      fields.event ?? JSON.stringify(fields)
     );
   }
 
-  private async upsertSummaries(entries: ParsedTelemetryEntry[]): Promise<void> {
+  private async recomputeSummaries(entries: ParsedTelemetryEntry[]): Promise<void> {
     const groupedByParticipation = new Map<string, ParsedTelemetryEntry[]>();
     for (const entry of entries) {
       const group = groupedByParticipation.get(entry.insert.participationId) ?? [];
@@ -390,38 +393,39 @@ export class ProctoringTelemetryPersisterService {
 
     for (const group of groupedByParticipation.values()) {
       const first = group[0]!;
-      const eventCountsJson = group.reduce<Record<string, number>>((acc, entry) => {
-        acc[entry.insert.type] = (acc[entry.insert.type] ?? 0) + 1;
-        return acc;
-      }, {});
-      const lastEventCapturedAt = group.reduce(
-        (latest, entry) =>
-          entry.insert.capturedAt > latest ? entry.insert.capturedAt : latest,
-        first.insert.capturedAt,
-      );
-      const lastEventReceivedAt = group.reduce(
-        (latest, entry) =>
-          entry.insert.receivedAt > latest ? entry.insert.receivedAt : latest,
-        first.insert.receivedAt,
-      );
-
-      await this.summaryRepository.upsertForParticipation({
-        examId: first.insert.examId,
+      await this.summaryService.recomputeForParticipation({
         participationId: first.insert.participationId,
-        sessionId: first.insert.sessionId,
-        riskScore: 0,
-        riskLevel: 'low',
-        eventCountsJson,
-        velocityJson: {},
-        finalFlushStatus: group.some(entry => entry.finalFlushReceiptId)
-          ? 'persisted'
-          : null,
-        lastEventCapturedAt,
-        lastEventReceivedAt,
-        deterministicSchemaVersion: 'phase-1-telemetry-persister-v1',
-        computedAt: new Date(),
-        reviewerDecision: 'pending',
-      } as any);
+        finalFlushStatus: group.some(entry => entry.finalFlushReceiptId) ? 'persisted' : null,
+      });
+    }
+  }
+
+  private async enqueueAiJobs(entries: ParsedTelemetryEntry[]): Promise<void> {
+    const groupedByParticipation = new Map<string, ParsedTelemetryEntry[]>();
+    for (const entry of entries) {
+      const group = groupedByParticipation.get(entry.insert.participationId) ?? [];
+      group.push(entry);
+      groupedByParticipation.set(entry.insert.participationId, group);
+    }
+
+    for (const group of groupedByParticipation.values()) {
+      try {
+        const events = group.map(entry => entry.insert as any);
+        await this.aiJobService.enqueueTelemetryWindow({ events });
+        const finalFlushEntry = group.find(entry => entry.finalFlushReceiptId);
+        if (finalFlushEntry?.finalFlushReceiptId) {
+          const submitAttemptId =
+            typeof finalFlushEntry.insert.payloadJson.submitAttemptId === 'string'
+              ? finalFlushEntry.insert.payloadJson.submitAttemptId
+              : finalFlushEntry.finalFlushReceiptId;
+          await this.aiJobService.enqueueFinalSubmitWindow({ events, submitAttemptId });
+        }
+      } catch (error) {
+        logger.warn(
+          '[ProctoringTelemetryPersister] AI job enqueue failed:',
+          (error as Error).message
+        );
+      }
     }
   }
 }
@@ -431,6 +435,7 @@ export function createProctoringTelemetryPersisterService(): ProctoringTelemetry
     redisService: createProctoringRedisService(),
     eventRepository: new ProctoringEventRepository(),
     finalFlushRepository: new ProctoringFinalFlushRepository(),
-    summaryRepository: new ProctoringSummaryRepository(),
+    summaryService: createProctoringSummaryService(),
+    aiJobService: createProctoringAiJobService(),
   });
 }

@@ -1,5 +1,10 @@
 import { ProctoringFinalFlushRepository } from '@backend/api/repositories/proctoring/proctoringFinalFlush.repository';
 
+import {
+  createProctoringSummaryService,
+  ProctoringSummaryService,
+} from './proctoring-summary.service';
+
 export type ProctoringSubmitGuardInput = {
   participationId: string;
   submitAttemptId?: string;
@@ -19,6 +24,7 @@ type ProctoringSubmitGuardDependencies = {
   sleep?: (ms: number) => Promise<void>;
   intervalMs?: number;
   maxAttempts?: number;
+  summaryService?: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
 };
 
 const inFlightStatuses = new Set(['received', 'persisting']);
@@ -31,15 +37,17 @@ export class ProctoringSubmitGuardService {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly intervalMs: number;
   private readonly maxAttempts: number;
+  private readonly summaryService: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
 
   constructor(private readonly deps: ProctoringSubmitGuardDependencies) {
     this.sleep = deps.sleep ?? defaultSleep;
     this.intervalMs = deps.intervalMs ?? 500;
     this.maxAttempts = deps.maxAttempts ?? 10;
+    this.summaryService = deps.summaryService ?? createProctoringSummaryService();
   }
 
   async awaitFinalFlushReceipt(
-    input: ProctoringSubmitGuardInput,
+    input: ProctoringSubmitGuardInput
   ): Promise<ProctoringSubmitGuardResult> {
     if (!input.submitAttemptId && !input.finalFlushReceiptId) {
       return { status: 'skipped' };
@@ -54,6 +62,12 @@ export class ProctoringSubmitGuardService {
       }
 
       if (lastReceipt && !inFlightStatuses.has(lastReceipt.status)) {
+        if (lastReceipt.status === 'failed' || lastReceipt.status === 'timeout') {
+          await this.summaryService.recomputeForParticipation({
+            participationId: input.participationId,
+            finalFlushStatus: lastReceipt.status,
+          });
+        }
         return {
           status: lastReceipt.status === 'failed' ? 'failed' : 'timeout',
           receiptId: lastReceipt.id,
@@ -72,6 +86,10 @@ export class ProctoringSubmitGuardService {
         toStatus: 'timeout',
         errorCode: 'final_telemetry_flush_timeout',
       });
+      await this.summaryService.recomputeForParticipation({
+        participationId: input.participationId,
+        finalFlushStatus: 'timeout',
+      });
     }
 
     return {
@@ -82,11 +100,10 @@ export class ProctoringSubmitGuardService {
 
   private async findReceipt(input: ProctoringSubmitGuardInput): Promise<any | null> {
     if (input.submitAttemptId) {
-      const byAttempt =
-        await this.deps.finalFlushRepository.findByParticipationAndSubmitAttempt({
-          participationId: input.participationId,
-          submitAttemptId: input.submitAttemptId,
-        });
+      const byAttempt = await this.deps.finalFlushRepository.findByParticipationAndSubmitAttempt({
+        participationId: input.participationId,
+        submitAttemptId: input.submitAttemptId,
+      });
       if (byAttempt) {
         return byAttempt;
       }

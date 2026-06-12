@@ -15,6 +15,26 @@ export class ProctoringAiJobRepository {
     return created;
   }
 
+  async upsertByJobKey(values: ProctoringAiJobInsert): Promise<ProctoringAiJobEntity> {
+    const [row] = await this.database
+      .insert(proctoringAiJobs)
+      .values(values)
+      .onConflictDoUpdate({
+        target: proctoringAiJobs.jobKey,
+        set: {
+          payloadJson: values.payloadJson,
+          payloadSchemaVersion: values.payloadSchemaVersion,
+          priority: values.priority ?? 0,
+          windowStart: values.windowStart,
+          windowEnd: values.windowEnd,
+          nextRunAt: values.nextRunAt ?? new Date(),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
   async findById(id: string): Promise<ProctoringAiJobEntity | null> {
     const [row] = await this.database
       .select()
@@ -67,7 +87,7 @@ export class ProctoringAiJobRepository {
 
   async updateStatus(
     id: string,
-    patch: Partial<ProctoringAiJobInsert>,
+    patch: Partial<ProctoringAiJobInsert>
   ): Promise<ProctoringAiJobEntity | null> {
     const [row] = await this.database
       .update(proctoringAiJobs)

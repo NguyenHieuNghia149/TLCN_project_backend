@@ -48,14 +48,19 @@ function createPersister(deps: Record<string, unknown> = {}) {
   const finalFlushRepository = (deps.finalFlushRepository ?? {
     transitionStatus: jest.fn().mockResolvedValue({ id: 'receipt-1' }),
   }) as { transitionStatus: jest.Mock };
-  const summaryRepository = (deps.summaryRepository ?? {
-    upsertForParticipation: jest.fn().mockResolvedValue({ id: 'summary-1' }),
-  }) as { upsertForParticipation: jest.Mock };
+  const summaryService = (deps.summaryService ?? {
+    recomputeForParticipation: jest.fn().mockResolvedValue({ id: 'summary-1' }),
+  }) as { recomputeForParticipation: jest.Mock };
+  const aiJobService = (deps.aiJobService ?? {
+    enqueueTelemetryWindow: jest.fn().mockResolvedValue({ id: 'job-1' }),
+    enqueueFinalSubmitWindow: jest.fn().mockResolvedValue({ id: 'job-final-1' }),
+  }) as { enqueueTelemetryWindow: jest.Mock; enqueueFinalSubmitWindow: jest.Mock };
   const service = new ProctoringTelemetryPersisterService({
     redis,
     eventRepository,
     finalFlushRepository,
-    summaryRepository,
+    summaryService,
+    aiJobService,
     streamShard: 0,
     consumerName: 'api-test',
     batchSize: 10,
@@ -63,7 +68,7 @@ function createPersister(deps: Record<string, unknown> = {}) {
     ...(deps.options ?? {}),
   });
 
-  return { service, redis, eventRepository, finalFlushRepository, summaryRepository };
+  return { service, redis, eventRepository, finalFlushRepository, summaryService, aiJobService };
 }
 
 describe('ProctoringTelemetryPersisterService', () => {
@@ -88,7 +93,7 @@ describe('ProctoringTelemetryPersisterService', () => {
       'proctoring:telemetry:stream:0',
       'proctoring-telemetry-persisters',
       '0',
-      'MKSTREAM',
+      'MKSTREAM'
     );
     expect(redis.xgroup).toHaveBeenCalledTimes(2);
   });
@@ -99,9 +104,10 @@ describe('ProctoringTelemetryPersisterService', () => {
     redis.xreadgroup.mockResolvedValue([
       ['proctoring:telemetry:stream:0', [encodeEntry('1-0', event)]],
     ]);
-    const { service, eventRepository, finalFlushRepository, summaryRepository } = createPersister({
-      redis,
-    });
+    const { service, eventRepository, finalFlushRepository, summaryService, aiJobService } =
+      createPersister({
+        redis,
+      });
 
     const result = await service.processBatchOnce();
 
@@ -117,7 +123,7 @@ describe('ProctoringTelemetryPersisterService', () => {
         receiptId: 'receipt-1',
         fromStatuses: ['received', 'persisting'],
         toStatus: 'persisting',
-      }),
+      })
     );
     expect(eventRepository.bulkInsertDedupe).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -127,28 +133,35 @@ describe('ProctoringTelemetryPersisterService', () => {
         receivedAt: new Date('2026-06-11T10:00:01.000Z'),
       }),
     ]);
-    expect(summaryRepository.upsertForParticipation).toHaveBeenCalledWith(
+    expect(summaryService.recomputeForParticipation).toHaveBeenCalledWith(
       expect.objectContaining({
-        examId: 'exam-1',
         participationId: 'participation-1',
         finalFlushStatus: 'persisted',
-      }),
+      })
     );
+    expect(aiJobService.enqueueTelemetryWindow).toHaveBeenCalledWith({
+      events: [expect.objectContaining({ participationId: 'participation-1' })],
+    });
+    expect(aiJobService.enqueueFinalSubmitWindow).toHaveBeenCalledWith({
+      events: [expect.objectContaining({ participationId: 'participation-1' })],
+      submitAttemptId: 'receipt-1',
+    });
     expect(finalFlushRepository.transitionStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({
         receiptId: 'receipt-1',
         fromStatuses: ['received', 'persisting'],
         toStatus: 'persisted',
         counts: { acceptedCount: 1, dedupedCount: 0, persistedCount: 1 },
-      }),
+      })
     );
     expect(redis.xack).toHaveBeenCalledWith(
       'proctoring:telemetry:stream:0',
       'proctoring-telemetry-persisters',
-      '1-0',
+      '1-0'
     );
     const xackOrder = redis.xack.mock.invocationCallOrder[0] as number;
-    const durableWriteOrder = eventRepository.bulkInsertDedupe.mock.invocationCallOrder[0] as number;
+    const durableWriteOrder = eventRepository.bulkInsertDedupe.mock
+      .invocationCallOrder[0] as number;
     expect(xackOrder).toBeGreaterThan(durableWriteOrder);
   });
 
@@ -188,12 +201,12 @@ describe('ProctoringTelemetryPersisterService', () => {
       'error',
       expect.stringContaining('Invalid'),
       'raw',
-      '{not-json',
+      '{not-json'
     );
     expect(redis.xack).toHaveBeenCalledWith(
       'proctoring:telemetry:stream:0',
       'proctoring-telemetry-persisters',
-      'bad-1',
+      'bad-1'
     );
   });
 
@@ -225,11 +238,7 @@ describe('ProctoringTelemetryPersisterService', () => {
     expect(redisA.xack).not.toHaveBeenCalled();
 
     const redisB = createRedisMock();
-    redisB.xautoclaim.mockResolvedValue([
-      '0-0',
-      [encodeEntry('1-0', event)],
-      [],
-    ]);
+    redisB.xautoclaim.mockResolvedValue(['0-0', [encodeEntry('1-0', event)], []]);
     const second = createPersister({
       redis: redisB,
       eventRepository,
@@ -249,12 +258,12 @@ describe('ProctoringTelemetryPersisterService', () => {
         receiptId: 'receipt-1',
         toStatus: 'persisted',
         counts: { acceptedCount: 1, dedupedCount: 1, persistedCount: 0 },
-      }),
+      })
     );
     expect(redisB.xack).toHaveBeenCalledWith(
       'proctoring:telemetry:stream:0',
       'proctoring-telemetry-persisters',
-      '1-0',
+      '1-0'
     );
   });
 });

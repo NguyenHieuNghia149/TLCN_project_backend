@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte } from 'drizzle-orm';
 
 import { db } from '@backend/shared/db/connection';
 import {
@@ -32,7 +32,7 @@ export class ProctoringEventRepository {
 
   async findByParticipation(
     participationId: string,
-    range?: { from?: Date; to?: Date; limit?: number },
+    range?: { from?: Date; to?: Date; limit?: number }
   ): Promise<ExamProctoringEventEntity[]> {
     const predicates = [eq(examProctoringEvents.participationId, participationId)];
     if (range?.from) {
@@ -50,9 +50,17 @@ export class ProctoringEventRepository {
       .limit(range?.limit ?? 1000);
   }
 
-  async bulkInsertDedupe(
-    values: ExamProctoringEventInsert[],
-  ): Promise<ProctoringBulkInsertResult> {
+  async findByParticipationOrderedByCapturedAt(
+    participationId: string
+  ): Promise<ExamProctoringEventEntity[]> {
+    return this.database
+      .select()
+      .from(examProctoringEvents)
+      .where(eq(examProctoringEvents.participationId, participationId))
+      .orderBy(asc(examProctoringEvents.capturedAt), asc(examProctoringEvents.clientSeq));
+  }
+
+  async bulkInsertDedupe(values: ExamProctoringEventInsert[]): Promise<ProctoringBulkInsertResult> {
     if (values.length === 0) {
       return { inserted: [], insertedCount: 0, dedupedCount: 0 };
     }

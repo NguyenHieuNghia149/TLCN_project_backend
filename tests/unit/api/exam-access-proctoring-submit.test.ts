@@ -23,7 +23,9 @@ describe('ExamAccessService proctoring submit guard', () => {
   });
 
   it('polls the final-flush receipt every 500ms until persisted', async () => {
-    const { ProctoringSubmitGuardService } = require('../../../apps/api/src/services/proctoring/proctoring-submit-guard.service');
+    const {
+      ProctoringSubmitGuardService,
+    } = require('../../../apps/api/src/services/proctoring/proctoring-submit-guard.service');
     const finalFlushRepository = {
       findByParticipationAndSubmitAttempt: jest
         .fn()
@@ -62,7 +64,9 @@ describe('ExamAccessService proctoring submit guard', () => {
   });
 
   it('records a timeout after five seconds when the receipt stays in flight', async () => {
-    const { ProctoringSubmitGuardService } = require('../../../apps/api/src/services/proctoring/proctoring-submit-guard.service');
+    const {
+      ProctoringSubmitGuardService,
+    } = require('../../../apps/api/src/services/proctoring/proctoring-submit-guard.service');
     const finalFlushRepository = {
       findByParticipationAndSubmitAttempt: jest.fn().mockResolvedValue({
         id: 'receipt-1',
@@ -70,9 +74,13 @@ describe('ExamAccessService proctoring submit guard', () => {
       }),
       transitionStatus: jest.fn().mockResolvedValue(undefined),
     };
+    const summaryService = {
+      recomputeForParticipation: jest.fn().mockResolvedValue({ id: 'summary-1' }),
+    };
     const sleep = jest.fn().mockResolvedValue(undefined);
     const guard = new ProctoringSubmitGuardService({
       finalFlushRepository,
+      summaryService,
       sleep,
     });
 
@@ -87,8 +95,12 @@ describe('ExamAccessService proctoring submit guard', () => {
       expect.objectContaining({
         receiptId: 'receipt-1',
         toStatus: 'timeout',
-      }),
+      })
     );
+    expect(summaryService.recomputeForParticipation).toHaveBeenCalledWith({
+      participationId: 'participation-1',
+      finalFlushStatus: 'timeout',
+    });
     expect(result).toEqual({
       status: 'timeout',
       receiptId: 'receipt-1',
@@ -140,7 +152,7 @@ describe('ExamAccessService proctoring submit guard', () => {
         examParticipationRepository,
         examAuditLogRepository,
         proctoringSubmitGuardService,
-      }),
+      })
     );
 
     const result = await (service as any).submitActiveParticipation('spring-midterm', 'user-1', {
@@ -153,13 +165,13 @@ describe('ExamAccessService proctoring submit guard', () => {
         participationId: 'participation-1',
         submitAttemptId: 'submit-1',
         finalFlushReceiptId: 'receipt-1',
-      }),
+      })
     );
     expect(examParticipationRepository.updateParticipation).toHaveBeenCalledWith(
       'participation-1',
       expect.objectContaining({
         status: 'SUBMITTED',
-      }),
+      })
     );
     expect(result).toMatchObject({
       participationId: 'participation-1',
@@ -212,7 +224,7 @@ describe('ExamAccessService proctoring submit guard', () => {
         examParticipationRepository,
         examAuditLogRepository,
         proctoringSubmitGuardService,
-      }),
+      })
     );
 
     const result = await (service as any).submitActiveParticipation('spring-midterm', 'user-1', {
@@ -225,7 +237,7 @@ describe('ExamAccessService proctoring submit guard', () => {
       'participation-1',
       expect.objectContaining({
         status: 'SUBMITTED',
-      }),
+      })
     );
     expect(result).toMatchObject({
       participationId: 'participation-1',
@@ -296,7 +308,7 @@ describe('ExamAccessService proctoring submit guard', () => {
         examParticipationRepository,
         examAuditLogRepository,
         proctoringSubmitGuardService,
-      }),
+      })
     );
 
     const first = await (service as any).submitActiveParticipation('spring-midterm', 'user-1', {

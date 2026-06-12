@@ -5,16 +5,17 @@ import { config } from 'dotenv';
 
 import { createSandboxBreaker } from './grpc/circuit-breaker';
 import { createSandboxGrpcClient } from './grpc/client';
+import { createProctoringAiWorkerService } from './services/proctoring-ai-worker.service';
 import { createWorkerService, IWorkerService } from './services/worker.service';
 
 type ShutdownSignal = 'SIGINT' | 'SIGTERM' | 'uncaughtException';
 
-function registerProcessHandlers(workerService: IWorkerService): void {
+function registerProcessHandlers(workerServices: IWorkerService[]): void {
   const shutdown = async (signal: ShutdownSignal) => {
     logger.info('Stopping worker...', { signal });
 
     try {
-      await workerService.stop();
+      await Promise.all(workerServices.map(workerService => workerService.stop()));
       logger.info('Worker stopped');
       process.exit(signal === 'uncaughtException' ? 1 : 0);
     } catch (error) {
@@ -49,9 +50,11 @@ export async function startWorkerProcess(): Promise<void> {
     sandboxClient,
     createBreaker: createSandboxBreaker,
   });
+  const proctoringAiWorkerService = createProctoringAiWorkerService();
 
-  registerProcessHandlers(workerService);
+  registerProcessHandlers([workerService, proctoringAiWorkerService]);
   await workerService.start();
+  await proctoringAiWorkerService.start();
 }
 
 if (require.main === module) {

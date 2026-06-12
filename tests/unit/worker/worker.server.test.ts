@@ -9,6 +9,7 @@ describe('worker server bootstrap factories', () => {
     const config = jest.fn();
     const createSandboxGrpcClient = jest.fn();
     const createWorkerService = jest.fn();
+    const createProctoringAiWorkerService = jest.fn();
     const createSandboxBreaker = jest.fn();
     const processOnSpy = jest.spyOn(process, 'on');
 
@@ -22,7 +23,12 @@ describe('worker server bootstrap factories', () => {
     }));
     jest.doMock('dotenv', () => ({ config }));
     jest.doMock('../../../apps/worker/src/grpc/client', () => ({ createSandboxGrpcClient }));
-    jest.doMock('../../../apps/worker/src/services/worker.service', () => ({ createWorkerService }));
+    jest.doMock('../../../apps/worker/src/services/worker.service', () => ({
+      createWorkerService,
+    }));
+    jest.doMock('../../../apps/worker/src/services/proctoring-ai-worker.service', () => ({
+      createProctoringAiWorkerService,
+    }));
     jest.doMock('../../../apps/worker/src/grpc/circuit-breaker', () => ({
       createSandboxBreaker,
     }));
@@ -34,6 +40,7 @@ describe('worker server bootstrap factories', () => {
     expect(config).not.toHaveBeenCalled();
     expect(createSandboxGrpcClient).not.toHaveBeenCalled();
     expect(createWorkerService).not.toHaveBeenCalled();
+    expect(createProctoringAiWorkerService).not.toHaveBeenCalled();
     expect(createSandboxBreaker).not.toHaveBeenCalled();
     expect(processOnSpy).not.toHaveBeenCalled();
     expect(process.listenerCount('SIGINT')).toBe(initialSigintListeners);
@@ -43,7 +50,8 @@ describe('worker server bootstrap factories', () => {
   });
 
   it('wires config, client, breaker, handlers, and service start in order', async () => {
-    const calls: string[] = [];    const sandboxClient = {
+    const calls: string[] = [];
+    const sandboxClient = {
       close: jest.fn(),
     };
     const createSandboxGrpcClient = jest.fn(() => {
@@ -61,16 +69,29 @@ describe('worker server bootstrap factories', () => {
       calls.push('service');
       return workerService;
     });
+    const proctoringAiWorkerService = {
+      start: jest.fn(async () => {
+        calls.push('proctoring-start');
+      }),
+      stop: jest.fn(async () => undefined),
+    };
+    const createProctoringAiWorkerService = jest.fn(() => {
+      calls.push('proctoring-service');
+      return proctoringAiWorkerService;
+    });
     const createSandboxBreaker = jest.fn();
-    const processOnSpy = jest
-      .spyOn(process, 'on')
-      .mockImplementation((() => process) as any);
+    const processOnSpy = jest.spyOn(process, 'on').mockImplementation((() => process) as any);
 
     jest.doMock('@backend/shared/utils', () => ({
       logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
     }));
     jest.doMock('../../../apps/worker/src/grpc/client', () => ({ createSandboxGrpcClient }));
-    jest.doMock('../../../apps/worker/src/services/worker.service', () => ({ createWorkerService }));
+    jest.doMock('../../../apps/worker/src/services/worker.service', () => ({
+      createWorkerService,
+    }));
+    jest.doMock('../../../apps/worker/src/services/proctoring-ai-worker.service', () => ({
+      createProctoringAiWorkerService,
+    }));
     jest.doMock('../../../apps/worker/src/grpc/circuit-breaker', () => ({
       createSandboxBreaker,
     }));
@@ -82,7 +103,8 @@ describe('worker server bootstrap factories', () => {
 
     await startWorkerProcess();
 
-    expect(calls).toEqual(['client', 'service', 'start']);    expect(createSandboxGrpcClient.mock.invocationCallOrder[0]!).toBeLessThan(
+    expect(calls).toEqual(['client', 'service', 'proctoring-service', 'start', 'proctoring-start']);
+    expect(createSandboxGrpcClient.mock.invocationCallOrder[0]!).toBeLessThan(
       createWorkerService.mock.invocationCallOrder[0]!
     );
     expect(createWorkerService.mock.invocationCallOrder[0]!).toBeLessThan(
@@ -99,6 +121,6 @@ describe('worker server bootstrap factories', () => {
       'unhandledRejection',
     ]);
     expect(workerService.start).toHaveBeenCalledTimes(1);
+    expect(proctoringAiWorkerService.start).toHaveBeenCalledTimes(1);
   });
 });
-
