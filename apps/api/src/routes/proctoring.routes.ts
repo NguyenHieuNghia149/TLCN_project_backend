@@ -7,11 +7,13 @@ import { validate } from '@backend/api/middlewares/validate.middleware';
 import { createProctoringBypassService } from '@backend/api/services/proctoring/proctoring-bypass.service';
 import { createProctoringConsentService } from '@backend/api/services/proctoring/proctoring-consent.service';
 import { createProctoringDataRequestService } from '@backend/api/services/proctoring/proctoring-data-request.service';
+import { createProctoringFinalFlushService } from '@backend/api/services/proctoring/proctoring-final-flush.service';
 import { createProctoringPrecheckService } from '@backend/api/services/proctoring/proctoring-precheck.service';
 import { createProctoringSettingsService } from '@backend/api/services/proctoring/proctoring-settings.service';
 import {
   CreateProctoringConsentSchema,
   CreateProctoringDataRequestSchema,
+  CreateProctoringFinalFlushSchema,
   CreateProctoringPrecheckSchema,
   ProctoringParticipationIdParamsSchema,
   ProctoringSlugParamsSchema,
@@ -26,6 +28,7 @@ export function createProctoringRouter(): Router {
     precheckService: createProctoringPrecheckService(),
     bypassService: createProctoringBypassService(),
     dataRequestService: createProctoringDataRequestService(),
+    finalFlushService: createProctoringFinalFlushService(),
   });
 
   const proctoringLimiter = rateLimitMiddleware({
@@ -71,6 +74,14 @@ export function createProctoringRouter(): Router {
     authenticationToken,
     validate(ProctoringParticipationIdParamsSchema, 'params'),
     controller.withdrawConsent.bind(controller),
+  );
+  router.post(
+    '/participations/:participationId/proctoring/final-flush',
+    proctoringLimiter,
+    authenticationToken,
+    validate(ProctoringParticipationIdParamsSchema, 'params'),
+    validate(CreateProctoringFinalFlushSchema),
+    controller.submitFinalFlush.bind(controller),
   );
   router.post(
     '/participations/:participationId/proctoring/data-requests',

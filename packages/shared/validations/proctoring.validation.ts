@@ -23,6 +23,11 @@ export const ProctoringAdminBypassParamsSchema = z.object({
   participationId: z.string().uuid(uuidMessage),
 });
 
+export const ProctoringAdminReviewParamsSchema = z.object({
+  examId: z.string().min(1, 'Exam ID is required.'),
+  participationId: z.string().min(1, 'Participation ID is required.'),
+});
+
 export const ClientSessionIdSchema = z
   .string()
   .min(1, 'Client session ID is required.')
@@ -95,6 +100,52 @@ export const CreateProctoringDataRequestSchema = z.object({
   reason: z.string().max(1000, 'Reason is too long.').optional(),
 });
 
+export const ProctoringTelemetryFrameSchema = z
+  .object({
+    id: z.string().uuid(uuidMessage).optional(),
+    type: z.string().min(1).max(80).default('telemetry.batch'),
+    clientSessionId: ClientSessionIdSchema,
+    clientSeq: z.number().int().min(0),
+    capturedAt: z.string().datetime('Invalid captured timestamp.'),
+    receivedAt: z.string().datetime('Invalid received timestamp.').optional(),
+    schemaVersion: z.number().int().min(1).default(1),
+    severity: z.string().min(1).max(20).default('info'),
+    payloadJson: z.record(z.string(), z.unknown()).default({}),
+  })
+  .passthrough();
+
+export const CreateProctoringFinalFlushSchema = z.object({
+  clientSessionId: ClientSessionIdSchema,
+  submitAttemptId: z.string().min(1).max(100),
+  finalFlushReceiptId: z.string().uuid(uuidMessage).optional(),
+  expectedEventCount: z.number().int().min(0).optional(),
+  firstClientSeq: z.number().int().min(0).nullable().optional(),
+  lastClientSeq: z.number().int().min(0).nullable().optional(),
+  events: z.array(ProctoringTelemetryFrameSchema).max(500).default([]),
+});
+
+export const AdminProctoringReviewQuerySchema = z.object({
+  eventName: z.string().min(1).max(80).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  offset: z.coerce.number().int().min(0).optional().default(0),
+});
+
+export const RecomputeProctoringReviewSchema = z.object({
+  needsReReview: z.boolean().optional().default(false),
+});
+
+export const ProctoringReviewerDecisionSchema = z.enum([
+  'pending',
+  'no_action',
+  'needs_re_review',
+  'refer_for_policy_review',
+]);
+
+export const ReviewProctoringDecisionSchema = z.object({
+  decision: ProctoringReviewerDecisionSchema,
+  notes: z.string().max(2000).optional(),
+});
+
 export const UpdateProctoringSettingsSchema = z.object({
   enabled: z.boolean().optional(),
   requireCamera: z.boolean().optional(),
@@ -131,5 +182,9 @@ export type CreateProctoringConsentInput = z.infer<typeof CreateProctoringConsen
 export type CreateProctoringPrecheckInput = z.infer<typeof CreateProctoringPrecheckSchema>;
 export type VerifyProctoringBypassInput = z.infer<typeof VerifyProctoringBypassSchema>;
 export type CreateProctoringDataRequestInput = z.infer<typeof CreateProctoringDataRequestSchema>;
+export type CreateProctoringFinalFlushInput = z.infer<typeof CreateProctoringFinalFlushSchema>;
+export type AdminProctoringReviewQueryInput = z.infer<typeof AdminProctoringReviewQuerySchema>;
+export type RecomputeProctoringReviewInput = z.infer<typeof RecomputeProctoringReviewSchema>;
+export type ReviewProctoringDecisionInput = z.infer<typeof ReviewProctoringDecisionSchema>;
 export type UpdateProctoringSettingsInput = z.infer<typeof UpdateProctoringSettingsSchema>;
 export type IssueProctoringBypassCodeInput = z.infer<typeof IssueProctoringBypassCodeSchema>;

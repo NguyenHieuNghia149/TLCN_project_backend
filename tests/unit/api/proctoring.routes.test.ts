@@ -10,6 +10,7 @@ function mockProctoringRouteDependencies() {
   jest.doMock('@backend/api/middlewares/auth.middleware', () => ({
     authenticationToken: passThrough,
     optionalAuth: passThrough,
+    requireRole: jest.fn(() => passThrough),
     requireTeacherOrOwner: passThrough,
   }));
   jest.doMock('@backend/api/middlewares/validate.middleware', () => ({
@@ -44,6 +45,9 @@ async function loadProctoringRouters() {
   const dataRequestService = {
     createDataRequest: jest.fn(),
   };
+  const finalFlushService = {
+    submitFinalFlush: jest.fn(),
+  };
 
   jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
     createProctoringSettingsService: jest.fn(() => settingsService),
@@ -59,6 +63,9 @@ async function loadProctoringRouters() {
   }));
   jest.doMock('@backend/api/services/proctoring/proctoring-data-request.service', () => ({
     createProctoringDataRequestService: jest.fn(() => dataRequestService),
+  }));
+  jest.doMock('@backend/api/services/proctoring/proctoring-final-flush.service', () => ({
+    createProctoringFinalFlushService: jest.fn(() => finalFlushService),
   }));
 
   let createProctoringRouter!: () => Router;
@@ -76,6 +83,7 @@ async function loadProctoringRouters() {
     precheckService,
     bypassService,
     dataRequestService,
+    finalFlushService,
   };
 }
 
@@ -95,6 +103,7 @@ describe('proctoring routes', () => {
       precheckService,
       bypassService,
       dataRequestService,
+      finalFlushService,
     } = await loadProctoringRouters();
 
     settingsService.getSettingsBySlug.mockResolvedValue({ id: 'settings-1', enabled: true });
@@ -108,6 +117,10 @@ describe('proctoring routes', () => {
       code: 'ABC-123',
     });
     dataRequestService.createDataRequest.mockResolvedValue({ id: 'request-1' });
+    finalFlushService.submitFinalFlush.mockResolvedValue({
+      receiptId: 'receipt-1',
+      status: 'received',
+    });
 
     const app = express();
     app.use(express.json());
@@ -175,6 +188,22 @@ describe('proctoring routes', () => {
       '22222222-2222-2222-2222-222222222222',
       undefined,
       expect.objectContaining({ requestType: 'delete' }),
+    );
+
+    expect(
+      await request(app)
+        .post('/api/exams/participations/22222222-2222-2222-2222-222222222222/proctoring/final-flush')
+        .send({
+          clientSessionId: 'client-1',
+          submitAttemptId: 'attempt-1',
+          expectedEventCount: 0,
+          events: [],
+        }),
+    ).toMatchObject({ status: 200 });
+    expect(finalFlushService.submitFinalFlush).toHaveBeenCalledWith(
+      '22222222-2222-2222-2222-222222222222',
+      undefined,
+      expect.objectContaining({ submitAttemptId: 'attempt-1' }),
     );
 
     expect(

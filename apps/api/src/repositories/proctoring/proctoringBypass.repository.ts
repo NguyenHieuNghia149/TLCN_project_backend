@@ -27,6 +27,14 @@ export class ProctoringBypassRepository {
     return row ?? null;
   }
 
+  async findByParticipation(participationId: string): Promise<ExamProctoringBypassCodeEntity[]> {
+    return this.database
+      .select()
+      .from(examProctoringBypassCodes)
+      .where(eq(examProctoringBypassCodes.participationId, participationId))
+      .orderBy(desc(examProctoringBypassCodes.createdAt));
+  }
+
   async findIssuedForVerification(input: {
     examId: string;
     entrySessionId?: string | null;

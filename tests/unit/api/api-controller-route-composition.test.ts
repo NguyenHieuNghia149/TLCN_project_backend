@@ -20,6 +20,7 @@ function mockRouteMiddlewareModules(): void {
   jest.doMock('@backend/api/middlewares/auth.middleware', () => ({
     authenticationToken: passThroughMiddleware,
     optionalAuth: passThroughMiddleware,
+    requireRole: jest.fn(() => passThroughMiddleware),
     requireTeacherOrOwner: passThroughMiddleware,
     requireOwner: passThroughMiddleware,
     requireTeacher: passThroughMiddleware,

@@ -87,4 +87,25 @@ export class ProctoringSummaryRepository {
       .returning();
     return row;
   }
+
+  async updateReviewerDecision(input: {
+    participationId: string;
+    reviewerDecision: string;
+    reviewerId?: string;
+    reviewerNotes?: string | null;
+    reviewedAt: Date;
+  }): Promise<ExamProctoringSummaryEntity | null> {
+    const [row] = await this.database
+      .update(examProctoringSummaries)
+      .set({
+        reviewerDecision: input.reviewerDecision,
+        reviewerId: input.reviewerId,
+        reviewerNotes: input.reviewerNotes ?? null,
+        reviewedAt: input.reviewedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(examProctoringSummaries.participationId, input.participationId))
+      .returning();
+    return row ?? null;
+  }
 }
