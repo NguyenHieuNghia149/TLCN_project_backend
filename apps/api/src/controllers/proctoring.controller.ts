@@ -7,6 +7,7 @@ import { ProctoringDataRequestService } from '@backend/api/services/proctoring/p
 import { ProctoringFinalFlushService } from '@backend/api/services/proctoring/proctoring-final-flush.service';
 import { ProctoringPrecheckService } from '@backend/api/services/proctoring/proctoring-precheck.service';
 import { ProctoringSettingsService } from '@backend/api/services/proctoring/proctoring-settings.service';
+import { ProctoringSocketTokenService } from '@backend/api/services/proctoring/proctoring-socket-token.service';
 
 type ProctoringControllerDependencies = {
   settingsService: ProctoringSettingsService;
@@ -15,6 +16,7 @@ type ProctoringControllerDependencies = {
   bypassService: ProctoringBypassService;
   dataRequestService: ProctoringDataRequestService;
   finalFlushService: ProctoringFinalFlushService;
+  socketTokenService: ProctoringSocketTokenService;
 };
 
 export class ProctoringController {
@@ -85,6 +87,16 @@ export class ProctoringController {
       req.user?.userId,
       req.body,
     );
+    res.status(200).json(result);
+  }
+
+  async createSocketToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    const { participationId } = req.params as { participationId: string };
+    const result = await this.deps.socketTokenService.issueToken({
+      participationId,
+      userId: req.user?.userId,
+      clientSessionId: req.body.clientSessionId,
+    });
     res.status(200).json(result);
   }
 }

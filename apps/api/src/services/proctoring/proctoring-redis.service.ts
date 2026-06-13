@@ -4,6 +4,7 @@ import { logger } from '@backend/shared/utils';
 
 export const PROCTORING_SESSION_KEY_PREFIX = 'proctoring:session:';
 export const PROCTORING_DEADLINE_KEY_PREFIX = 'proctoring:deadline:';
+export const PROCTORING_SOCKET_TOKEN_JTI_KEY_PREFIX = 'proctoring:socket-token:jti:';
 export const PROCTORING_TELEMETRY_STREAM_PREFIX = 'proctoring:telemetry:stream';
 export const PROCTORING_TELEMETRY_DEAD_LETTER_STREAM = 'proctoring:telemetry:dead-letter';
 export const PROCTORING_TELEMETRY_CONSUMER_GROUP = 'proctoring-telemetry-persisters';
@@ -12,7 +13,7 @@ export type ProctoringRedisClient = {
   on(event: 'error', listener: (error: Error) => void): unknown;
   ping(): Promise<string>;
   hset(key: string, values: Record<string, string>): Promise<number>;
-  set(key: string, value: string, mode: 'PX', ttlMs: number): Promise<string | null>;
+  set(key: string, value: string, ...args: Array<string | number>): Promise<string | null>;
   del(key: string): Promise<number>;
   get(key: string): Promise<string | null>;
   xadd(key: string, id: string, ...args: string[]): Promise<string>;
@@ -76,6 +77,10 @@ export function getProctoringSessionKey(participationId: string): string {
 
 export function getProctoringDeadlineKey(participationId: string): string {
   return `${PROCTORING_DEADLINE_KEY_PREFIX}${participationId}`;
+}
+
+export function getProctoringSocketTokenJtiKey(jti: string): string {
+  return `${PROCTORING_SOCKET_TOKEN_JTI_KEY_PREFIX}${jti}`;
 }
 
 export function getProctoringTelemetryStreamKey(shard: number | string = 0): string {
@@ -222,6 +227,13 @@ export class ProctoringRedisService {
   async clearDeadline(participationId: string): Promise<void> {
     const client = await this.getClient();
     await client.del(getProctoringDeadlineKey(participationId));
+  }
+
+  async consumeSocketTokenJti(jti: string, ttlSeconds: number): Promise<boolean> {
+    const client = await this.getClient();
+    const ttlMs = Math.max(1, ttlSeconds) * 1000;
+    const result = await client.set(getProctoringSocketTokenJtiKey(jti), 'consumed', 'NX', 'PX', ttlMs);
+    return result === 'OK';
   }
 
   async appendTelemetryEvent(input: ProctoringTelemetryAppendInput): Promise<{

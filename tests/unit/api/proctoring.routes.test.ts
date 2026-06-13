@@ -48,6 +48,9 @@ async function loadProctoringRouters() {
   const finalFlushService = {
     submitFinalFlush: jest.fn(),
   };
+  const socketTokenService = {
+    issueToken: jest.fn(),
+  };
 
   jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
     createProctoringSettingsService: jest.fn(() => settingsService),
@@ -67,6 +70,9 @@ async function loadProctoringRouters() {
   jest.doMock('@backend/api/services/proctoring/proctoring-final-flush.service', () => ({
     createProctoringFinalFlushService: jest.fn(() => finalFlushService),
   }));
+  jest.doMock('@backend/api/services/proctoring/proctoring-socket-token.service', () => ({
+    createProctoringSocketTokenService: jest.fn(() => socketTokenService),
+  }));
 
   let createProctoringRouter!: () => Router;
   let createAdminProctoringRouter!: () => Router;
@@ -84,6 +90,7 @@ async function loadProctoringRouters() {
     bypassService,
     dataRequestService,
     finalFlushService,
+    socketTokenService,
   };
 }
 
@@ -104,6 +111,7 @@ describe('proctoring routes', () => {
       bypassService,
       dataRequestService,
       finalFlushService,
+      socketTokenService,
     } = await loadProctoringRouters();
 
     settingsService.getSettingsBySlug.mockResolvedValue({ id: 'settings-1', enabled: true });
@@ -120,6 +128,10 @@ describe('proctoring routes', () => {
     finalFlushService.submitFinalFlush.mockResolvedValue({
       receiptId: 'receipt-1',
       status: 'received',
+    });
+    socketTokenService.issueToken.mockResolvedValue({
+      token: 'signed-socket-token',
+      expiresAt: '2026-06-13T00:02:00.000Z',
     });
 
     const app = express();
@@ -205,6 +217,17 @@ describe('proctoring routes', () => {
       undefined,
       expect.objectContaining({ submitAttemptId: 'attempt-1' }),
     );
+
+    expect(
+      await request(app)
+        .post('/api/exams/participations/22222222-2222-2222-2222-222222222222/proctoring/socket-token')
+        .send({ clientSessionId: 'client-1' }),
+    ).toMatchObject({ status: 200 });
+    expect(socketTokenService.issueToken).toHaveBeenCalledWith({
+      participationId: '22222222-2222-2222-2222-222222222222',
+      userId: undefined,
+      clientSessionId: 'client-1',
+    });
 
     expect(
       await request(app)

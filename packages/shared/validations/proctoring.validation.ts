@@ -100,6 +100,10 @@ export const CreateProctoringDataRequestSchema = z.object({
   reason: z.string().max(1000, 'Reason is too long.').optional(),
 });
 
+export const CreateProctoringSocketTokenSchema = z.object({
+  clientSessionId: ClientSessionIdSchema,
+});
+
 export const ProctoringTelemetryFrameSchema = z
   .object({
     id: z.string().uuid(uuidMessage).optional(),
@@ -182,6 +186,7 @@ export type CreateProctoringConsentInput = z.infer<typeof CreateProctoringConsen
 export type CreateProctoringPrecheckInput = z.infer<typeof CreateProctoringPrecheckSchema>;
 export type VerifyProctoringBypassInput = z.infer<typeof VerifyProctoringBypassSchema>;
 export type CreateProctoringDataRequestInput = z.infer<typeof CreateProctoringDataRequestSchema>;
+export type CreateProctoringSocketTokenInput = z.infer<typeof CreateProctoringSocketTokenSchema>;
 export type CreateProctoringFinalFlushInput = z.infer<typeof CreateProctoringFinalFlushSchema>;
 export type AdminProctoringReviewQueryInput = z.infer<typeof AdminProctoringReviewQuerySchema>;
 export type RecomputeProctoringReviewInput = z.infer<typeof RecomputeProctoringReviewSchema>;

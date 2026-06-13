@@ -11,9 +11,16 @@ import {
   createProctoringRateLimitService,
   ProctoringRateLimitService,
 } from './proctoring-rate-limit.service';
+import {
+  createProctoringSocketTokenService,
+  ProctoringSocketTokenService,
+} from './proctoring-socket-token.service';
 
 type ProctoringSocketAdapter = {
   id: string;
+  handshake?: {
+    auth?: Record<string, unknown>;
+  };
   on(event: string, listener: (payload: unknown) => void): ProctoringSocketAdapter;
   emit(event: string, data: unknown): boolean;
   join(room: string): void;
@@ -31,6 +38,7 @@ export type ProctoringWebSocketServiceDependencies = {
   redisService?: Pick<ProctoringRedisService, 'upsertSessionState' | 'appendTelemetryEvent'>;
   validator?: ProctoringEventValidatorService;
   rateLimitService?: ProctoringRateLimitService;
+  socketTokenService?: Pick<ProctoringSocketTokenService, 'verifyTokenForHello'>;
   nowFactory?: () => Date;
 };
 
@@ -84,6 +92,7 @@ export class ProctoringWebSocketService {
   >;
   private readonly validator: ProctoringEventValidatorService;
   private readonly rateLimitService: ProctoringRateLimitService;
+  private readonly socketTokenService: Pick<ProctoringSocketTokenService, 'verifyTokenForHello'>;
   private readonly nowFactory: () => Date;
   private readonly seenSequences = new Map<string, Set<number>>();
   private readonly socketContexts = new Map<string, SessionContext>();
@@ -93,6 +102,7 @@ export class ProctoringWebSocketService {
     this.redisService = deps.redisService ?? createProctoringRedisService();
     this.validator = deps.validator ?? new ProctoringEventValidatorService();
     this.rateLimitService = deps.rateLimitService ?? createProctoringRateLimitService();
+    this.socketTokenService = deps.socketTokenService ?? createProctoringSocketTokenService();
     this.nowFactory = deps.nowFactory ?? (() => new Date());
     this.setupNamespace();
   }
@@ -116,7 +126,18 @@ export class ProctoringWebSocketService {
       socket.on('session.hello', async payload => {
         try {
           const hello = this.validator.validateSessionHello(payload);
-          this.socketContexts.set(socket.id, hello);
+          const token = this.extractSocketToken(socket, payload);
+          const claims = await this.socketTokenService.verifyTokenForHello({
+            token,
+            participationId: hello.participationId,
+            clientSessionId: hello.clientSessionId,
+            userId: hello.userId,
+          });
+          const context = {
+            ...hello,
+            userId: claims.sub,
+          };
+          this.socketContexts.set(socket.id, context);
           this.seenSequences.set(this.dedupeKey(hello.participationId, hello.clientSessionId), new Set());
           socket.join(roomName(hello.participationId));
           await this.redisService.upsertSessionState({
@@ -134,7 +155,7 @@ export class ProctoringWebSocketService {
             serverTime: this.nowFactory().toISOString(),
           });
         } catch (error) {
-          this.handleValidationFailure(socket, error as Error);
+          this.rejectSessionHello(socket, error as Error);
         }
       });
 
@@ -163,6 +184,28 @@ export class ProctoringWebSocketService {
     socket.emit('telemetry.retry_required', {
       reason: error.message,
     });
+  }
+
+  private extractSocketToken(socket: ProctoringSocketAdapter, payload: unknown): string {
+    const authToken = socket.handshake?.auth?.proctoringToken;
+    if (typeof authToken === 'string' && authToken.length > 0) {
+      return authToken;
+    }
+    if (payload && typeof payload === 'object') {
+      const fallback = (payload as Record<string, unknown>).proctoringToken;
+      if (typeof fallback === 'string' && fallback.length > 0) {
+        return fallback;
+      }
+    }
+    throw new ProctoringValidationError('proctoring socket token is required', 'MISSING_PROCTORING_SOCKET_TOKEN');
+  }
+
+  private rejectSessionHello(socket: ProctoringSocketAdapter, error: Error): void {
+    socket.emit('session.rejected', {
+      reason: 'invalid_proctoring_socket_token',
+      message: error.message,
+    });
+    socket.disconnect?.();
   }
 
   private dedupeKey(participationId: string, clientSessionId: string): string {

@@ -12,10 +12,11 @@ function createNamespaceMock() {
   return namespace;
 }
 
-function createSocketMock(id = 'socket-1') {
+function createSocketMock(id = 'socket-1', auth: Record<string, unknown> = { proctoringToken: 'socket-token' }) {
   const handlers: Record<string, (...args: any[]) => void> = {};
   const socket = {
     id,
+    handshake: { auth },
     on: jest.fn((event: string, listener: (...args: any[]) => void) => {
       handlers[event] = listener;
       return socket;
@@ -58,12 +59,21 @@ describe('ProctoringWebSocketService', () => {
       allowBatch: jest.fn().mockReturnValue({ allowed: true }),
       isStaleBufferedEvent: jest.fn().mockReturnValue(false),
     };
+    const socketTokenService = {
+      verifyTokenForHello: jest.fn().mockResolvedValue({
+        sub: 'candidate-1',
+        userId: 'candidate-1',
+        participationId: 'participation-1',
+        clientSessionId: 'client-1',
+      }),
+    };
 
     const service = new ProctoringWebSocketService({
       namespace,
       redisService,
       validator,
       rateLimitService,
+      socketTokenService,
     });
     const socket = createSocketMock();
     namespace.handlers.connection(socket);
@@ -76,6 +86,12 @@ describe('ProctoringWebSocketService', () => {
     });
 
     expect(namespace.on).toHaveBeenCalledWith('connection', expect.any(Function));
+    expect(socketTokenService.verifyTokenForHello).toHaveBeenCalledWith({
+      token: 'socket-token',
+      participationId: 'participation-1',
+      clientSessionId: 'client-1',
+      userId: 'candidate-1',
+    });
     expect(redisService.upsertSessionState).toHaveBeenCalledWith(
       expect.objectContaining({
         participationId: 'participation-1',
@@ -124,12 +140,21 @@ describe('ProctoringWebSocketService', () => {
       allowBatch: jest.fn().mockReturnValue({ allowed: true }),
       isStaleBufferedEvent: jest.fn().mockReturnValue(false),
     };
+    const socketTokenService = {
+      verifyTokenForHello: jest.fn().mockResolvedValue({
+        sub: 'candidate-1',
+        userId: 'candidate-1',
+        participationId: 'participation-1',
+        clientSessionId: 'client-1',
+      }),
+    };
 
     new ProctoringWebSocketService({
       namespace,
       redisService,
       validator,
       rateLimitService,
+      socketTokenService,
     });
 
     const socket = createSocketMock();
@@ -204,12 +229,21 @@ describe('ProctoringWebSocketService', () => {
       allowBatch: jest.fn().mockReturnValue({ allowed: true }),
       isStaleBufferedEvent: jest.fn().mockReturnValue(false),
     };
+    const socketTokenService = {
+      verifyTokenForHello: jest.fn().mockResolvedValue({
+        sub: 'candidate-1',
+        userId: 'candidate-1',
+        participationId: 'participation-1',
+        clientSessionId: 'client-1',
+      }),
+    };
 
     new ProctoringWebSocketService({
       namespace,
       redisService,
       validator,
       rateLimitService,
+      socketTokenService,
     });
 
     const socket = createSocketMock();
@@ -243,5 +277,108 @@ describe('ProctoringWebSocketService', () => {
         reason: 'redis down',
       }),
     );
+  });
+
+  it('rejects session.hello before joining or upserting state when the socket token is missing', async () => {
+    const { ProctoringWebSocketService } = require('../../../apps/api/src/services/proctoring/proctoring-websocket.service');
+    const namespace = createNamespaceMock();
+    const redisService = {
+      upsertSessionState: jest.fn(),
+      appendTelemetryEvent: jest.fn(),
+    };
+    const validator = {
+      validateSessionHello: jest.fn().mockReturnValue({
+        participationId: 'participation-1',
+        clientSessionId: 'client-1',
+        userId: 'candidate-1',
+        lastSeenClientSeq: 0,
+      }),
+      validateTelemetryFrame: jest.fn(),
+    };
+
+    new ProctoringWebSocketService({
+      namespace,
+      redisService,
+      validator,
+      rateLimitService: {
+        allowBatch: jest.fn().mockReturnValue({ allowed: true }),
+        isStaleBufferedEvent: jest.fn().mockReturnValue(false),
+      },
+      socketTokenService: {
+        verifyTokenForHello: jest.fn(),
+      },
+    });
+
+    const socket = createSocketMock('socket-1', {});
+    namespace.handlers.connection(socket);
+    await socket.handlers['session.hello']?.({
+      participationId: 'participation-1',
+      clientSessionId: 'client-1',
+      userId: 'candidate-1',
+      lastSeenClientSeq: 0,
+    });
+
+    expect(socket.emit).toHaveBeenCalledWith(
+      'session.rejected',
+      expect.objectContaining({ reason: 'invalid_proctoring_socket_token' }),
+    );
+    expect(socket.disconnect).toHaveBeenCalled();
+    expect(socket.join).not.toHaveBeenCalled();
+    expect(redisService.upsertSessionState).not.toHaveBeenCalled();
+  });
+
+  it('rejects session.hello before joining or upserting state when token verification fails', async () => {
+    const { ProctoringWebSocketService } = require('../../../apps/api/src/services/proctoring/proctoring-websocket.service');
+    const namespace = createNamespaceMock();
+    const redisService = {
+      upsertSessionState: jest.fn(),
+      appendTelemetryEvent: jest.fn(),
+    };
+    const validator = {
+      validateSessionHello: jest.fn().mockReturnValue({
+        participationId: 'participation-1',
+        clientSessionId: 'client-1',
+        userId: 'candidate-1',
+        lastSeenClientSeq: 0,
+      }),
+      validateTelemetryFrame: jest.fn(),
+    };
+    const socketTokenService = {
+      verifyTokenForHello: jest.fn().mockRejectedValue(new Error('token mismatch')),
+    };
+
+    new ProctoringWebSocketService({
+      namespace,
+      redisService,
+      validator,
+      rateLimitService: {
+        allowBatch: jest.fn().mockReturnValue({ allowed: true }),
+        isStaleBufferedEvent: jest.fn().mockReturnValue(false),
+      },
+      socketTokenService,
+    });
+
+    const socket = createSocketMock();
+    namespace.handlers.connection(socket);
+    await socket.handlers['session.hello']?.({
+      participationId: 'participation-1',
+      clientSessionId: 'client-1',
+      userId: 'candidate-1',
+      lastSeenClientSeq: 0,
+    });
+
+    expect(socketTokenService.verifyTokenForHello).toHaveBeenCalledWith({
+      token: 'socket-token',
+      participationId: 'participation-1',
+      clientSessionId: 'client-1',
+      userId: 'candidate-1',
+    });
+    expect(socket.emit).toHaveBeenCalledWith(
+      'session.rejected',
+      expect.objectContaining({ reason: 'invalid_proctoring_socket_token' }),
+    );
+    expect(socket.disconnect).toHaveBeenCalled();
+    expect(socket.join).not.toHaveBeenCalled();
+    expect(redisService.upsertSessionState).not.toHaveBeenCalled();
   });
 });

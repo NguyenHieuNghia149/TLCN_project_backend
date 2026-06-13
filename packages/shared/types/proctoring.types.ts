@@ -53,3 +53,21 @@ export type ProctoringBypassGrantDto = {
   status: ProctoringBypassStatus;
   expiresAt?: string;
 };
+
+export type ProctoringSocketTokenClaims = {
+  sub: string;
+  userId: string;
+  examId: string;
+  participationId: string;
+  clientSessionId: string;
+  proctoringSessionId?: string;
+  purpose: 'proctoring_socket';
+  jti: string;
+  iat: number;
+  exp: number;
+};
+
+export type ProctoringSocketTokenResponse = {
+  token: string;
+  expiresAt: string;
+};
