@@ -26,7 +26,7 @@ export type ProctoringRiskComputation = {
   };
 };
 
-type RiskEvent = Pick<ExamProctoringEventEntity, 'type' | 'capturedAt' | 'clientSeq'>;
+type RiskEvent = Pick<ExamProctoringEventEntity, 'type' | 'payloadJson' | 'capturedAt' | 'clientSeq'>;
 
 const DEFAULT_EVENT_WEIGHTS: Record<string, number> = {
   heartbeat: 0,
@@ -93,9 +93,22 @@ export class ProctoringRiskService {
 
   private countEvents(events: RiskEvent[]): Record<string, number> {
     return events.reduce<Record<string, number>>((acc, event) => {
-      acc[event.type] = (acc[event.type] ?? 0) + 1;
+      const eventName = this.getRiskEventName(event);
+      acc[eventName] = (acc[eventName] ?? 0) + 1;
       return acc;
     }, {});
+  }
+
+  private getRiskEventName(event: RiskEvent): string {
+    const payload = event.payloadJson;
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      const eventName = (payload as Record<string, unknown>).eventName;
+      if (typeof eventName === 'string' && eventName.trim()) {
+        return eventName;
+      }
+    }
+
+    return event.type;
   }
 
   private computeEventScore(

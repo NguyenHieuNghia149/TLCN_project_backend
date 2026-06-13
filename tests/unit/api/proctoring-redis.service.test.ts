@@ -75,6 +75,33 @@ describe('ProctoringRedisService', () => {
     });
   });
 
+  it('reports Redis buffer health from ping', async () => {
+    const { module, redisInstances } = loadRedisServiceModule();
+    const service = module.createProctoringRedisService();
+
+    await expect(service.healthCheck()).resolves.toBe(true);
+
+    expect(redisInstances[0]!.ping).toHaveBeenCalled();
+  });
+
+  it('reports unhealthy when Redis ping fails', async () => {
+    const { module } = loadRedisServiceModule();
+    const service = new module.ProctoringRedisService({
+      createClient: () => ({
+        hset: jest.fn(),
+        set: jest.fn(),
+        del: jest.fn(),
+        get: jest.fn(),
+        xadd: jest.fn(),
+        ping: jest.fn().mockRejectedValue(new Error('connection refused')),
+        quit: jest.fn(),
+        on: jest.fn().mockReturnThis(),
+      }),
+    });
+
+    await expect(service.healthCheck()).resolves.toBe(false);
+  });
+
   it('upserts live session hashes and server-owned deadline TTL keys', async () => {
     const { module, redisInstances } = loadRedisServiceModule();
     const service = module.createProctoringRedisService();

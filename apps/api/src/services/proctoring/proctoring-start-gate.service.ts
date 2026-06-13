@@ -5,6 +5,7 @@ import { ProctoringPrecheckRepository } from '@backend/api/repositories/proctori
 import { ProctoringSessionRepository } from '@backend/api/repositories/proctoring/proctoringSession.repository';
 import { ProctoringSettingsRepository } from '@backend/api/repositories/proctoring/proctoringSettings.repository';
 
+import { createProctoringRedisService } from './proctoring-redis.service';
 import { buildDefaultProctoringSettings } from './proctoring-settings.service';
 
 export class ProctoringBufferUnavailableError extends AppException {
@@ -199,11 +200,14 @@ export class ProctoringStartGateService {
 }
 
 export function createProctoringStartGateService(): ProctoringStartGateService {
+  const redisService = createProctoringRedisService();
+
   return new ProctoringStartGateService({
     settingsRepository: new ProctoringSettingsRepository(),
     consentRepository: new ProctoringConsentRepository(),
     precheckRepository: new ProctoringPrecheckRepository(),
     bypassRepository: new ProctoringBypassRepository(),
     sessionRepository: new ProctoringSessionRepository(),
+    isBufferHealthy: () => redisService.healthCheck(),
   });
 }

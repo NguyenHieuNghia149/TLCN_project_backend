@@ -56,6 +56,7 @@ describe('proctoring phase 1 migration', () => {
     expect(sql).toContain('unique (participation_id, client_session_id, client_seq)');
     expect(sql).toContain('idx_exam_proctoring_events_participation_captured_at');
     expect(sql).toContain('phase 1 risk and final-submit queries are participation-scoped');
+    expect(sql).toContain("status in ('active', 'healthy', 'grace_open'");
     expect(sql).not.toMatch(/using\s+gin\s*\(\s*payload_json\s*\)/);
   });
 });

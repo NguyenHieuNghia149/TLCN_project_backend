@@ -120,6 +120,19 @@ export class ProctoringRedisService {
     await client.ping();
   }
 
+  async healthCheck(): Promise<boolean> {
+    try {
+      const client = await this.getClient();
+      return (await client.ping()) === 'PONG';
+    } catch (error) {
+      logger.warn(
+        '[ProctoringRedisService] Redis health check failed:',
+        error instanceof Error ? error.message : String(error),
+      );
+      return false;
+    }
+  }
+
   async disconnect(): Promise<void> {
     if (!this.client) {
       return;

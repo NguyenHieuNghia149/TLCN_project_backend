@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS "exam_proctoring_sessions" (
   "active_deadline_at" timestamp,
   "created_at" timestamp DEFAULT now() NOT NULL,
   "updated_at" timestamp DEFAULT now() NOT NULL,
-  CONSTRAINT "ck_exam_proctoring_sessions_status" CHECK ("status" IN ('healthy', 'grace_open', 'escalated', 'suspended', 'completed', 'timed_out', 'archived')),
+  CONSTRAINT "ck_exam_proctoring_sessions_status" CHECK ("status" IN ('active', 'healthy', 'grace_open', 'escalated', 'suspended', 'completed', 'timed_out', 'archived')),
   CONSTRAINT "uq_exam_proctoring_sessions_participation_client" UNIQUE ("participation_id", "client_session_id")
 );
 

@@ -48,6 +48,39 @@ describe('ProctoringRiskService', () => {
     expect(result.riskLevel).toBe('high');
   });
 
+  it('counts frontend-shaped telemetry by payload eventName before transport type', () => {
+    const service = new ProctoringRiskService();
+    const events = [
+      event({
+        id: 'e1',
+        type: 'telemetry.batch',
+        clientSeq: 1,
+        payloadJson: { eventName: 'clipboard_event' },
+      }),
+      event({
+        id: 'e2',
+        type: 'telemetry.batch',
+        clientSeq: 2,
+        payloadJson: { eventName: 'clipboard_event' },
+      }),
+      event({
+        id: 'e3',
+        type: 'telemetry.urgent',
+        clientSeq: 3,
+        payloadJson: { eventName: 'fullscreen_change' },
+      }),
+    ];
+
+    const result = service.compute(events as any);
+
+    expect(result.eventCountsJson).toEqual({
+      clipboard_event: 2,
+      fullscreen_change: 1,
+    });
+    expect(result.eventScore).toBe(32);
+    expect(result.riskLevel).toBe('medium');
+  });
+
   it('orders velocity windows by capturedAt instead of receivedAt', () => {
     const service = new ProctoringRiskService();
     const events = [

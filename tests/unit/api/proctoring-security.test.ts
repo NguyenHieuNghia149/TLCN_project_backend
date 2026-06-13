@@ -600,6 +600,61 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
       });
     });
 
+    it('factory wires Redis health check into the production start gate', async () => {
+      const healthCheck = jest.fn().mockResolvedValue(false);
+
+      jest.doMock('@backend/api/repositories/proctoring/proctoringSettings.repository', () => ({
+        ProctoringSettingsRepository: jest.fn().mockImplementation(() => ({
+          findByExamId: jest.fn().mockResolvedValue({
+            id: 'settings-1',
+            examId: 'exam-1',
+            enabled: true,
+          }),
+        })),
+      }));
+      jest.doMock('@backend/api/repositories/proctoring/proctoringConsent.repository', () => ({
+        ProctoringConsentRepository: jest.fn().mockImplementation(() => ({
+          findById: jest.fn(),
+        })),
+      }));
+      jest.doMock('@backend/api/repositories/proctoring/proctoringPrecheck.repository', () => ({
+        ProctoringPrecheckRepository: jest.fn().mockImplementation(() => ({
+          findById: jest.fn(),
+          findValidPassedById: jest.fn(),
+        })),
+      }));
+      jest.doMock('@backend/api/repositories/proctoring/proctoringBypass.repository', () => ({
+        ProctoringBypassRepository: jest.fn().mockImplementation(() => ({
+          findUsedGrant: jest.fn(),
+        })),
+      }));
+      jest.doMock('@backend/api/repositories/proctoring/proctoringSession.repository', () => ({
+        ProctoringSessionRepository: jest.fn().mockImplementation(() => ({
+          insert: jest.fn(),
+        })),
+      }));
+      jest.doMock('../../../apps/api/src/services/proctoring/proctoring-redis.service', () => ({
+        createProctoringRedisService: jest.fn(() => ({ healthCheck })),
+      }));
+
+      const { createProctoringStartGateService } = require('../../../apps/api/src/services/proctoring/proctoring-start-gate.service');
+      const service = createProctoringStartGateService();
+
+      await expect(
+        service.validateStartRequest({
+          exam: { id: 'exam-1' },
+          entrySession: { id: 'entry-1' },
+          participant: { id: 'participant-1' },
+          userId: 'user-1',
+          proctoring: { clientSessionId: 'c1', consentRecordId: 'consent-1' },
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 503,
+        code: 'PROCTORING_BUFFER_UNAVAILABLE',
+      });
+      expect(healthCheck).toHaveBeenCalledTimes(1);
+    });
+
     it('start gate succeeds when buffer is healthy', async () => {
       const { ProctoringStartGateService } = require('../../../apps/api/src/services/proctoring/proctoring-start-gate.service');
 
