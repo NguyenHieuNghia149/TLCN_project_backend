@@ -153,6 +153,16 @@ export class RoadmapService {
     return { roadmaps, total };
   }
 
+  async listUserRoadmaps(params: {
+    userId: string;
+    limit: number;
+    offset: number;
+  }) {
+    const roadmaps = await this.roadmapRepository.listUserRoadmaps(params);
+    const total = await this.roadmapRepository.countUserRoadmaps(params.userId);
+    return { roadmaps, total };
+  }
+
   async addItemToRoadmap(input: {
     roadmapId: string;
     userId: string;

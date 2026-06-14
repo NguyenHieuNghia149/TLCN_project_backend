@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.repository';
 import {
   roadmapItems,
@@ -104,19 +104,29 @@ export class RoadmapRepository extends BaseRepository<typeof roadmaps, RoadmapEn
     offset: number;
     visibility?: 'public' | 'private';
     createdBy?: string;
-  }): Promise<RoadmapEntity[]> {
+  }): Promise<(RoadmapEntity & { itemCount: number })[]> {
     const conditions = [];
     if (params.visibility) conditions.push(eq(roadmaps.visibility, params.visibility));
     if (params.createdBy) conditions.push(eq(roadmaps.createdBy, params.createdBy));
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    return this.db
-      .select()
+    const rows = await this.db
+      .select({
+        roadmap: roadmaps,
+        itemCount: sql<number>`count(${roadmapItems.id})`,
+      })
       .from(roadmaps)
+      .leftJoin(roadmapItems, eq(roadmapItems.roadmapId, roadmaps.id))
       .where(whereClause)
+      .groupBy(roadmaps.id)
       .orderBy(desc(roadmaps.createdAt))
       .limit(params.limit)
       .offset(params.offset);
+
+    return rows.map(row => ({
+      ...(row.roadmap as RoadmapEntity),
+      itemCount: Number(row.itemCount ?? 0),
+    }));
   }
 
   async countRoadmaps(params: {
@@ -133,6 +143,53 @@ export class RoadmapRepository extends BaseRepository<typeof roadmaps, RoadmapEn
       .from(roadmaps)
       .where(whereClause);
     return result[0]?.total ?? 0;
+  }
+
+  async listUserRoadmaps(params: {
+    userId: string;
+    limit: number;
+    offset: number;
+  }): Promise<(RoadmapEntity & { itemCount: number })[]> {
+    // Only get roadmaps where user has progress (learned at least 1 item)
+    // and show only top 2 most recent
+    const progressRoadmaps = await this.db
+      .selectDistinct({ id: roadmapProgress.roadmapId })
+      .from(roadmapProgress)
+      .where(eq(roadmapProgress.userId, params.userId));
+
+    if (progressRoadmaps.length === 0) {
+      return [];
+    }
+
+    const roadmapIds = progressRoadmaps.map(p => p.id);
+
+    // Select roadmaps with item count, sorted by createdAt desc, limit 2
+    const rows = await this.db
+      .select({
+        roadmap: roadmaps,
+        itemCount: sql<number>`count(${roadmapItems.id})`,
+      })
+      .from(roadmaps)
+      .leftJoin(roadmapItems, eq(roadmapItems.roadmapId, roadmaps.id))
+      .where(inArray(roadmaps.id, roadmapIds))
+      .groupBy(roadmaps.id)
+      .orderBy(desc(roadmaps.createdAt))
+      .limit(2); // Always show max 2 for continue roadmap
+
+    return rows.map(row => ({
+      ...(row.roadmap as RoadmapEntity),
+      itemCount: Number(row.itemCount ?? 0),
+    }));
+  }
+
+  async countUserRoadmaps(userId: string): Promise<number> {
+    // Count roadmaps where user has progress
+    const result = await this.db
+      .selectDistinct({ id: roadmapProgress.roadmapId })
+      .from(roadmapProgress)
+      .where(eq(roadmapProgress.userId, userId));
+
+    return result.length;
   }
 
   async getRoadmapDetail(roadmapId: string): Promise<{
