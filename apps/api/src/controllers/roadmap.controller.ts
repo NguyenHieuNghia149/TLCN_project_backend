@@ -239,7 +239,7 @@ export class RoadmapController {
 
     const limit = Number(req.query.limit ?? 20);
     const offset = Number(req.query.offset ?? 0);
-    const data = await this.roadmapService.listRoadmaps({ limit, offset, createdBy: userId });
+    const data = await this.roadmapService.listUserRoadmaps({ userId, limit, offset });
     res.status(200).json(successResponse(data));
   }
 }
