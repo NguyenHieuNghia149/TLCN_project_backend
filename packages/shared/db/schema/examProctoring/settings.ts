@@ -3,6 +3,7 @@ import {
   boolean,
   integer,
   jsonb,
+  numeric,
   pgTable,
   timestamp,
   uniqueIndex,
@@ -52,6 +53,38 @@ export const examProctoringSettings = pgTable(
     clipboardPolicy: varchar('clipboard_policy', { length: 30 }).default('log_only').notNull(),
     aiAnomalyEnabled: boolean('ai_anomaly_enabled').default(true).notNull(),
     aiShadowMode: boolean('ai_shadow_mode').default(true).notNull(),
+    aiAdvisoryVisible: boolean('ai_advisory_visible').default(false).notNull(),
+    aiMinimumEvaluationStatus: varchar('ai_minimum_evaluation_status', { length: 30 })
+      .default('passed_gate')
+      .notNull(),
+    defaultAnomalyModelVersion: varchar('default_anomaly_model_version', { length: 100 }),
+    aiAnomalyThresholdsJson: jsonb('ai_anomaly_thresholds_json')
+      .$type<Record<string, number>>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+    shapExplanationsEnabled: boolean('shap_explanations_enabled').default(true).notNull(),
+    shapMinimumRiskLevel: varchar('shap_minimum_risk_level', { length: 20 })
+      .default('high')
+      .notNull(),
+    llmSummaryEnabled: boolean('llm_summary_enabled').default(false).notNull(),
+    llmSummaryProvider: varchar('llm_summary_provider', { length: 50 }),
+    llmSummaryModelVersion: varchar('llm_summary_model_version', { length: 100 }),
+    llmSummaryPromptVersion: varchar('llm_summary_prompt_version', { length: 80 })
+      .default('proctoring-summary-v1')
+      .notNull(),
+    llmSummaryJudgeEnabled: boolean('llm_summary_judge_enabled').default(true).notNull(),
+    llmSummaryMinValidationScore: numeric('llm_summary_min_validation_score', {
+      precision: 5,
+      scale: 4,
+    })
+      .default('0.85')
+      .notNull(),
+    llmSummaryRateLimitPerParticipation: integer('llm_summary_rate_limit_per_participation')
+      .default(3)
+      .notNull(),
+    llmSummaryRateLimitWindowHours: integer('llm_summary_rate_limit_window_hours')
+      .default(24)
+      .notNull(),
     aiJobWindowSeconds: integer('ai_job_window_seconds').default(300).notNull(),
     consentNoticeVersion: varchar('consent_notice_version', { length: 50 }).notNull(),
     legalLinksJson: jsonb('legal_links_json')

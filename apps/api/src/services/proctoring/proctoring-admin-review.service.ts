@@ -11,13 +11,26 @@ import { ProctoringDataRequestRepository } from '@backend/api/repositories/proct
 import { ProctoringEventRepository } from '@backend/api/repositories/proctoring/proctoringEvent.repository';
 import { ProctoringFinalFlushRepository } from '@backend/api/repositories/proctoring/proctoringFinalFlush.repository';
 import { ProctoringPrecheckRepository } from '@backend/api/repositories/proctoring/proctoringPrecheck.repository';
+import { ProctoringEvaluationReportRepository } from '@backend/api/repositories/proctoring/proctoringEvaluationReport.repository';
+import { ProctoringReviewLabelRepository } from '@backend/api/repositories/proctoring/proctoringReviewLabel.repository';
+import { ProctoringSettingsRepository } from '@backend/api/repositories/proctoring/proctoringSettings.repository';
 import { ProctoringSummaryRepository } from '@backend/api/repositories/proctoring/proctoringSummary.repository';
+import { ProctoringAnomalyResultRepository } from '@backend/shared/db/repositories/proctoringAnomalyResult.repository';
 import {
   AdminProctoringReviewQueryInput,
+  RecordProctoringReviewLabelInput,
   RecomputeProctoringReviewInput,
   ReviewProctoringDecisionInput,
 } from '@backend/shared/validations/proctoring.validation';
 
+import {
+  createProctoringAiJobService,
+  ProctoringAiJobService,
+} from './proctoring-ai-job.service';
+import {
+  createProctoringModelRegistryService,
+  ProctoringModelRegistryService,
+} from './proctoring-model-registry.service';
 import {
   createProctoringSummaryService,
   ProctoringSummaryService,
@@ -36,7 +49,16 @@ type AdminReviewDependencies = {
   bypassRepository?: Pick<ProctoringBypassRepository, 'findByParticipation'>;
   finalFlushRepository?: Pick<ProctoringFinalFlushRepository, 'findByParticipation'>;
   dataRequestRepository?: Pick<ProctoringDataRequestRepository, 'findByParticipation'>;
+  reviewLabelRepository?: Pick<
+    ProctoringReviewLabelRepository,
+    'upsertReviewerLabel' | 'findByParticipation'
+  >;
+  settingsRepository?: Pick<ProctoringSettingsRepository, 'findByExamId'>;
+  anomalyResultRepository?: Pick<ProctoringAnomalyResultRepository, 'findLatestByParticipation'>;
+  evaluationReportRepository?: Pick<ProctoringEvaluationReportRepository, 'findLatestForModel'>;
   summaryService?: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
+  aiJobService?: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
+  modelRegistryService?: Pick<ProctoringModelRegistryService, 'resolveAnomalyModel'>;
   auditLogRepository?: Pick<ExamAuditLogRepository, 'create'>;
   nowFactory?: () => Date;
 };
@@ -53,35 +75,48 @@ function serializeDate(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+const forbiddenPayloadKeys = new Set([
+  'rawmedia',
+  'media',
+  'imagedata',
+  'videodata',
+  'audiodata',
+  'clipboardtext',
+  'rawclipboardtext',
+  'keystrokes',
+  'keystrokecontent',
+  'keycontent',
+  'sourcecode',
+  'code',
+  'rawprompt',
+  'rawproviderresponse',
+]);
+
+function normalizePayloadKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function safePayloadValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => safePayloadValue(item));
+  }
+  if (value && typeof value === 'object') {
+    return safePayload(value);
+  }
+  return value;
+}
+
 function safePayload(payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return {};
   }
 
-  const forbiddenKeys = new Set([
-    'rawmedia',
-    'media',
-    'imagedata',
-    'videodata',
-    'audiodata',
-    'clipboardtext',
-    'rawclipboardtext',
-    'keystrokes',
-    'keystrokecontent',
-    'keycontent',
-    'sourcecode',
-    'code',
-  ]);
-
   return Object.entries(payload as Record<string, unknown>).reduce<Record<string, unknown>>(
     (acc, [key, value]) => {
-      if (forbiddenKeys.has(key.toLowerCase())) {
+      if (forbiddenPayloadKeys.has(normalizePayloadKey(key))) {
         return acc;
       }
-      acc[key] =
-        value && typeof value === 'object' && !Array.isArray(value)
-          ? safePayload(value)
-          : value;
+      acc[key] = safePayloadValue(value);
       return acc;
     },
     {},
@@ -117,7 +152,22 @@ export class ProctoringAdminReviewService {
   private readonly bypassRepository: Pick<ProctoringBypassRepository, 'findByParticipation'>;
   private readonly finalFlushRepository: Pick<ProctoringFinalFlushRepository, 'findByParticipation'>;
   private readonly dataRequestRepository: Pick<ProctoringDataRequestRepository, 'findByParticipation'>;
+  private readonly reviewLabelRepository: Pick<
+    ProctoringReviewLabelRepository,
+    'upsertReviewerLabel' | 'findByParticipation'
+  >;
+  private readonly settingsRepository: Pick<ProctoringSettingsRepository, 'findByExamId'>;
+  private readonly anomalyResultRepository: Pick<
+    ProctoringAnomalyResultRepository,
+    'findLatestByParticipation'
+  >;
+  private readonly evaluationReportRepository: Pick<
+    ProctoringEvaluationReportRepository,
+    'findLatestForModel'
+  >;
   private readonly summaryService: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
+  private readonly aiJobService: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
+  private readonly modelRegistryService: Pick<ProctoringModelRegistryService, 'resolveAnomalyModel'>;
   private readonly auditLogRepository: Pick<ExamAuditLogRepository, 'create'>;
   private readonly nowFactory: () => Date;
 
@@ -132,7 +182,15 @@ export class ProctoringAdminReviewService {
     this.bypassRepository = deps.bypassRepository ?? new ProctoringBypassRepository();
     this.finalFlushRepository = deps.finalFlushRepository ?? new ProctoringFinalFlushRepository();
     this.dataRequestRepository = deps.dataRequestRepository ?? new ProctoringDataRequestRepository();
+    this.reviewLabelRepository = deps.reviewLabelRepository ?? new ProctoringReviewLabelRepository();
+    this.settingsRepository = deps.settingsRepository ?? new ProctoringSettingsRepository();
+    this.anomalyResultRepository =
+      deps.anomalyResultRepository ?? new ProctoringAnomalyResultRepository();
+    this.evaluationReportRepository =
+      deps.evaluationReportRepository ?? new ProctoringEvaluationReportRepository();
     this.summaryService = deps.summaryService ?? createProctoringSummaryService();
+    this.aiJobService = deps.aiJobService ?? createProctoringAiJobService();
+    this.modelRegistryService = deps.modelRegistryService ?? createProctoringModelRegistryService();
     this.auditLogRepository = deps.auditLogRepository ?? new ExamAuditLogRepository();
     this.nowFactory = deps.nowFactory ?? (() => new Date());
   }
@@ -224,6 +282,8 @@ export class ProctoringAdminReviewService {
       };
     });
 
+    const aiAdvisory = await this.buildAiAdvisory(examId, participationId);
+
     return {
       summary: summary
         ? {
@@ -256,7 +316,99 @@ export class ProctoringAdminReviewService {
         finalFlush,
         dataRequests,
       },
+      aiAdvisory,
     };
+  }
+
+  private async buildAiAdvisory(examId: string, participationId: string) {
+    const settings = await this.settingsRepository.findByExamId(examId);
+    if (settings?.aiShadowMode !== false) {
+      return {
+        visible: false,
+        status: 'hidden_shadow_mode' as const,
+        windows: [],
+      };
+    }
+    if (!settings.aiAdvisoryVisible) {
+      return {
+        visible: false,
+        status: 'hidden_no_gate' as const,
+        windows: [],
+      };
+    }
+
+    const results = await this.anomalyResultRepository.findLatestByParticipation(participationId);
+    if (results.length === 0) {
+      return {
+        visible: false,
+        status: 'unavailable' as const,
+        windows: [],
+      };
+    }
+
+    const modelVersion = String(results[0]!.modelVersion);
+    const report = await this.evaluationReportRepository.findLatestForModel(modelVersion);
+    if (report?.status !== (settings.aiMinimumEvaluationStatus ?? 'passed_gate')) {
+      return {
+        visible: false,
+        status: 'hidden_no_gate' as const,
+        windows: [],
+      };
+    }
+
+    const windows = results.map(result => ({
+      windowId: result.windowId,
+      windowStart: serializeDate(result.windowStart),
+      windowEnd: serializeDate(result.windowEnd),
+      anomalyScore: Number(result.anomalyScore),
+      riskLevel: result.riskLevel,
+      explanationStatus: result.explanationStatus,
+      topContributors: this.safeContributors(result.topContributorsJson),
+    }));
+    const maxResult = [...results].sort(
+      (a, b) => Number(b.anomalyScore) - Number(a.anomalyScore)
+    )[0]!;
+
+    return {
+      visible: true,
+      status: 'visible' as const,
+      modelVersion,
+      featureSchemaVersion: results[0]!.featureSchemaVersion,
+      scoringSchemaVersion: results[0]!.scoringSchemaVersion,
+      latestRiskLevel: maxResult.riskLevel,
+      maxAnomalyScore: Number(maxResult.anomalyScore),
+      windows,
+    };
+  }
+
+  private safeContributors(value: unknown) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.flatMap(item => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return [];
+      }
+      const record = item as Record<string, unknown>;
+      if (
+        typeof record.featureName !== 'string' ||
+        typeof record.numericValue !== 'number' ||
+        typeof record.contribution !== 'number' ||
+        (record.direction !== 'increased_risk' && record.direction !== 'decreased_risk') ||
+        typeof record.displayLabel !== 'string'
+      ) {
+        return [];
+      }
+      return [
+        {
+          featureName: record.featureName,
+          numericValue: record.numericValue,
+          contribution: record.contribution,
+          direction: record.direction,
+          displayLabel: record.displayLabel,
+        },
+      ];
+    });
   }
 
   async recompute(
@@ -266,10 +418,55 @@ export class ProctoringAdminReviewService {
     input: Partial<RecomputeProctoringReviewInput> = {},
   ) {
     await this.assertReviewAccess(examId, participationId, actor);
-    return this.summaryService.recomputeForParticipation({
-      participationId,
-      reviewPolicy: { needsReReview: Boolean(input.needsReReview) },
+    const recomputeDeterministic = input.recomputeDeterministic !== false;
+    const recomputeAi = input.recomputeAi === true;
+    let summary = null;
+    let aiJob = null;
+    let resolvedModelVersion: string | null = null;
+
+    if (recomputeDeterministic) {
+      summary = await this.summaryService.recomputeForParticipation({
+        participationId,
+        reviewPolicy: { needsReReview: Boolean(input.needsReReview) },
+      });
+    }
+
+    if (recomputeAi) {
+      const model = await this.modelRegistryService.resolveAnomalyModel(input.modelVersion ?? null);
+      resolvedModelVersion = model.modelVersion;
+      const events = await this.eventRepository.findByParticipation(participationId, { limit: 1000 });
+      aiJob = await this.aiJobService.enqueueManualRecomputeWindow({
+        events,
+        modelVersion: model.modelVersion,
+        reason: input.reason,
+        now: this.nowFactory(),
+      });
+    }
+
+    await this.auditLogRepository.create({
+      examId,
+      actorType: actor.userId ? 'user' : 'system',
+      actorId: actor.userId,
+      action: 'proctoring_review_recompute',
+      targetType: 'exam_participation',
+      targetId: participationId,
+      metadata: {
+        needsReReview: Boolean(input.needsReReview),
+        recomputeDeterministic,
+        recomputeAi,
+        modelVersion: resolvedModelVersion,
+        reasonPresent: Boolean(input.reason?.trim()),
+        aiJobId: aiJob?.id ?? null,
+      },
     });
+
+    return recomputeDeterministic
+      ? summary
+      : {
+          id: null,
+          participationId,
+          aiJobId: aiJob?.id ?? null,
+        };
   }
 
   async recordReviewDecision(
@@ -307,6 +504,47 @@ export class ProctoringAdminReviewService {
     });
 
     return updated;
+  }
+
+  async recordReviewLabel(
+    examId: string,
+    participationId: string,
+    actor: ProctoringAdminReviewActor,
+    input: RecordProctoringReviewLabelInput,
+  ) {
+    await this.assertReviewAccess(examId, participationId, actor);
+    if (!actor.userId) {
+      throw new AppException('Reviewer identity is required', 401, 'AUTHENTICATION_REQUIRED');
+    }
+
+    const summary = await this.summaryRepository.findByParticipation(participationId);
+    const label = await this.reviewLabelRepository.upsertReviewerLabel({
+      examId,
+      participationId,
+      summaryId: summary?.id ?? null,
+      reviewerId: actor.userId,
+      reviewOutcome: input.reviewOutcome,
+      evidenceConfidence: input.evidenceConfidence,
+      notes: input.notes ?? null,
+      labelSchemaVersion: 'review-label-v1',
+    });
+
+    await this.auditLogRepository.create({
+      examId,
+      actorType: 'user',
+      actorId: actor.userId,
+      action: 'proctoring_review_label',
+      targetType: 'exam_participation',
+      targetId: participationId,
+      metadata: {
+        reviewOutcome: input.reviewOutcome,
+        evidenceConfidence: input.evidenceConfidence,
+        notesPresent: Boolean(input.notes?.trim()),
+        labelSchemaVersion: 'review-label-v1',
+      },
+    });
+
+    return label;
   }
 }
 

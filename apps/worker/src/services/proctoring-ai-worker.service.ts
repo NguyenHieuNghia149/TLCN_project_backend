@@ -5,13 +5,18 @@ import { ProctoringAiJobEntity, proctoringAiJobs } from '@backend/shared/db/sche
 import { logger } from '@backend/shared/utils';
 
 import {
+  ProctoringAiExplanation,
+  ProctoringAiExplanationRequest,
   ProctoringAiHttpClient,
   ProctoringAiPrediction,
   ProctoringAiTelemetryWindow,
+  ProctoringLlmSummaryResponse,
 } from './proctoring-ai-http-client';
+import { ProctoringAiResultWriterService } from './proctoring-ai-result-writer.service';
 
 type ProctoringAiJobRepositoryLike = {
   claimNext(input: { workerId: string; now?: Date }): Promise<ProctoringAiJobEntity | null>;
+  upsertByJobKey(values: Partial<ProctoringAiJobEntity>): Promise<ProctoringAiJobEntity>;
   updateStatus(
     id: string,
     patch: Partial<ProctoringAiJobEntity>
@@ -25,7 +30,15 @@ export type ProctoringAiWorkerProcessResult = {
 
 type ProctoringAiWorkerServiceDependencies = {
   jobRepository?: ProctoringAiJobRepositoryLike;
-  httpClient?: Pick<ProctoringAiHttpClient, 'predict'>;
+  httpClient?: Pick<ProctoringAiHttpClient, 'predict' | 'explain' | 'generateSummary'>;
+  resultWriter?: Pick<
+    ProctoringAiResultWriterService,
+    | 'persistPrediction'
+    | 'persistExplanation'
+    | 'markExplanationFailed'
+    | 'persistSummary'
+    | 'markSummaryFailed'
+  >;
   workerId?: string;
   pollIntervalMs?: number;
   now?: () => Date;
@@ -45,6 +58,10 @@ function errorMessage(error: unknown): string {
 
 function asTelemetryWindow(payload: Record<string, unknown>): ProctoringAiTelemetryWindow {
   return payload as ProctoringAiTelemetryWindow;
+}
+
+function asExplanationRequest(payload: Record<string, unknown>): ProctoringAiExplanationRequest {
+  return payload as ProctoringAiExplanationRequest;
 }
 
 export class WorkerProctoringAiJobRepository implements ProctoringAiJobRepositoryLike {
@@ -79,6 +96,26 @@ export class WorkerProctoringAiJobRepository implements ProctoringAiJobRepositor
     return claimed ?? null;
   }
 
+  async upsertByJobKey(values: Partial<ProctoringAiJobEntity>): Promise<ProctoringAiJobEntity> {
+    const [row] = await this.database
+      .insert(proctoringAiJobs)
+      .values(values)
+      .onConflictDoUpdate({
+        target: proctoringAiJobs.jobKey,
+        set: {
+          payloadJson: values.payloadJson,
+          payloadSchemaVersion: values.payloadSchemaVersion,
+          priority: values.priority ?? 0,
+          windowStart: values.windowStart,
+          windowEnd: values.windowEnd,
+          nextRunAt: values.nextRunAt ?? new Date(),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
   async updateStatus(
     id: string,
     patch: Partial<ProctoringAiJobEntity>
@@ -94,7 +131,15 @@ export class WorkerProctoringAiJobRepository implements ProctoringAiJobRepositor
 
 export class ProctoringAiWorkerService {
   private readonly jobRepository: ProctoringAiJobRepositoryLike;
-  private readonly httpClient: Pick<ProctoringAiHttpClient, 'predict'>;
+  private readonly httpClient: Pick<ProctoringAiHttpClient, 'predict' | 'explain' | 'generateSummary'>;
+  private readonly resultWriter: Pick<
+    ProctoringAiResultWriterService,
+    | 'persistPrediction'
+    | 'persistExplanation'
+    | 'markExplanationFailed'
+    | 'persistSummary'
+    | 'markSummaryFailed'
+  >;
   private readonly workerId: string;
   private readonly pollIntervalMs: number;
   private readonly now: () => Date;
@@ -109,6 +154,7 @@ export class ProctoringAiWorkerService {
   constructor(deps: ProctoringAiWorkerServiceDependencies = {}) {
     this.jobRepository = deps.jobRepository ?? new WorkerProctoringAiJobRepository();
     this.httpClient = deps.httpClient ?? new ProctoringAiHttpClient();
+    this.resultWriter = deps.resultWriter ?? new ProctoringAiResultWriterService();
     this.workerId = deps.workerId ?? `proctoring-ai-${process.pid}-${Date.now()}`;
     this.pollIntervalMs = deps.pollIntervalMs ?? 5000;
     this.now = deps.now ?? (() => new Date());
@@ -150,8 +196,16 @@ export class ProctoringAiWorkerService {
     }
 
     try {
-      const result = await this.httpClient.predict(asTelemetryWindow(job.payloadJson));
-      await this.completeJob(job, result, now);
+      if (job.jobType === 'anomaly_explanation') {
+        const result = await this.httpClient.explain(asExplanationRequest(job.payloadJson));
+        await this.completeExplanationJob(job, result, now);
+      } else if (job.jobType === 'llm_summary_generation') {
+        const result = await this.httpClient.generateSummary(job.payloadJson);
+        await this.completeSummaryJob(job, result, now);
+      } else {
+        const result = await this.httpClient.predict(asTelemetryWindow(job.payloadJson));
+        await this.completeJob(job, result, now);
+      }
       this.consecutiveFailures = 0;
       this.circuitOpenUntil = null;
       return { status: 'completed', jobId: job.id };
@@ -173,9 +227,114 @@ export class ProctoringAiWorkerService {
     result: ProctoringAiPrediction,
     now: Date
   ): Promise<void> {
+    await this.resultWriter.persistPrediction({
+      job,
+      prediction: result,
+      completedAt: now,
+    });
+    await this.enqueueExplanationIfNeeded(job, result, now);
     await this.jobRepository.updateStatus(job.id, {
       status: 'completed',
       resultJson: result as unknown as Record<string, unknown>,
+      resultModelVersion: result.modelVersion,
+      completedAt: now,
+      lastError: null,
+      lockedBy: null,
+      lockedAt: null,
+    });
+  }
+
+  private async enqueueExplanationIfNeeded(
+    job: ProctoringAiJobEntity,
+    result: ProctoringAiPrediction,
+    now: Date
+  ): Promise<void> {
+    if (result.riskLevel !== 'high' && result.riskLevel !== 'critical') {
+      return;
+    }
+    if (
+      result.explanationStatus === 'completed' ||
+      result.explanationStatus === 'skipped' ||
+      result.explanationStatus === 'failed'
+    ) {
+      return;
+    }
+
+    const jobKey = [
+      'anomaly-explanation',
+      job.participationId,
+      result.windowId,
+      result.modelVersion,
+    ].join(':');
+
+    await this.jobRepository.upsertByJobKey({
+      jobKey,
+      jobType: 'anomaly_explanation',
+      parentJobId: job.id,
+      examId: job.examId,
+      participationId: job.participationId,
+      sessionId: job.sessionId,
+      windowStart: job.windowStart,
+      windowEnd: job.windowEnd,
+      status: 'pending',
+      priority: 5,
+      payloadJson: {
+        telemetry: job.payloadJson,
+        modelVersion: result.modelVersion,
+        anomalyScore: result.anomalyScore,
+        riskLevel: result.riskLevel,
+      },
+      payloadSchemaVersion: 'phase-2-ai-explanation-v1',
+      modelVersion: result.modelVersion,
+      featureSchemaVersion: job.featureSchemaVersion,
+      scoringSchemaVersion: job.scoringSchemaVersion,
+      attempts: 0,
+      maxAttempts: 3,
+      nextRunAt: now,
+    });
+  }
+
+  private async completeExplanationJob(
+    job: ProctoringAiJobEntity,
+    result: ProctoringAiExplanation,
+    now: Date
+  ): Promise<void> {
+    await this.resultWriter.persistExplanation({
+      job,
+      explanation: result,
+      completedAt: now,
+    });
+    await this.jobRepository.updateStatus(job.id, {
+      status: 'completed',
+      resultJson: result as unknown as Record<string, unknown>,
+      resultModelVersion: result.modelVersion,
+      completedAt: now,
+      lastError: null,
+      lockedBy: null,
+      lockedAt: null,
+    });
+  }
+
+  private async completeSummaryJob(
+    job: ProctoringAiJobEntity,
+    result: ProctoringLlmSummaryResponse,
+    now: Date
+  ): Promise<void> {
+    await this.resultWriter.persistSummary({
+      job,
+      summary: result,
+      completedAt: now,
+    });
+    await this.jobRepository.updateStatus(job.id, {
+      status: 'completed',
+      resultJson: {
+        validationStatus: result.validationStatus,
+        validationScore: result.validationScore,
+        validationErrors: result.validationErrors ?? [],
+        modelVersion: result.modelVersion,
+        promptVersion: result.promptVersion,
+        outputSchemaVersion: result.outputSchemaVersion,
+      },
       resultModelVersion: result.modelVersion,
       completedAt: now,
       lastError: null,
@@ -196,9 +355,23 @@ export class ProctoringAiWorkerService {
     }
 
     if (job.attempts >= job.maxAttempts) {
+      const lastError =
+        job.jobType === 'llm_summary_generation' ? 'summary_generation_dead_letter' : message;
+      if (job.jobType === 'anomaly_explanation') {
+        await this.resultWriter.markExplanationFailed({
+          job,
+          reason: message,
+        });
+      } else if (job.jobType === 'llm_summary_generation') {
+        await this.resultWriter.markSummaryFailed({
+          job,
+          reason: message,
+          status: 'dead_letter',
+        });
+      }
       await this.jobRepository.updateStatus(job.id, {
         status: 'dead_letter',
-        lastError: message,
+        lastError,
         lockedBy: null,
         lockedAt: null,
       });

@@ -136,6 +136,10 @@ export const AdminProctoringReviewQuerySchema = z.object({
 
 export const RecomputeProctoringReviewSchema = z.object({
   needsReReview: z.boolean().optional().default(false),
+  recomputeDeterministic: z.boolean().optional().default(true),
+  recomputeAi: z.boolean().optional().default(false),
+  modelVersion: z.string().min(1).max(100).optional(),
+  reason: z.string().max(500).optional(),
 });
 
 export const ProctoringReviewerDecisionSchema = z.enum([
@@ -147,6 +151,21 @@ export const ProctoringReviewerDecisionSchema = z.enum([
 
 export const ReviewProctoringDecisionSchema = z.object({
   decision: ProctoringReviewerDecisionSchema,
+  notes: z.string().max(2000).optional(),
+});
+
+export const ProctoringReviewOutcomeSchema = z.enum([
+  'no_action_needed',
+  'follow_up_required',
+  'policy_review_required',
+  'inconclusive',
+]);
+
+export const ProctoringEvidenceConfidenceSchema = z.enum(['low', 'medium', 'high']);
+
+export const RecordProctoringReviewLabelSchema = z.object({
+  reviewOutcome: ProctoringReviewOutcomeSchema,
+  evidenceConfidence: ProctoringEvidenceConfidenceSchema,
   notes: z.string().max(2000).optional(),
 });
 
@@ -167,6 +186,23 @@ export const UpdateProctoringSettingsSchema = z.object({
   clipboardPolicy: z.enum(['log_only', 'block', 'ignore']).optional(),
   aiAnomalyEnabled: z.boolean().optional(),
   aiShadowMode: z.boolean().optional(),
+  aiAdvisoryVisible: z.boolean().optional(),
+  aiMinimumEvaluationStatus: z.literal('passed_gate').optional(),
+  defaultAnomalyModelVersion: z.string().min(1).max(100).nullable().optional(),
+  aiAnomalyThresholdsJson: z.record(z.string(), z.number()).optional(),
+  shapExplanationsEnabled: z.boolean().optional(),
+  shapMinimumRiskLevel: z.enum(['high', 'critical']).optional(),
+  llmSummaryEnabled: z.boolean().optional(),
+  llmSummaryProvider: z
+    .enum(['local', 'ollama', 'vllm', 'llama_cpp', 'external', 'disabled'])
+    .nullable()
+    .optional(),
+  llmSummaryModelVersion: z.string().min(1).max(100).nullable().optional(),
+  llmSummaryPromptVersion: z.literal('proctoring-summary-v1').optional(),
+  llmSummaryJudgeEnabled: z.boolean().optional(),
+  llmSummaryMinValidationScore: z.number().min(0).max(1).optional(),
+  llmSummaryRateLimitPerParticipation: z.number().int().min(1).max(20).optional(),
+  llmSummaryRateLimitWindowHours: z.number().int().min(1).max(168).optional(),
   aiJobWindowSeconds: z.number().int().min(60).max(3600).optional(),
   consentNoticeVersion: z.string().min(1).max(50).optional(),
   legalLinksJson: z.record(z.string(), z.string()).optional(),
@@ -191,5 +227,6 @@ export type CreateProctoringFinalFlushInput = z.infer<typeof CreateProctoringFin
 export type AdminProctoringReviewQueryInput = z.infer<typeof AdminProctoringReviewQuerySchema>;
 export type RecomputeProctoringReviewInput = z.infer<typeof RecomputeProctoringReviewSchema>;
 export type ReviewProctoringDecisionInput = z.infer<typeof ReviewProctoringDecisionSchema>;
+export type RecordProctoringReviewLabelInput = z.infer<typeof RecordProctoringReviewLabelSchema>;
 export type UpdateProctoringSettingsInput = z.infer<typeof UpdateProctoringSettingsSchema>;
 export type IssueProctoringBypassCodeInput = z.infer<typeof IssueProctoringBypassCodeSchema>;

@@ -8,6 +8,7 @@
     ".": "./dist/index.js",
     "./db": "./dist/db/index.js",
     "./db/connection": "./dist/db/connection.js",
+    "./db/repositories/*": "./dist/db/repositories/*.js",
     "./db/schema": "./dist/db/schema/index.js",
     "./db/utils": "./dist/db/utils.js",
     "./http": "./dist/http/index.js",

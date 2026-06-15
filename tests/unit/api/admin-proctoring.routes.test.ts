@@ -49,6 +49,7 @@ describe('admin proctoring review routes', () => {
       getReview: jest.fn().mockResolvedValue({ summary: { riskLevel: 'low' } }),
       recompute: jest.fn().mockResolvedValue({ id: 'summary-1' }),
       recordReviewDecision: jest.fn().mockResolvedValue({ reviewerDecision: 'no_action' }),
+      recordReviewLabel: jest.fn().mockResolvedValue({ id: 'label-1' }),
     };
 
     jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
@@ -108,6 +109,19 @@ describe('admin proctoring review routes', () => {
       { userId: 'teacher-1', role: 'teacher' },
       expect.objectContaining({ decision: 'no_action' })
     );
+
+    expect(
+      await request(app)
+        .post(`/api/admin/exams/${examId}/participations/${participationId}/proctoring/labels`)
+        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .send({ reviewOutcome: 'policy_review_required', evidenceConfidence: 'high' })
+    ).toMatchObject({ status: 200 });
+    expect(reviewService.recordReviewLabel).toHaveBeenCalledWith(
+      examId,
+      participationId,
+      { userId: 'teacher-1', role: 'teacher' },
+      expect.objectContaining({ reviewOutcome: 'policy_review_required' })
+    );
   });
 
   it('blocks non-admin roles before the review service runs', async () => {
@@ -124,6 +138,7 @@ describe('admin proctoring review routes', () => {
       getReview: jest.fn().mockResolvedValue({ summary: { riskLevel: 'low' } }),
       recompute: jest.fn(),
       recordReviewDecision: jest.fn(),
+      recordReviewLabel: jest.fn(),
     };
     jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
       createProctoringSettingsService: jest.fn(() => ({ updateSettings: jest.fn() })),
@@ -166,6 +181,7 @@ describe('admin proctoring review routes', () => {
       getReview: jest.fn().mockResolvedValue({ summary: { riskLevel: 'low' } }),
       recompute: jest.fn(),
       recordReviewDecision: jest.fn(),
+      recordReviewLabel: jest.fn(),
     };
     jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
       createProctoringSettingsService: jest.fn(() => ({ updateSettings: jest.fn() })),

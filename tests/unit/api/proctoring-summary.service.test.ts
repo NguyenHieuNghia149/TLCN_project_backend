@@ -57,6 +57,12 @@ describe('ProctoringSummaryService', () => {
       eventRepository: eventRepository as any,
       summaryRepository: summaryRepository as any,
       aiJobRepository: aiJobRepository as any,
+      thresholdService: {
+        loadPolicyForExam: jest.fn().mockResolvedValue({
+          deterministic: {},
+          scoringSchemaVersion: 'phase-1-deterministic-risk-v1',
+        }),
+      } as any,
     });
 
     const summary = await service.recomputeForParticipation({
@@ -102,6 +108,12 @@ describe('ProctoringSummaryService', () => {
     const service = new ProctoringSummaryService({
       eventRepository: eventRepository as any,
       summaryRepository: summaryRepository as any,
+      thresholdService: {
+        loadPolicyForExam: jest.fn().mockResolvedValue({
+          deterministic: {},
+          scoringSchemaVersion: 'phase-1-deterministic-risk-v1',
+        }),
+      } as any,
     });
 
     await service.recomputeForParticipation({
@@ -112,6 +124,43 @@ describe('ProctoringSummaryService', () => {
     expect(summaryRepository.upsertComputedForParticipation).toHaveBeenCalledWith(
       expect.objectContaining({ reviewerDecision: 'needs_re_review' }),
       { preserveReviewerDecision: false }
+    );
+  });
+
+  it('uses per-exam threshold policy during recompute', async () => {
+    const eventRepository = {
+      findByParticipationOrderedByCapturedAt: jest.fn().mockResolvedValue([
+        event({ type: 'focus_change' }),
+      ]),
+    };
+    const summaryRepository = {
+      upsertComputedForParticipation: jest.fn().mockImplementation(async values => values),
+    };
+    const thresholdService = {
+      loadPolicyForExam: jest.fn().mockResolvedValue({
+        deterministic: {
+          eventWeights: { focus_change: 50 },
+          eventCaps: { focus_change: 100 },
+          riskThresholds: { medium: 10, high: 40, critical: 80 },
+        },
+        scoringSchemaVersion: 'phase-2-threshold-policy-v1',
+      }),
+    };
+    const service = new ProctoringSummaryService({
+      eventRepository: eventRepository as any,
+      summaryRepository: summaryRepository as any,
+      thresholdService: thresholdService as any,
+    });
+
+    const result = await service.recomputeForParticipation({ participationId: 'participation-1' });
+
+    expect(thresholdService.loadPolicyForExam).toHaveBeenCalledWith('exam-1');
+    expect(result.riskLevel).toBe('high');
+    expect(summaryRepository.upsertComputedForParticipation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deterministicSchemaVersion: 'phase-2-threshold-policy-v1',
+      }),
+      expect.any(Object)
     );
   });
 });

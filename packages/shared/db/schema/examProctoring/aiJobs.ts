@@ -18,6 +18,8 @@ export const proctoringAiJobs = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     jobKey: varchar('job_key', { length: 200 }).notNull(),
+    jobType: varchar('job_type', { length: 50 }).default('anomaly_prediction').notNull(),
+    parentJobId: uuid('parent_job_id'),
     examId: uuid('exam_id')
       .notNull()
       .references(() => exam.id),
@@ -31,6 +33,9 @@ export const proctoringAiJobs = pgTable(
     priority: integer('priority').default(0).notNull(),
     payloadJson: jsonb('payload_json').$type<Record<string, unknown>>().notNull(),
     payloadSchemaVersion: varchar('payload_schema_version', { length: 50 }).notNull(),
+    modelVersion: varchar('model_version', { length: 100 }),
+    featureSchemaVersion: varchar('feature_schema_version', { length: 50 }),
+    scoringSchemaVersion: varchar('scoring_schema_version', { length: 50 }),
     attempts: integer('attempts').default(0).notNull(),
     maxAttempts: integer('max_attempts').default(3).notNull(),
     nextRunAt: timestamp('next_run_at').defaultNow().notNull(),
@@ -47,6 +52,7 @@ export const proctoringAiJobs = pgTable(
     uniqueIndex('uq_proctoring_ai_jobs_job_key').on(table.jobKey),
     index('idx_proctoring_ai_jobs_claim').on(table.status, table.nextRunAt, table.priority),
     index('idx_proctoring_ai_jobs_participation').on(table.participationId),
+    index('idx_proctoring_ai_jobs_type_status').on(table.jobType, table.status),
   ]
 );
 

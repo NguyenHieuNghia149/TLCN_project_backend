@@ -8,6 +8,10 @@ import {
 } from '@backend/shared/db/schema';
 
 import { ProctoringRiskService } from './proctoring-risk.service';
+import {
+  createProctoringThresholdService,
+  ProctoringThresholdService,
+} from './proctoring-threshold.service';
 
 export const DETERMINISTIC_RISK_SCHEMA_VERSION = 'phase-1-deterministic-risk-v1';
 
@@ -25,6 +29,7 @@ type ProctoringSummaryServiceDependencies = {
   summaryRepository?: Pick<ProctoringSummaryRepository, 'upsertComputedForParticipation'>;
   aiJobRepository?: Pick<ProctoringAiJobRepository, 'findByParticipation'>;
   riskService?: ProctoringRiskService;
+  thresholdService?: Pick<ProctoringThresholdService, 'loadPolicyForExam'>;
 };
 
 function maxDate(
@@ -50,11 +55,13 @@ export class ProctoringSummaryService {
     'upsertComputedForParticipation'
   >;
   private readonly riskService: ProctoringRiskService;
+  private readonly thresholdService: Pick<ProctoringThresholdService, 'loadPolicyForExam'>;
 
   constructor(deps: ProctoringSummaryServiceDependencies = {}) {
     this.eventRepository = deps.eventRepository ?? new ProctoringEventRepository();
     this.summaryRepository = deps.summaryRepository ?? new ProctoringSummaryRepository();
     this.riskService = deps.riskService ?? new ProctoringRiskService();
+    this.thresholdService = deps.thresholdService ?? createProctoringThresholdService();
     void deps.aiJobRepository;
   }
 
@@ -71,7 +78,8 @@ export class ProctoringSummaryService {
     }
 
     const first = events[0]!;
-    const risk = this.riskService.compute(events);
+    const thresholdPolicy = await this.thresholdService.loadPolicyForExam(first.examId);
+    const risk = this.riskService.compute(events, thresholdPolicy.deterministic);
     const values: ExamProctoringSummaryInsert = {
       examId: first.examId,
       participationId: first.participationId,
@@ -83,7 +91,8 @@ export class ProctoringSummaryService {
       finalFlushStatus: input.finalFlushStatus ?? null,
       lastEventCapturedAt: maxDate(events, 'capturedAt'),
       lastEventReceivedAt: maxDate(events, 'receivedAt'),
-      deterministicSchemaVersion: DETERMINISTIC_RISK_SCHEMA_VERSION,
+      deterministicSchemaVersion:
+        thresholdPolicy.scoringSchemaVersion ?? DETERMINISTIC_RISK_SCHEMA_VERSION,
       computedAt: input.now ?? new Date(),
       reviewerDecision: input.reviewPolicy?.needsReReview ? 'needs_re_review' : 'pending',
     };

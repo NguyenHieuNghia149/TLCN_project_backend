@@ -34,6 +34,8 @@ type EventLike = Pick<
 export type EnqueueTelemetryWindowInput = {
   events: EventLike[];
   now?: Date;
+  modelVersion?: string | null;
+  reason?: string;
 };
 
 export type EnqueueFinalSubmitWindowInput = EnqueueTelemetryWindowInput & {
@@ -121,6 +123,8 @@ export class ProctoringAiJobService {
       consentRecordId: context.consentRecordId,
       priority: 0,
       now: input.now ?? new Date(),
+      modelVersion: input.modelVersion,
+      reason: input.reason,
     });
   }
 
@@ -146,6 +150,44 @@ export class ProctoringAiJobService {
       priority: 10,
       now: input.now ?? new Date(),
       submitAttemptId: input.submitAttemptId,
+      modelVersion: input.modelVersion,
+      reason: input.reason,
+    });
+  }
+
+  async enqueueManualRecomputeWindow(
+    input: EnqueueTelemetryWindowInput
+  ): Promise<ProctoringAiJobEntity | null> {
+    if (input.events.length === 0) {
+      return null;
+    }
+
+    const context = await this.buildContext(input.events);
+    if (!context) {
+      return null;
+    }
+
+    const now = input.now ?? new Date();
+    const modelVersion = input.modelVersion?.trim() || null;
+    const jobKey = [
+      'proctoring-ai',
+      'recompute',
+      context.first.participationId,
+      modelVersion ?? 'default',
+      now.toISOString(),
+    ].join(':');
+
+    return this.upsertJob({
+      events: input.events,
+      jobKey,
+      windowStart: minDate(input.events),
+      windowEnd: maxDate(input.events),
+      consentRecordId: context.consentRecordId,
+      priority: 20,
+      now,
+      modelVersion,
+      reason: input.reason,
+      jobType: 'anomaly_recompute',
     });
   }
 
@@ -194,6 +236,9 @@ export class ProctoringAiJobService {
     priority: number;
     now: Date;
     submitAttemptId?: string;
+    modelVersion?: string | null;
+    reason?: string;
+    jobType?: ProctoringAiJobInsert['jobType'];
   }): Promise<ProctoringAiJobEntity> {
     const first = input.events[0]!;
     const payloadJson = this.buildPayload({
@@ -202,6 +247,7 @@ export class ProctoringAiJobService {
     });
     const values: ProctoringAiJobInsert = {
       jobKey: input.jobKey,
+      jobType: input.jobType ?? 'anomaly_prediction',
       examId: first.examId,
       participationId: first.participationId,
       sessionId: first.sessionId,
@@ -214,6 +260,7 @@ export class ProctoringAiJobService {
       attempts: 0,
       maxAttempts: 3,
       nextRunAt: input.now,
+      modelVersion: input.modelVersion ?? undefined,
     };
 
     return this.aiJobRepository.upsertByJobKey(values);
@@ -227,6 +274,8 @@ export class ProctoringAiJobService {
     windowEnd: Date;
     consentRecordId: string;
     submitAttemptId?: string;
+    modelVersion?: string | null;
+    reason?: string;
   }): Record<string, unknown> {
     const eventCounts = countBy(input.events.map(event => event.type));
     const severityCounts = countBy(input.events.map(event => event.severity));
@@ -254,6 +303,8 @@ export class ProctoringAiJobService {
       context: {
         eventCounts,
         submitAttemptId: input.submitAttemptId,
+        selectedModelVersion: input.modelVersion ?? undefined,
+        recomputeReason: input.reason,
       },
     };
   }

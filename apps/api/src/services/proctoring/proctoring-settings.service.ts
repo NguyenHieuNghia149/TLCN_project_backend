@@ -1,9 +1,15 @@
 import { AppException } from '@backend/api/exceptions/base.exception';
+import { AdminAuditLogRepository } from '@backend/api/repositories/adminAuditLog.repository';
 import {
   createExamRepository,
   ExamRepository,
 } from '@backend/api/repositories/exam.repository';
 import { ProctoringSettingsRepository } from '@backend/api/repositories/proctoring/proctoringSettings.repository';
+import {
+  createProctoringModelRegistryService,
+  ProctoringModelRegistryService,
+} from './proctoring-model-registry.service';
+
 import {
   ExamProctoringSettingsEntity,
   ExamProctoringSettingsInsert,
@@ -16,6 +22,8 @@ type ProctoringSettingsServiceDependencies = {
     'findByExamId' | 'upsertForExam'
   >;
   examRepository: Pick<ExamRepository, 'findBySlug' | 'findById'>;
+  modelRegistryService?: Pick<ProctoringModelRegistryService, 'assertAiVisibilityGate'>;
+  auditLogRepository?: Pick<AdminAuditLogRepository, 'create'>;
 };
 
 export type EffectiveProctoringSettings = Omit<
@@ -54,6 +62,20 @@ export function buildDefaultProctoringSettings(examId: string): EffectiveProctor
     clipboardPolicy: 'log_only',
     aiAnomalyEnabled: true,
     aiShadowMode: true,
+    aiAdvisoryVisible: false,
+    aiMinimumEvaluationStatus: 'passed_gate',
+    defaultAnomalyModelVersion: null,
+    aiAnomalyThresholdsJson: {},
+    shapExplanationsEnabled: true,
+    shapMinimumRiskLevel: 'high',
+    llmSummaryEnabled: false,
+    llmSummaryProvider: null,
+    llmSummaryModelVersion: null,
+    llmSummaryPromptVersion: 'proctoring-summary-v1',
+    llmSummaryJudgeEnabled: true,
+    llmSummaryMinValidationScore: '0.85',
+    llmSummaryRateLimitPerParticipation: 3,
+    llmSummaryRateLimitWindowHours: 24,
     aiJobWindowSeconds: 300,
     consentNoticeVersion: 'phase-1-default',
     legalLinksJson: {},
@@ -77,8 +99,83 @@ function mergeWithDefaults(
   } as ExamProctoringSettingsInsert;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateThresholds(
+  value: unknown,
+  defaults: { medium: number; high: number; critical: number },
+  range: { min: number; max: number },
+): void {
+  const thresholds = {
+    ...defaults,
+    ...(isRecord(value) ? value : {}),
+  };
+  const values = (['medium', 'high', 'critical'] as const).map(key => thresholds[key]);
+  if (
+    values.some(threshold => typeof threshold !== 'number' || !Number.isFinite(threshold)) ||
+    values.some(threshold => threshold < range.min || threshold > range.max)
+  ) {
+    throw new AppException(
+      'Proctoring thresholds are invalid.',
+      400,
+      'PROCTORING_THRESHOLD_POLICY_INVALID',
+    );
+  }
+  if (!(values[0]! < values[1]! && values[1]! < values[2]!)) {
+    throw new AppException(
+      'Proctoring thresholds must satisfy medium < high < critical.',
+      400,
+      'PROCTORING_THRESHOLD_POLICY_INVALID',
+    );
+  }
+}
+
+function validateThresholdPolicy(settings: ExamProctoringSettingsInsert): void {
+  validateThresholds(
+    settings.riskThresholdsJson,
+    { medium: 25, high: 50, critical: 85 },
+    { min: 0, max: 100 },
+  );
+  validateThresholds(
+    settings.aiAnomalyThresholdsJson,
+    { medium: 0.5, high: 0.7, critical: 0.9 },
+    { min: 0, max: 1 },
+  );
+}
+
+const auditedAiSettingKeys = [
+  'aiAdvisoryVisible',
+  'aiMinimumEvaluationStatus',
+  'defaultAnomalyModelVersion',
+  'aiAnomalyThresholdsJson',
+  'riskThresholdsJson',
+  'riskWeightsJson',
+  'llmSummaryEnabled',
+  'llmSummaryProvider',
+  'llmSummaryModelVersion',
+  'llmSummaryPromptVersion',
+  'llmSummaryJudgeEnabled',
+  'llmSummaryMinValidationScore',
+  'llmSummaryRateLimitPerParticipation',
+  'llmSummaryRateLimitWindowHours',
+] as const;
+
+const auditedAiSettingKeySet = new Set<string>(auditedAiSettingKeys);
+
+function touchesAuditedAiSettings(patch: UpdateProctoringSettingsInput): boolean {
+  return Object.keys(patch).some(key => auditedAiSettingKeySet.has(key));
+}
+
 export class ProctoringSettingsService {
-  constructor(private readonly deps: ProctoringSettingsServiceDependencies) {}
+  private readonly modelRegistryService: Pick<ProctoringModelRegistryService, 'assertAiVisibilityGate'>;
+  private readonly auditLogRepository: Pick<AdminAuditLogRepository, 'create'>;
+
+  constructor(private readonly deps: ProctoringSettingsServiceDependencies) {
+    this.modelRegistryService = deps.modelRegistryService ?? createProctoringModelRegistryService();
+    this.auditLogRepository = deps.auditLogRepository ?? new AdminAuditLogRepository();
+  }
 
   async getSettingsBySlug(slug: string, _userId?: string | null): Promise<EffectiveProctoringSettings> {
     const exam = await this.deps.examRepository.findBySlug(slug);
@@ -105,7 +202,41 @@ export class ProctoringSettingsService {
     }
 
     const existing = await this.deps.settingsRepository.findByExamId(examId);
-    return this.deps.settingsRepository.upsertForExam(mergeWithDefaults(examId, existing, patch));
+    const merged = mergeWithDefaults(examId, existing, patch);
+    validateThresholdPolicy(merged);
+
+    if (merged.aiAdvisoryVisible) {
+      await this.modelRegistryService.assertAiVisibilityGate({
+        modelVersion: merged.defaultAnomalyModelVersion ?? null,
+        minimumEvaluationStatus: 'passed_gate',
+      });
+    }
+
+    if (merged.llmSummaryEnabled) {
+      throw new AppException(
+        'LLM summary visibility is not enabled without explicit privacy approval.',
+        400,
+        'PROCTORING_LLM_PRIVACY_GATE_NOT_APPROVED'
+      );
+    }
+
+    const updated = await this.deps.settingsRepository.upsertForExam(merged);
+    if (touchesAuditedAiSettings(patch)) {
+      await this.auditLogRepository.create({
+        actorType: _actorId ? 'user' : 'system',
+        actorId: _actorId ?? null,
+        action: 'proctoring_settings_ai_update',
+        targetType: 'exam',
+        targetId: examId,
+        metadata: {
+          changedKeys: Object.keys(patch).filter(key => auditedAiSettingKeySet.has(key)),
+          aiAdvisoryVisible: updated.aiAdvisoryVisible,
+          defaultAnomalyModelVersion: updated.defaultAnomalyModelVersion,
+        },
+      });
+    }
+
+    return updated;
   }
 }
 

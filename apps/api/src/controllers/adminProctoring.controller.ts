@@ -101,4 +101,18 @@ export class AdminProctoringController {
     );
     res.status(200).json(result);
   }
+
+  async recordReviewLabel(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    const { examId, participationId } = req.params as {
+      examId: string;
+      participationId: string;
+    };
+    const result = await this.deps.reviewService.recordReviewLabel(
+      examId,
+      participationId,
+      this.getActor(req),
+      req.body,
+    );
+    res.status(200).json(result);
+  }
 }

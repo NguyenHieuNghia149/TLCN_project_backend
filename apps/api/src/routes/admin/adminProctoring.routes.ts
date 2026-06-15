@@ -17,6 +17,7 @@ import {
   ProctoringAdminReviewParamsSchema,
   ProctoringExamIdParamsSchema,
   RecomputeProctoringReviewSchema,
+  RecordProctoringReviewLabelSchema,
   ReviewProctoringDecisionSchema,
   UpdateProctoringSettingsSchema,
 } from '@backend/shared/validations/proctoring.validation';
@@ -49,6 +50,12 @@ export function createAdminProctoringRouter(): Router {
     validate(ProctoringAdminReviewParamsSchema, 'params'),
     validate(ReviewProctoringDecisionSchema),
     controller.recordReviewDecision.bind(controller),
+  );
+  router.post(
+    '/:examId/participations/:participationId/proctoring/labels',
+    validate(ProctoringAdminReviewParamsSchema, 'params'),
+    validate(RecordProctoringReviewLabelSchema),
+    controller.recordReviewLabel.bind(controller),
   );
   router.get(
     '/:examId/participations/:participationId/proctoring',

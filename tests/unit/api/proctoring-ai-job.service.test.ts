@@ -152,4 +152,41 @@ describe('ProctoringAiJobService', () => {
       JSON.stringify(aiJobRepository.upsertByJobKey.mock.calls[0]![0].payloadJson)
     ).not.toContain('payloadJson');
   });
+
+  it('creates manual AI recompute jobs with selected model metadata', async () => {
+    const { service, aiJobRepository } = createService();
+    const events = [
+      event({ id: 'e1', type: 'focus_change', clientSeq: 1 }),
+      event({
+        id: 'e2',
+        type: 'visibility_change',
+        clientSeq: 2,
+        capturedAt: new Date('2026-06-11T10:05:00.000Z'),
+      }),
+    ];
+
+    const result = await service.enqueueManualRecomputeWindow({
+      events: events as any,
+      modelVersion: 'iforest-v1',
+      reason: 'manual audit',
+      now: new Date('2026-06-11T10:06:00.000Z'),
+    });
+
+    expect(result?.jobKey).toBe(
+      'proctoring-ai:recompute:participation-1:iforest-v1:2026-06-11T10:06:00.000Z'
+    );
+    expect(aiJobRepository.upsertByJobKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: 'anomaly_recompute',
+        modelVersion: 'iforest-v1',
+        priority: 20,
+        payloadJson: expect.objectContaining({
+          context: expect.objectContaining({
+            selectedModelVersion: 'iforest-v1',
+            recomputeReason: 'manual audit',
+          }),
+        }),
+      })
+    );
+  });
 });
