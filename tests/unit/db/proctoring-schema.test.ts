@@ -130,9 +130,43 @@ describe('proctoring phase 1 migration', () => {
     expect(sql).toContain("status in ('active', 'healthy', 'grace_open'");
     expect(sql).not.toMatch(/using\s+gin\s*\(\s*payload_json\s*\)/);
   });
+
+  it('skips partition child creation when an existing events table is not partitioned', () => {
+    const migrationsDir = path.resolve(__dirname, '../../../packages/shared/db/migrations');
+    const migrationName = fs
+      .readdirSync(migrationsDir)
+      .find(file => file.endsWith('_add_exam_proctoring_phase1.sql'));
+
+    expect(migrationName).toBeDefined();
+
+    const sql = fs
+      .readFileSync(path.join(migrationsDir, migrationName!), 'utf8')
+      .toLowerCase()
+      .replace(/"/g, '');
+
+    expect(sql).toContain('pg_get_partkeydef');
+    expect(sql).toContain('exam_proctoring_events is not partitioned; skipping partition creation');
+    expect(sql).toMatch(
+      /if\s+pg_get_partkeydef\('exam_proctoring_events'::regclass\)\s+is\s+null[\s\S]+else[\s\S]+execute\s+'create\s+table\s+if\s+not\s+exists\s+exam_proctoring_events_p0\s+partition\s+of/
+    );
+  });
 });
 
 describe('proctoring phase 2 migration', () => {
+  it('registers Phase 2 and Phase 3 proctoring migrations in the Drizzle journal', () => {
+    const journalPath = path.resolve(
+      __dirname,
+      '../../../packages/shared/db/migrations/meta/_journal.json'
+    );
+    const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ tag: string }>;
+    };
+    const tags = journal.entries.map(entry => entry.tag);
+
+    expect(tags).toContain('20260614143000_add_exam_proctoring_phase2');
+    expect(tags).toContain('20260614180000_add_exam_proctoring_phase3');
+  });
+
   it('adds model registry, anomaly results, review labels, evaluation reports, and job metadata', () => {
     const migrationsDir = path.resolve(__dirname, '../../../packages/shared/db/migrations');
     const migrationName = fs
@@ -157,8 +191,11 @@ describe('proctoring phase 2 migration', () => {
     expect(sql).toContain('alter table proctoring_ai_jobs');
     expect(sql).toContain('add column if not exists job_type');
     expect(sql).toContain("job_type = 'anomaly_prediction'");
+    expect(sql).toContain('drop constraint if exists chk_proctoring_ai_jobs_job_type');
     expect(sql).toContain('add column if not exists ai_advisory_visible');
+    expect(sql).toContain('drop constraint if exists chk_exam_proctoring_settings_ai_minimum_evaluation_status');
     expect(sql).toContain('add column if not exists shap_minimum_risk_level');
+    expect(sql).toContain('drop constraint if exists chk_exam_proctoring_settings_shap_minimum_risk_level');
   });
 });
 
@@ -180,6 +217,7 @@ describe('proctoring phase 3 migration', () => {
     expect(sql).toContain("job_type in ('anomaly_prediction', 'anomaly_explanation', 'anomaly_recompute', 'llm_summary_generation')");
     expect(sql).toContain('uq_exam_proctoring_llm_summaries_active_input');
     expect(sql).toContain('add column if not exists llm_summary_enabled');
+    expect(sql).toContain('drop constraint if exists chk_exam_proctoring_settings_llm_summary_min_validation_score');
     expect(sql).toContain('default false not null');
     expect(sql).not.toContain('raw_prompt');
     expect(sql).not.toContain('raw_provider_response');

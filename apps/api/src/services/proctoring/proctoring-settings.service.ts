@@ -40,9 +40,9 @@ export function buildDefaultProctoringSettings(examId: string): EffectiveProctor
     examId,
     enabled: false,
     requireCamera: true,
-    requireScreenShare: true,
+    requireScreenShare: false,
     requireFullscreen: true,
-    requireMonitorDisplaySurface: true,
+    requireMonitorDisplaySurface: false,
     precheckValiditySeconds: 300,
     heartbeatIntervalSeconds: 10,
     missedHeartbeatGraceMultiplier: 3,
@@ -85,18 +85,28 @@ export function buildDefaultProctoringSettings(examId: string): EffectiveProctor
   };
 }
 
+function normalizeScreenShareSettings(
+  settings: ExamProctoringSettingsInsert,
+): void {
+  if (!settings.requireScreenShare) {
+    settings.requireMonitorDisplaySurface = false;
+  }
+}
+
 function mergeWithDefaults(
   examId: string,
   existing?: Partial<ExamProctoringSettingsEntity> | null,
   patch: UpdateProctoringSettingsInput = {},
 ): ExamProctoringSettingsInsert {
   const defaults = buildDefaultProctoringSettings(examId);
-  return {
+  const merged = {
     ...defaults,
     ...(existing ?? {}),
     ...patch,
     examId,
   } as ExamProctoringSettingsInsert;
+  normalizeScreenShareSettings(merged);
+  return merged;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -203,6 +213,7 @@ export class ProctoringSettingsService {
 
     const existing = await this.deps.settingsRepository.findByExamId(examId);
     const merged = mergeWithDefaults(examId, existing, patch);
+
     validateThresholdPolicy(merged);
 
     if (merged.aiAdvisoryVisible) {

@@ -82,6 +82,7 @@ export const CreateProctoringPrecheckSchema = z.object({
   displaySurface: ProctoringDisplaySurfaceSchema.optional(),
   monitorValidated: z.boolean().optional().default(false),
   fullscreenSupported: z.boolean(),
+  fullscreenActive: z.boolean().optional().default(false),
   browserSupported: z.boolean(),
 });
 

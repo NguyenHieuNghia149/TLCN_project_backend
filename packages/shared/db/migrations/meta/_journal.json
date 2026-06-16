@@ -154,6 +154,20 @@
       "when": 1781131200000,
       "tag": "20260611120000_add_exam_proctoring_phase1",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1781447400000,
+      "tag": "20260614143000_add_exam_proctoring_phase2",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1781460000000,
+      "tag": "20260614180000_add_exam_proctoring_phase3",
+      "breakpoints": true
     }
   ]
 }

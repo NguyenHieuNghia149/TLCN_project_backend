@@ -140,14 +140,21 @@ CREATE TABLE IF NOT EXISTS "exam_proctoring_events" (
   CONSTRAINT "uq_exam_proctoring_events_dedupe" UNIQUE ("participation_id", "client_session_id", "client_seq")
 ) PARTITION BY HASH ("participation_id");
 
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p0" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 0);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p1" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 1);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p2" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 2);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p3" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 3);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p4" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 4);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p5" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 5);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p6" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 6);
-CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p7" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 7);
+DO $$
+BEGIN
+  IF pg_get_partkeydef('exam_proctoring_events'::regclass) IS NULL THEN
+    RAISE NOTICE 'exam_proctoring_events is not partitioned; skipping partition creation';
+  ELSE
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p0" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 0)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p1" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 1)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p2" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 2)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p3" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 3)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p4" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 4)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p5" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 5)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p6" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 6)';
+    EXECUTE 'CREATE TABLE IF NOT EXISTS "exam_proctoring_events_p7" PARTITION OF "exam_proctoring_events" FOR VALUES WITH (MODULUS 8, REMAINDER 7)';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "exam_proctoring_final_flush_receipts" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

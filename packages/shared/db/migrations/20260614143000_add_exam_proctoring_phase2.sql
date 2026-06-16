@@ -59,6 +59,9 @@ SET "job_type" = 'anomaly_prediction'
 WHERE "job_type" IS NULL;
 
 ALTER TABLE "proctoring_ai_jobs"
+  DROP CONSTRAINT IF EXISTS "chk_proctoring_ai_jobs_job_type";
+
+ALTER TABLE "proctoring_ai_jobs"
   ADD CONSTRAINT "chk_proctoring_ai_jobs_job_type"
   CHECK ("job_type" IN ('anomaly_prediction', 'anomaly_explanation', 'anomaly_recompute'));
 
@@ -170,8 +173,14 @@ ALTER TABLE "exam_proctoring_settings"
   ADD COLUMN IF NOT EXISTS "shap_minimum_risk_level" varchar(20) DEFAULT 'high' NOT NULL;
 
 ALTER TABLE "exam_proctoring_settings"
+  DROP CONSTRAINT IF EXISTS "chk_exam_proctoring_settings_ai_minimum_evaluation_status";
+
+ALTER TABLE "exam_proctoring_settings"
   ADD CONSTRAINT "chk_exam_proctoring_settings_ai_minimum_evaluation_status"
   CHECK ("ai_minimum_evaluation_status" IN ('passed_gate'));
+
+ALTER TABLE "exam_proctoring_settings"
+  DROP CONSTRAINT IF EXISTS "chk_exam_proctoring_settings_shap_minimum_risk_level";
 
 ALTER TABLE "exam_proctoring_settings"
   ADD CONSTRAINT "chk_exam_proctoring_settings_shap_minimum_risk_level"

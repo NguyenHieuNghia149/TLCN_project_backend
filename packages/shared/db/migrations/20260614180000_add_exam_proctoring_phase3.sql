@@ -67,5 +67,8 @@ ALTER TABLE "exam_proctoring_settings"
   ADD COLUMN IF NOT EXISTS "llm_summary_rate_limit_window_hours" integer DEFAULT 24 NOT NULL;
 
 ALTER TABLE "exam_proctoring_settings"
+  DROP CONSTRAINT IF EXISTS "chk_exam_proctoring_settings_llm_summary_min_validation_score";
+
+ALTER TABLE "exam_proctoring_settings"
   ADD CONSTRAINT "chk_exam_proctoring_settings_llm_summary_min_validation_score"
   CHECK ("llm_summary_min_validation_score" >= 0 AND "llm_summary_min_validation_score" <= 1);

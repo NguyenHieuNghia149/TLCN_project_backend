@@ -56,12 +56,18 @@ export class ProctoringPrecheckService {
     addFailure(failureReasons, input.browserSupported, 'browser_unsupported');
     addFailure(failureReasons, input.getUserMediaSupported, 'get_user_media_unsupported');
     addFailure(failureReasons, input.cameraPermissionGranted, 'camera_permission_denied');
-    addFailure(failureReasons, input.getDisplayMediaSupported, 'get_display_media_unsupported');
+    if (settings.requireScreenShare) {
+      addFailure(failureReasons, input.getDisplayMediaSupported, 'get_display_media_unsupported');
+    }
     addFailure(failureReasons, input.fullscreenSupported, 'fullscreen_unsupported');
+
+    if (settings.requireFullscreen && !input.fullscreenActive) {
+      failureReasons.push('fullscreen_required');
+    }
 
     const monitorValidated =
       input.monitorValidated === true || input.displaySurface === 'monitor';
-    if (settings.requireMonitorDisplaySurface && !monitorValidated) {
+    if (settings.requireScreenShare && settings.requireMonitorDisplaySurface && !monitorValidated) {
       failureReasons.push(
         input.displaySurface === 'surface_unknown'
           ? 'display_surface_unknown'
