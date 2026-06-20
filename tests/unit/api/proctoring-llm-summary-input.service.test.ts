@@ -8,7 +8,12 @@ function createService() {
         type: 'clipboard_event',
         severity: 'warning',
         capturedAt: new Date('2026-06-14T10:01:00.000Z'),
-        payloadJson: { rawClipboardText: 'secret', sourceCode: 'print(1)', eventName: 'paste' },
+        payloadJson: {
+          rawClipboardText: 'secret',
+          sourceCode: 'print(1)',
+          eventName: 'clipboard_event',
+          action: 'paste',
+        },
       },
       {
         id: 'event-1',

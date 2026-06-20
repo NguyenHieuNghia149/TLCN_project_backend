@@ -160,7 +160,7 @@ describe('ProctoringSettingsService', () => {
     );
   });
 
-  it('keeps LLM summary enablement blocked by the privacy gate', async () => {
+  it('keeps LLM summary enablement blocked by the privacy gate when approval fields are missing', async () => {
     const { service, settingsRepository, auditLogRepository } = createService();
 
     await expect(
@@ -169,7 +169,7 @@ describe('ProctoringSettingsService', () => {
         '22222222-2222-4222-8222-222222222222',
         {
           llmSummaryEnabled: true,
-          llmSummaryProvider: 'local',
+          llmPrivacyApprovedBy: 'some-user',
         } as any
       )
     ).rejects.toMatchObject({
@@ -178,5 +178,45 @@ describe('ProctoringSettingsService', () => {
 
     expect(settingsRepository.upsertForExam).not.toHaveBeenCalled();
     expect(auditLogRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('allows LLM summary enablement when privacy approval fields are set', async () => {
+    const { service, settingsRepository } = createService();
+
+    const result = await service.updateSettings(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      {
+        llmSummaryEnabled: true,
+        llmPrivacyApprovedAt: '2026-06-20T00:00:00.000Z',
+        llmPrivacyApprovedBy: 'dpo-user',
+        providerDpaReference: 'dpa-2026-001',
+      } as any
+    );
+
+    expect(result.llmSummaryEnabled).toBe(true);
+    expect(settingsRepository.upsertForExam).toHaveBeenCalled();
+  });
+
+  it('rejects external LLM provider without providerDpaReference', async () => {
+    const { service, settingsRepository } = createService();
+
+    await expect(
+      service.updateSettings(
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+        {
+          llmSummaryEnabled: true,
+          llmPrivacyApprovedAt: '2026-06-20T00:00:00.000Z',
+          llmPrivacyApprovedBy: 'dpo-user',
+          llmSummaryProvider: 'external',
+          providerDpaReference: null,
+        } as any
+      )
+    ).rejects.toMatchObject({
+      code: 'PROCTORING_LLM_PROVIDER_DPA_MISSING',
+    });
+
+    expect(settingsRepository.upsertForExam).not.toHaveBeenCalled();
   });
 });

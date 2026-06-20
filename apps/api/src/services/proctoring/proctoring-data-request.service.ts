@@ -5,12 +5,15 @@ import { ExamParticipationRepository } from '@backend/api/repositories/examParti
 import { ProctoringDataRequestRepository } from '@backend/api/repositories/proctoring/proctoringDataRequest.repository';
 import { db } from '@backend/shared/db/connection';
 import {
+  examProctoringAnomalyResults,
   examProctoringBypassCodes,
   examProctoringConsents,
   examProctoringDataRequests,
   examProctoringEvents,
   examProctoringFinalFlushReceipts,
+  examProctoringLlmSummaries,
   examProctoringPrechecks,
+  examProctoringReviewLabels,
   examProctoringSessions,
   examProctoringSummaries,
   proctoringAiJobs,
@@ -83,6 +86,21 @@ const CLEANUP_TABLES = [
     name: 'exam_proctoring_consents',
     table: examProctoringConsents,
     column: examProctoringConsents.participationId,
+  },
+  {
+    name: 'exam_proctoring_anomaly_results',
+    table: examProctoringAnomalyResults,
+    column: examProctoringAnomalyResults.participationId,
+  },
+  {
+    name: 'exam_proctoring_review_labels',
+    table: examProctoringReviewLabels,
+    column: examProctoringReviewLabels.participationId,
+  },
+  {
+    name: 'exam_proctoring_llm_summaries',
+    table: examProctoringLlmSummaries,
+    column: examProctoringLlmSummaries.participationId,
   },
 ];
 

@@ -38,6 +38,7 @@ type ProctoringAiWorkerServiceDependencies = {
     | 'markExplanationFailed'
     | 'persistSummary'
     | 'markSummaryFailed'
+    | 'resolveStaleExplanations'
   >;
   workerId?: string;
   pollIntervalMs?: number;
@@ -139,6 +140,7 @@ export class ProctoringAiWorkerService {
     | 'markExplanationFailed'
     | 'persistSummary'
     | 'markSummaryFailed'
+    | 'resolveStaleExplanations'
   >;
   private readonly workerId: string;
   private readonly pollIntervalMs: number;
@@ -147,9 +149,12 @@ export class ProctoringAiWorkerService {
   private readonly circuitFailureThreshold: number;
   private readonly circuitOpenMs: number;
   private readonly maxBackoffMs: number;
+  private readonly staleExplanationTimeoutMs: number;
+  private readonly staleExplanationCleanupInterval: number;
   private timer: NodeJS.Timeout | null = null;
   private consecutiveFailures = 0;
   private circuitOpenUntil: Date | null = null;
+  private pollCycle = 0;
 
   constructor(deps: ProctoringAiWorkerServiceDependencies = {}) {
     this.jobRepository = deps.jobRepository ?? new WorkerProctoringAiJobRepository();
@@ -162,6 +167,8 @@ export class ProctoringAiWorkerService {
     this.circuitFailureThreshold = deps.circuitFailureThreshold ?? 5;
     this.circuitOpenMs = deps.circuitOpenMs ?? 30000;
     this.maxBackoffMs = deps.maxBackoffMs ?? 300000;
+    this.staleExplanationTimeoutMs = 3600000; // 1 hour
+    this.staleExplanationCleanupInterval = 12; // every 12 poll cycles
   }
 
   async start(): Promise<void> {
@@ -188,6 +195,21 @@ export class ProctoringAiWorkerService {
     const now = this.now();
     if (this.circuitOpenUntil && this.circuitOpenUntil > now) {
       return { status: 'circuit_open', jobId: undefined };
+    }
+
+    this.pollCycle += 1;
+    if (this.pollCycle % this.staleExplanationCleanupInterval === 0) {
+      try {
+        const count = await this.resultWriter.resolveStaleExplanations(
+          this.staleExplanationTimeoutMs,
+          now
+        );
+        if (count > 0) {
+          logger.info(`[ProctoringAiWorker] Resolved ${count} stale explanation(s) to failed`);
+        }
+      } catch (error) {
+        logger.warn('[ProctoringAiWorker] Stale explanation cleanup failed:', errorMessage(error));
+      }
     }
 
     const job = await this.jobRepository.claimNext({ workerId: this.workerId, now });

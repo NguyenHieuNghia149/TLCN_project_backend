@@ -123,6 +123,7 @@ export class ProctoringSocketTokenService {
       participationId: participation.id,
       clientSessionId: input.clientSessionId,
       proctoringSessionId: session?.id,
+      entrySessionId: session?.entrySessionId ?? null,
       purpose: PURPOSE,
       jti: this.randomIdFactory(),
       iat: unixSeconds(now),

@@ -205,8 +205,7 @@ export class ProctoringAiJobService {
       !this.globalAiEnabled ||
       !this.globalShadowMode ||
       !settings.enabled ||
-      !settings.aiAnomalyEnabled ||
-      !settings.aiShadowMode
+      !settings.aiAnomalyEnabled
     ) {
       return null;
     }

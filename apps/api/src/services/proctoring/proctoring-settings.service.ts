@@ -68,6 +68,9 @@ export function buildDefaultProctoringSettings(examId: string): EffectiveProctor
     aiAnomalyThresholdsJson: {},
     shapExplanationsEnabled: true,
     shapMinimumRiskLevel: 'high',
+    llmPrivacyApprovedAt: null,
+    llmPrivacyApprovedBy: null,
+    providerDpaReference: null,
     llmSummaryEnabled: false,
     llmSummaryProvider: null,
     llmSummaryModelVersion: null,
@@ -162,6 +165,9 @@ const auditedAiSettingKeys = [
   'aiAnomalyThresholdsJson',
   'riskThresholdsJson',
   'riskWeightsJson',
+  'llmPrivacyApprovedAt',
+  'llmPrivacyApprovedBy',
+  'providerDpaReference',
   'llmSummaryEnabled',
   'llmSummaryProvider',
   'llmSummaryModelVersion',
@@ -223,11 +229,18 @@ export class ProctoringSettingsService {
       });
     }
 
-    if (merged.llmSummaryEnabled) {
+    if (merged.llmSummaryEnabled && !merged.llmPrivacyApprovedAt) {
       throw new AppException(
-        'LLM summary visibility is not enabled without explicit privacy approval.',
+        'LLM summary visibility requires privacy approval: llmPrivacyApprovedAt must be set.',
         400,
         'PROCTORING_LLM_PRIVACY_GATE_NOT_APPROVED'
+      );
+    }
+    if (merged.llmSummaryEnabled && merged.llmSummaryProvider && merged.llmSummaryProvider !== 'disabled' && !merged.providerDpaReference) {
+      throw new AppException(
+        'External LLM provider requires providerDpaReference to be set.',
+        400,
+        'PROCTORING_LLM_PROVIDER_DPA_MISSING'
       );
     }
 

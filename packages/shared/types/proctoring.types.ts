@@ -61,6 +61,7 @@ export type ProctoringSocketTokenClaims = {
   participationId: string;
   clientSessionId: string;
   proctoringSessionId?: string;
+  entrySessionId?: string | null;
   purpose: 'proctoring_socket';
   jti: string;
   iat: number;

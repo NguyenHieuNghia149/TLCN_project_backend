@@ -46,6 +46,9 @@ type SessionContext = {
   participationId: string;
   clientSessionId: string;
   userId: string;
+  examId: string;
+  sessionId: string;
+  entrySessionId: string | null;
   lastSeenClientSeq: number;
 };
 
@@ -133,9 +136,18 @@ export class ProctoringWebSocketService {
             clientSessionId: hello.clientSessionId,
             userId: hello.userId,
           });
+          if (!claims.proctoringSessionId) {
+            throw new ProctoringValidationError(
+              'proctoring session is required for websocket telemetry',
+              'MISSING_PROCTORING_SESSION',
+            );
+          }
           const context = {
             ...hello,
             userId: claims.sub,
+            examId: claims.examId,
+            sessionId: claims.proctoringSessionId,
+            entrySessionId: claims.entrySessionId ?? null,
           };
           this.socketContexts.set(socket.id, context);
           this.seenSequences.set(this.dedupeKey(hello.participationId, hello.clientSessionId), new Set());
@@ -239,7 +251,7 @@ export class ProctoringWebSocketService {
       const frames =
         type === 'telemetry.batch'
           ? this.normalizeBatchPayload(payload)
-          : [telemetryEnvelopeFromPayload(type, this.extractSingleFramePayload(payload, type))];
+          : [this.normalizeSingleFramePayload(payload, type)];
 
       const decision = this.rateLimitService.allowBatch({
         participationId: context.participationId,
@@ -263,6 +275,13 @@ export class ProctoringWebSocketService {
       let dedupedCount = 0;
 
       for (const frame of frames) {
+        if (frame.participationId !== context.participationId || frame.clientSessionId !== context.clientSessionId) {
+          throw new ProctoringValidationError(
+            `frame participationId/clientSessionId does not match authenticated socket context`,
+            'FORBIDDEN_TELEMETRY_PAYLOAD',
+          );
+        }
+
         if (this.rateLimitService.isStaleBufferedEvent(frame, this.nowFactory())) {
           socket.emit('telemetry.retry_required', {
             reason: 'stale_buffered_event',
@@ -275,10 +294,18 @@ export class ProctoringWebSocketService {
           continue;
         }
 
+        const enriched = {
+          ...frame,
+          examId: context.examId,
+          sessionId: context.sessionId,
+          candidateUserId: context.userId,
+          entrySessionId: context.entrySessionId,
+        };
+
         const result = await this.redisService.appendTelemetryEvent({
           shard: 0,
           event: {
-            ...frame,
+            ...enriched,
             buffered: true,
           },
         });
@@ -324,13 +351,13 @@ export class ProctoringWebSocketService {
 
   private extractSingleFramePayload(
     payload: unknown,
-    type: 'telemetry.urgent' | 'final_flush.request',
+    type: 'telemetry.urgent',
   ): ProctoringTelemetryFrameInput {
     if (!payload || typeof payload !== 'object') {
       throw new ProctoringValidationError(`${type} payload must be an object`, 'INVALID_PROCTORING_FRAME');
     }
 
-    if (type === 'telemetry.urgent' && (payload as Record<string, unknown>).event) {
+    if ((payload as Record<string, unknown>).event) {
       return this.validator.validateTelemetryFrame((payload as Record<string, unknown>).event);
     }
 
@@ -338,6 +365,20 @@ export class ProctoringWebSocketService {
       ...(payload as Record<string, unknown>),
       type,
     });
+  }
+
+  private normalizeSingleFramePayload(
+    payload: unknown,
+    type: 'telemetry.urgent' | 'final_flush.request',
+  ): ProctoringTelemetryFrameInput {
+    if (type === 'telemetry.urgent') {
+      return this.extractSingleFramePayload(payload, type);
+    }
+
+    this.validator.validateFinalFlushRequest(payload);
+    return this.validator.validateTelemetryFrame(
+      telemetryEnvelopeFromPayload(type, payload as Record<string, unknown>),
+    );
   }
 }
 

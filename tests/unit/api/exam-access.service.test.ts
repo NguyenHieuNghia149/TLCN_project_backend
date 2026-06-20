@@ -1,5 +1,5 @@
 import { ExamAccessService } from '@backend/api/services/exam-access.service';
-import type { AppException } from '@backend/api/exceptions/base.exception';
+import { AppException } from '@backend/api/exceptions/base.exception';
 import {
   AuthorizationException,
   RateLimitExceededException,
@@ -1583,6 +1583,260 @@ describe('ExamAccessService', () => {
       participationId: 'participation-winner',
       expiresAt: '2099-05-01T10:30:00.000Z',
     });
+  });
+
+  it('rejects resume when the linked participation is already EXPIRED', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-01T00:00:00.000Z'));
+    const examEntrySessionRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'entry-session-expired-participation',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        participationId: 'participation-1',
+        status: 'started',
+      }),
+    } as any;
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'EXPIRED',
+        expiresAt: new Date('2026-05-01T10:30:00.000Z'),
+      }),
+      updateParticipation: jest.fn(),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        accessStatus: 'active',
+      }),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipationRepository,
+        examParticipantRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    await expect(
+      service.startEntrySession('entry-session-expired-participation', 'user-1'),
+    ).rejects.toBeInstanceOf(AuthorizationException);
+  });
+
+  it('rejects starting a new eligible session when the participant access status is revoked', async () => {
+    const examEntrySessionRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'entry-session-revoked',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        participationId: null,
+        status: 'eligible',
+        expiresAt: new Date('2099-06-01T10:30:00.000Z'),
+      }),
+      markStarted: jest.fn(),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        accessStatus: 'revoked',
+      }),
+      updateAccessStatus: jest.fn(),
+    } as any;
+    const examParticipationRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue(null),
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      countAttemptsByParticipant: jest.fn().mockResolvedValue(0),
+      createAttempt: jest.fn(),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'published',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2020-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+      }),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipantRepository,
+        examParticipationRepository,
+        examRepository,
+      }),
+    );
+
+    await expect(
+      service.startEntrySession('entry-session-revoked', 'user-1'),
+    ).rejects.toBeInstanceOf(AuthorizationException);
+  });
+
+  it('stops sync for a participation that has already been submitted', async () => {
+    const examEntrySessionRepository = {
+      findById: jest.fn(),
+      markStarted: jest.fn(),
+    } as any;
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-submitted',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'SUBMITTED',
+        expiresAt: new Date('2099-05-01T10:30:00.000Z'),
+      }),
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn(),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipationRepository,
+        examParticipantRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    const result = await service.syncParticipation('user-1', {
+      participationId: 'participation-submitted',
+      answers: {},
+    });
+
+    expect(result).toMatchObject({
+      synced: false,
+      status: 'submitted',
+    });
+  });
+
+  it('rejects sync when the participation has expired', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-01T00:00:00.000Z'));
+    const examEntrySessionRepository = {
+      findById: jest.fn(),
+      markStarted: jest.fn(),
+    } as any;
+    const exam = {
+      id: 'exam-1',
+      title: 'Expired Exam',
+      duration: 90,
+      startDate: new Date('2020-05-01T09:00:00.000Z'),
+      endDate: new Date('2099-05-01T12:00:00.000Z'),
+    } as any;
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-expired',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        expiresAt: new Date('2026-05-01T10:30:00.000Z'),
+        currentAnswers: { challenge: { code: 'print(1)' } },
+      }),
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      updateParticipation: jest.fn().mockResolvedValue({
+        id: 'participation-expired',
+        status: 'EXPIRED',
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn(),
+      updateAccessStatus: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue(exam),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipationRepository,
+        examParticipantRepository,
+        examRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    const result = await service.syncParticipation('user-1', {
+      participationId: 'participation-expired',
+      answers: {},
+    });
+
+    expect(result).toMatchObject({
+      synced: false,
+      status: 'expired',
+    });
+    expect(examParticipationRepository.updateParticipation).toHaveBeenCalled();
+  });
+
+  it('rejects starting a new session when another eligible session was already used by a concurrent tab', async () => {
+    const examEntrySessionRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'entry-session-conflict',
+        examId: 'exam-1',
+        participantId: 'participant-1',
+        participationId: null,
+        status: 'eligible',
+        expiresAt: new Date('2099-06-01T10:30:00.000Z'),
+      }),
+      createAttemptAndMarkStartedIfEligible: jest.fn().mockResolvedValue(null),
+      markStarted: jest.fn(),
+    } as any;
+    const examParticipationRepository = {
+      findLatestByParticipant: jest.fn().mockResolvedValue(null),
+      findInProgressByExamAndUser: jest.fn().mockResolvedValue(null),
+      findById: jest.fn().mockRejectedValue(new Error('not found')),
+      countAttemptsByParticipant: jest.fn().mockResolvedValue(0),
+      createAttempt: jest.fn(),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+        accessStatus: 'eligible',
+      }),
+      updateAccessStatus: jest.fn(),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        status: 'published',
+        duration: 90,
+        maxAttempts: 1,
+        startDate: new Date('2020-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+      }),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examEntrySessionRepository,
+        examParticipationRepository,
+        examParticipantRepository,
+        examRepository,
+      }),
+    );
+
+    await expect(
+      service.startEntrySession('entry-session-conflict', 'user-1'),
+    ).rejects.toBeInstanceOf(AppException);
   });
 
   it('rejects starting a self-registration entry session without the exam password', async () => {

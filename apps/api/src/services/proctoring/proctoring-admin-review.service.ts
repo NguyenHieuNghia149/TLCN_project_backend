@@ -83,6 +83,9 @@ const forbiddenPayloadKeys = new Set([
   'audiodata',
   'clipboardtext',
   'rawclipboardtext',
+  'text',
+  'rawtext',
+  'content',
   'keystrokes',
   'keystrokecontent',
   'keycontent',
@@ -246,7 +249,8 @@ export class ProctoringAdminReviewService {
     const limit = normalizeLimit(query.limit, 50);
     const offset = normalizeOffset(query.offset);
     const eventName = query.eventName?.trim();
-    const [summary, events, consent, precheck, bypass, finalFlush, dataRequests] =
+    const userId = actor.userId;
+    const [summary, events, consent, precheck, bypass, finalFlush, dataRequests, allReviewLabels] =
       await Promise.all([
         this.summaryRepository.findByParticipation(participationId),
         this.eventRepository.findByParticipation(participationId, { limit: 1000 }),
@@ -255,7 +259,11 @@ export class ProctoringAdminReviewService {
         this.bypassRepository.findByParticipation(participationId),
         this.finalFlushRepository.findByParticipation(participationId),
         this.dataRequestRepository.findByParticipation(participationId),
+        this.reviewLabelRepository.findByParticipation(participationId),
       ]);
+    const reviewLabel = userId
+      ? (allReviewLabels ?? []).filter(l => l.reviewerId === userId)
+      : (allReviewLabels ?? []);
 
     if (summary && summary.examId !== examId) {
       throw new AppException('Proctoring summary not found for exam', 404, 'PROCTORING_SUMMARY_NOT_FOUND');
@@ -316,6 +324,16 @@ export class ProctoringAdminReviewService {
         finalFlush,
         dataRequests,
       },
+      reviewLabel: reviewLabel?.length
+        ? {
+            id: reviewLabel[0]!.id,
+            reviewOutcome: reviewLabel[0]!.reviewOutcome,
+            evidenceConfidence: reviewLabel[0]!.evidenceConfidence,
+            notes: reviewLabel[0]!.notes,
+            reviewerId: reviewLabel[0]!.reviewerId,
+            createdAt: serializeDate(reviewLabel[0]!.createdAt),
+          }
+        : null,
       aiAdvisory,
     };
   }

@@ -9,6 +9,8 @@ function createService(overrides: Record<string, unknown> = {}) {
       llmSummaryPromptVersion: 'proctoring-summary-v1',
       llmSummaryJudgeEnabled: true,
       llmSummaryMinValidationScore: '0.85',
+      llmSummaryRateLimitPerParticipation: 3,
+      llmSummaryRateLimitWindowHours: 24,
     }),
   };
   const modelRegistryService = {
@@ -41,6 +43,7 @@ function createService(overrides: Record<string, unknown> = {}) {
       promptVersion: 'proctoring-summary-v1',
     }),
     updateJobId: jest.fn().mockResolvedValue(null),
+    countRecentForParticipation: jest.fn().mockResolvedValue(0),
   };
   const aiJobRepository = {
     insert: jest.fn().mockResolvedValue({ id: 'job-1' }),
@@ -93,6 +96,8 @@ describe('ProctoringLlmSummaryService', () => {
           llmSummaryPromptVersion: 'proctoring-summary-v1',
           llmSummaryJudgeEnabled: true,
           llmSummaryMinValidationScore: '0.85',
+          llmSummaryRateLimitPerParticipation: 3,
+          llmSummaryRateLimitWindowHours: 24,
         }),
       },
     });
@@ -140,6 +145,8 @@ describe('ProctoringLlmSummaryService', () => {
             llmSummaryPromptVersion: 'proctoring-summary-v1',
             llmSummaryJudgeEnabled: true,
             llmSummaryMinValidationScore: '0.85',
+            llmSummaryRateLimitPerParticipation: 3,
+            llmSummaryRateLimitWindowHours: 24,
           }),
         },
         summaryRepository: {
@@ -153,6 +160,7 @@ describe('ProctoringLlmSummaryService', () => {
             conflictResolved: true,
           }),
           updateJobId: jest.fn(),
+          countRecentForParticipation: jest.fn().mockResolvedValue(0),
         },
       });
 

@@ -10,13 +10,25 @@ import {
   ProctoringAiPrediction,
   ProctoringLlmSummaryResponse,
 } from './proctoring-ai-http-client';
+import {
+  createProctoringMetricsService,
+  ProctoringMetricsService,
+} from '@backend/shared/monitoring/proctoring-metrics.service';
 
 type ProctoringAiResultWriterDependencies = {
   anomalyResultRepository?: Pick<
     ProctoringAnomalyResultRepository,
-    'upsertByWindowModel' | 'updateExplanationStatus'
+    'upsertByWindowModel' | 'updateExplanationStatus' | 'resolveStaleExplanations'
   >;
   llmSummaryRepository?: Pick<any, 'updateStatus'>;
+  metricsService?: Pick<
+    ProctoringMetricsService,
+    | 'incrementSummaryAccepted'
+    | 'incrementSummaryValidationFailed'
+    | 'incrementSummaryProviderFailed'
+    | 'incrementSummaryDeadLetter'
+    | 'incrementSummaryRegenerated'
+  >;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,14 +114,23 @@ function buildSourceEventRange(job: ProctoringAiJobEntity): Record<string, unkno
 export class ProctoringAiResultWriterService {
   private readonly anomalyResultRepository: Pick<
     ProctoringAnomalyResultRepository,
-    'upsertByWindowModel' | 'updateExplanationStatus'
+    'upsertByWindowModel' | 'updateExplanationStatus' | 'resolveStaleExplanations'
   >;
   private readonly llmSummaryRepository: Pick<any, 'updateStatus'>;
+  private readonly metricsService: Pick<
+    ProctoringMetricsService,
+    | 'incrementSummaryAccepted'
+    | 'incrementSummaryValidationFailed'
+    | 'incrementSummaryProviderFailed'
+    | 'incrementSummaryDeadLetter'
+    | 'incrementSummaryRegenerated'
+  >;
 
   constructor(deps: ProctoringAiResultWriterDependencies = {}) {
     this.anomalyResultRepository =
       deps.anomalyResultRepository ?? new ProctoringAnomalyResultRepository();
     this.llmSummaryRepository = deps.llmSummaryRepository ?? new ProctoringLlmSummaryRepository();
+    this.metricsService = deps.metricsService ?? createProctoringMetricsService();
   }
 
   async persistPrediction(input: {
@@ -198,6 +219,10 @@ export class ProctoringAiResultWriterService {
     });
   }
 
+  async resolveStaleExplanations(staleThresholdMs: number, now?: Date): Promise<number> {
+    return this.anomalyResultRepository.resolveStaleExplanations(staleThresholdMs, now);
+  }
+
   async persistSummary(input: {
     job: ProctoringAiJobEntity;
     summary: ProctoringLlmSummaryResponse;
@@ -209,6 +234,14 @@ export class ProctoringAiResultWriterService {
       return null;
     }
     const accepted = input.summary.validationStatus === 'passed';
+    if (accepted) {
+      this.metricsService.incrementSummaryAccepted();
+    } else {
+      this.metricsService.incrementSummaryValidationFailed();
+    }
+    if (payload.regenerationOfId) {
+      this.metricsService.incrementSummaryRegenerated();
+    }
     return this.llmSummaryRepository.updateStatus(llmSummaryId, {
       status: accepted ? 'accepted' : 'validation_failed',
       validationStatus: input.summary.validationStatus,
@@ -236,6 +269,14 @@ export class ProctoringAiResultWriterService {
       return null;
     }
     const status = input.status ?? 'provider_failed';
+    if (status === 'dead_letter') {
+      this.metricsService.incrementSummaryDeadLetter();
+    } else {
+      this.metricsService.incrementSummaryProviderFailed();
+    }
+    if (payload.regenerationOfId) {
+      this.metricsService.incrementSummaryRegenerated();
+    }
     return this.llmSummaryRepository.updateStatus(llmSummaryId, {
       status,
       validationStatus: 'failed',

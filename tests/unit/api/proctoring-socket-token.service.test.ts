@@ -32,6 +32,7 @@ describe('ProctoringSocketTokenService', () => {
       sessionRepository: {
         findActiveByParticipationAndClientSession: jest.fn().mockResolvedValue({
           id: '33333333-3333-3333-3333-333333333333',
+          entrySessionId: '44444444-4444-4444-4444-444444444444',
         }),
       },
       nowFactory: () => new Date('2026-06-13T00:00:00.000Z'),
@@ -61,6 +62,7 @@ describe('ProctoringSocketTokenService', () => {
       participationId: participation.id,
       clientSessionId: 'client-1',
       proctoringSessionId: '33333333-3333-3333-3333-333333333333',
+      entrySessionId: '44444444-4444-4444-4444-444444444444',
       purpose: 'proctoring_socket',
       jti: 'token-jti-1',
       iat: Math.floor(new Date('2026-06-13T00:00:00.000Z').getTime() / 1000),

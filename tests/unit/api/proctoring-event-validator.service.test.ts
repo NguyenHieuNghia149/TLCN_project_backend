@@ -48,12 +48,14 @@ describe('ProctoringEventValidatorService', () => {
         schemaVersion: 1,
         severity: 'info',
         payloadJson: {
+          eventName: 'clipboard_event',
           action: 'paste',
         },
       }),
     ).toMatchObject({
       type: 'telemetry.batch',
       payloadJson: {
+        eventName: 'clipboard_event',
         action: 'paste',
       },
     });

@@ -73,7 +73,7 @@ describe('admin proctoring review routes', () => {
 
     expect(
       await request(app).get(
-        `/api/admin/exams/${examId}/participations/${participationId}/proctoring?eventName=paste&limit=25&offset=5`,
+        `/api/admin/exams/${examId}/participations/${participationId}/proctoring?eventName=clipboard_event&limit=25&offset=5`,
       )
         .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
     ).toMatchObject({ status: 200 });
@@ -81,7 +81,7 @@ describe('admin proctoring review routes', () => {
       examId,
       participationId,
       { userId: 'teacher-1', role: 'teacher' },
-      expect.objectContaining({ eventName: 'paste', limit: 25, offset: 5 })
+      expect.objectContaining({ eventName: 'clipboard_event', limit: 25, offset: 5 })
     );
 
     expect(

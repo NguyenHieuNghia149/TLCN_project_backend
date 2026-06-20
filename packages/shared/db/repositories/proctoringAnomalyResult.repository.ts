@@ -72,6 +72,27 @@ export class ProctoringAnomalyResultRepository {
     return Number(row?.count ?? 0);
   }
 
+  async resolveStaleExplanations(
+    staleThresholdMs: number,
+    now?: Date
+  ): Promise<number> {
+    const cutoff = new Date((now ?? new Date()).getTime() - staleThresholdMs);
+    const result = await this.database
+      .update(examProctoringAnomalyResults)
+      .set({
+        explanationStatus: 'failed',
+        explanationSkippedReason: 'stale_pending_timeout',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(examProctoringAnomalyResults.explanationStatus, 'pending'),
+          sql`${examProctoringAnomalyResults.updatedAt} < ${cutoff}`
+        )
+      );
+    return result?.rowCount ?? 0;
+  }
+
   async updateExplanationStatus(input: {
     participationId: string;
     windowId: string;

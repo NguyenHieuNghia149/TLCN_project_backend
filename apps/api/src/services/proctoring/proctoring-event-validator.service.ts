@@ -22,6 +22,9 @@ const forbiddenPayloadKeys = new Set([
   'audiodata',
   'clipboardtext',
   'rawclipboardtext',
+  'text',
+  'rawtext',
+  'content',
   'keystrokes',
   'keystrokecontent',
   'keycontent',
@@ -33,13 +36,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function normalizedKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function hasForbiddenPayloadField(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
   }
 
   return Object.entries(value).some(([key, nestedValue]) => {
-    if (forbiddenPayloadKeys.has(key.toLowerCase())) {
+    if (forbiddenPayloadKeys.has(normalizedKey(key))) {
       return true;
     }
     return hasForbiddenPayloadField(nestedValue);

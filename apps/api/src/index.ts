@@ -178,6 +178,30 @@ export async function startApiServer(): Promise<{
     );
   }
 
+  try {
+    const { createProctoringModelRegistryService } =
+      require('./services/proctoring/proctoring-model-registry.service') as typeof import('./services/proctoring/proctoring-model-registry.service');
+    const modelRegistry = createProctoringModelRegistryService();
+    await modelRegistry.registerAndActivateSummaryModel({
+      modelVersion: 'summary-gemma-v1.0.0',
+      modelType: 'summary_generator',
+      provider: 'local',
+      artifactUri: 'internal://summary/gemma-v1',
+    });
+    await modelRegistry.registerAndActivateSummaryModel({
+      modelVersion: 'geval-judge-v1.0.0',
+      modelType: 'summary_judge',
+      provider: 'local',
+      artifactUri: 'internal://geval/judge-v1',
+    });
+    logger.info('Proctoring summary model versions registered and activated');
+  } catch (error) {
+    logger.error(
+      'Proctoring summary model registration failed (continuing without):',
+      (error as Error).message,
+    );
+  }
+
   getJudgeQueueService()
     .connect()
     .then(() => logger.info('Connected to Redis'))

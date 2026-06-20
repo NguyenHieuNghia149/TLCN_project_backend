@@ -66,7 +66,8 @@ describe('ProctoringFinalFlushService', () => {
             schemaVersion: 1,
             severity: 'info',
             payloadJson: {
-              eventName: 'paste',
+              eventName: 'clipboard_event',
+              action: 'paste',
               textLength: 10,
               rawClipboardText: 'secret',
             },
@@ -99,7 +100,7 @@ describe('ProctoringFinalFlushService', () => {
           clientSessionId: 'client-1',
           clientSeq: 4,
           finalFlushReceiptId: 'receipt-1',
-          payloadJson: { eventName: 'paste', textLength: 10 },
+          payloadJson: { eventName: 'clipboard_event', action: 'paste', textLength: 10 },
         }),
       })
     );

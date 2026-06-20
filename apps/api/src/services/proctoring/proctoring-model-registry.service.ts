@@ -5,7 +5,8 @@ import { ProctoringModelVersionRepository } from '@backend/api/repositories/proc
 import { AiProctoringModelVersionEntity } from '@backend/shared/db/schema';
 
 const ANOMALY_MODEL_TYPE = 'anomaly_detector';
-const SUMMARY_MODEL_TYPE = 'summary_generator';
+const SUMMARY_GENERATOR_TYPE = 'summary_generator';
+const SUMMARY_JUDGE_TYPE = 'summary_judge';
 
 type ProctoringModelRegistryDependencies = {
   modelRepository?: Pick<
@@ -15,6 +16,9 @@ type ProctoringModelRegistryDependencies = {
   evaluationReportRepository?: Pick<ProctoringEvaluationReportRepository, 'findLatestForModel'>;
   auditLogRepository?: Pick<AdminAuditLogRepository, 'create'>;
 };
+
+const SUMMARY_GENERATOR_DEFAULT_VERSION = 'summary-gemma-v1.0.0';
+const SUMMARY_JUDGE_DEFAULT_VERSION = 'geval-judge-v1.0.0';
 
 export type ResolvedAnomalyModel = Pick<
   AiProctoringModelVersionEntity,
@@ -78,24 +82,26 @@ export class ProctoringModelRegistryService {
 
   async activateDefault(input: {
     modelVersion: string;
+    modelType?: string;
     actorId?: string | null;
     reason?: string;
   }): Promise<AiProctoringModelVersionEntity> {
+    const modelType = input.modelType ?? ANOMALY_MODEL_TYPE;
     const existing = await this.modelRepository.findByVersion(input.modelVersion);
     if (!existing) {
       throw new AppException('Proctoring AI model was not found.', 404, 'PROCTORING_MODEL_NOT_FOUND');
     }
-    if (existing.modelType !== ANOMALY_MODEL_TYPE) {
+    if (existing.modelType !== modelType) {
       throw new AppException(
-        'Only anomaly detector models can be activated through this service.',
+        `Model type mismatch: expected ${modelType}, got ${existing.modelType}.`,
         400,
-        'PROCTORING_MODEL_TYPE_UNSUPPORTED'
+        'PROCTORING_MODEL_TYPE_MISMATCH'
       );
     }
 
     const activated = await this.modelRepository.activateDefault({
       modelVersion: input.modelVersion,
-      modelType: ANOMALY_MODEL_TYPE,
+      modelType,
     });
 
     await this.auditLogRepository.create({
@@ -106,7 +112,7 @@ export class ProctoringModelRegistryService {
       targetId: activated.id,
       metadata: {
         modelVersion: input.modelVersion,
-        modelType: ANOMALY_MODEL_TYPE,
+        modelType,
         reason: input.reason,
       },
     });
@@ -160,10 +166,13 @@ export class ProctoringModelRegistryService {
     }
   }
 
-  async resolveSummaryModel(modelVersion?: string | null): Promise<ResolvedAnomalyModel> {
+  async resolveSummaryModel(
+    modelVersion?: string | null,
+    modelType: string = SUMMARY_GENERATOR_TYPE
+  ): Promise<ResolvedAnomalyModel> {
     const model = modelVersion
       ? await this.modelRepository.findByVersion(modelVersion)
-      : await this.modelRepository.findDefaultActiveByType(SUMMARY_MODEL_TYPE);
+      : await this.modelRepository.findDefaultActiveByType(modelType);
 
     if (!model) {
       throw new AppException(
@@ -172,7 +181,7 @@ export class ProctoringModelRegistryService {
         'PROCTORING_SUMMARY_MODEL_NOT_FOUND'
       );
     }
-    if (model.modelType !== SUMMARY_MODEL_TYPE || model.status !== 'active') {
+    if (model.modelType !== modelType || model.status !== 'active') {
       throw new AppException(
         'Proctoring summary model is not active.',
         400,
@@ -192,6 +201,56 @@ export class ProctoringModelRegistryService {
       status: model.status,
       isDefault: model.isDefault,
     };
+  }
+
+  async registerAndActivateSummaryModel(input: {
+    modelVersion: string;
+    modelType: 'summary_generator' | 'summary_judge';
+    provider: string;
+    artifactUri: string;
+    actorId?: string | null;
+  }): Promise<AiProctoringModelVersionEntity> {
+    const existing = await this.modelRepository.findByVersion(input.modelVersion);
+    if (existing) {
+      if (existing.status === 'active') return existing;
+      return this.modelRepository.activateDefault({
+        modelVersion: input.modelVersion,
+        modelType: input.modelType,
+      });
+    }
+
+    const inserted = await this.modelRepository.insert({
+      modelKey: `${input.modelType}-${input.modelVersion}`,
+      modelVersion: input.modelVersion,
+      modelType: input.modelType,
+      provider: input.provider,
+      artifactUri: input.artifactUri,
+      featureSchemaVersion: 'summary-v1',
+      scoringSchemaVersion: 'geval-v1',
+      status: 'draft',
+      isDefault: false,
+      trainingRows: 0,
+      metricsJson: {},
+      thresholdsJson: {},
+    });
+    const activated = await this.modelRepository.activateDefault({
+      modelVersion: input.modelVersion,
+      modelType: input.modelType,
+    });
+
+    await this.auditLogRepository.create({
+      actorType: 'user',
+      actorId: input.actorId ?? null,
+      action: 'proctoring_summary_model_register',
+      targetType: 'ai_proctoring_model_version',
+      targetId: activated.id,
+      metadata: {
+        modelVersion: input.modelVersion,
+        modelType: input.modelType,
+        provider: input.provider,
+      },
+    });
+    return activated;
   }
 }
 

@@ -16,7 +16,7 @@ describe('ProctoringAdminReviewService', () => {
         participationId: 'participation-1',
         riskScore: 42,
         riskLevel: 'medium',
-        eventCountsJson: { paste: 1 },
+        eventCountsJson: { clipboard_event: 1 },
         velocityJson: { perMinute: 1 },
         finalFlushStatus: 'persisted',
         deterministicSchemaVersion: 'phase-1-deterministic-risk-v1',
@@ -36,7 +36,7 @@ describe('ProctoringAdminReviewService', () => {
           severity: 'info',
           capturedAt: new Date('2026-06-12T10:00:00.000Z'),
           clientSeq: 1,
-          payloadJson: { eventName: 'paste', textLength: 12 },
+          payloadJson: { eventName: 'clipboard_event', action: 'paste', textLength: 12 },
         },
         {
           id: 'event-2',
@@ -164,7 +164,7 @@ describe('ProctoringAdminReviewService', () => {
         role: 'teacher',
       },
       {
-        eventName: 'paste',
+        eventName: 'clipboard_event',
         limit: 5,
         offset: 0,
       }
@@ -182,8 +182,8 @@ describe('ProctoringAdminReviewService', () => {
     expect(result.timeline.items).toEqual([
       expect.objectContaining({
         id: 'event-1',
-        eventName: 'paste',
-        payloadJson: { eventName: 'paste', textLength: 12 },
+        eventName: 'clipboard_event',
+        payloadJson: { eventName: 'clipboard_event', action: 'paste', textLength: 12 },
       }),
     ]);
     expect(result.evidence).toMatchObject({
@@ -208,7 +208,11 @@ describe('ProctoringAdminReviewService', () => {
             receivedAt: new Date('2026-06-12T10:00:01.000Z'),
             clientSeq: 1,
             payloadJson: {
-              eventName: 'paste',
+              eventName: 'clipboard_event',
+              action: 'paste',
+              text: 'secret clipboard',
+              rawText: 'raw secret clipboard text',
+              content: 'content secret clipboard',
               clipboard_text: 'secret clipboard',
               raw_clipboard_text: 'raw secret clipboard',
               source_code: 'console.log(secret)',
@@ -246,13 +250,14 @@ describe('ProctoringAdminReviewService', () => {
 
     const payload = result.timeline.items[0]!.payloadJson as Record<string, any>;
     expect(payload).toMatchObject({
-      eventName: 'paste',
+      eventName: 'clipboard_event',
+      action: 'paste',
       nested: { keep: 'safe nested value' },
       events: [{ safeValue: 'safe array value' }, { keepAlso: 'safe second array value' }],
     });
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toMatch(
-      /clipboard_text|raw_clipboard_text|source_code|raw_prompt|raw_provider_response|image_data|video_data|audio_data|key_strokes/
+      /text|rawtext|content|clipboard_text|raw_clipboard_text|source_code|raw_prompt|raw_provider_response|image_data|video_data|audio_data|key_strokes/
     );
     expect(serialized).not.toMatch(/secret|bytes|console\.log/i);
   });

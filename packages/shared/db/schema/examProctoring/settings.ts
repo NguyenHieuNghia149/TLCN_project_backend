@@ -66,6 +66,9 @@ export const examProctoringSettings = pgTable(
     shapMinimumRiskLevel: varchar('shap_minimum_risk_level', { length: 20 })
       .default('high')
       .notNull(),
+    llmPrivacyApprovedAt: timestamp('llm_privacy_approved_at'),
+    llmPrivacyApprovedBy: varchar('llm_privacy_approved_by', { length: 100 }),
+    providerDpaReference: varchar('provider_dpa_reference', { length: 200 }),
     llmSummaryEnabled: boolean('llm_summary_enabled').default(false).notNull(),
     llmSummaryProvider: varchar('llm_summary_provider', { length: 50 }),
     llmSummaryModelVersion: varchar('llm_summary_model_version', { length: 100 }),

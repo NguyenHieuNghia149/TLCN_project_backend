@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray } from 'drizzle-orm';
 
 import { db } from '../connection';
 import {
@@ -40,6 +40,23 @@ export class ProctoringLlmSummaryRepository {
       throw new Error('Failed to insert or find active LLM summary row.');
     }
     return { row: existing, conflictResolved: true };
+  }
+
+  async countRecentForParticipation(
+    participationId: string,
+    since: Date
+  ): Promise<number> {
+    const [result] = await this.database
+      .select({ total: count() })
+      .from(examProctoringLlmSummaries)
+      .where(
+        and(
+          eq(examProctoringLlmSummaries.participationId, participationId),
+          gte(examProctoringLlmSummaries.createdAt, since),
+          inArray(examProctoringLlmSummaries.status, ['pending', 'accepted', 'validation_failed'])
+        )
+      );
+    return result?.total ?? 0;
   }
 
   async updateJobId(id: string, jobId: string): Promise<ExamProctoringLlmSummaryEntity | null> {

@@ -193,6 +193,9 @@ export const UpdateProctoringSettingsSchema = z.object({
   aiAnomalyThresholdsJson: z.record(z.string(), z.number()).optional(),
   shapExplanationsEnabled: z.boolean().optional(),
   shapMinimumRiskLevel: z.enum(['high', 'critical']).optional(),
+  llmPrivacyApprovedAt: z.string().datetime().nullable().optional(),
+  llmPrivacyApprovedBy: z.string().min(1).max(100).nullable().optional(),
+  providerDpaReference: z.string().min(1).max(200).nullable().optional(),
   llmSummaryEnabled: z.boolean().optional(),
   llmSummaryProvider: z
     .enum(['local', 'ollama', 'vllm', 'llama_cpp', 'external', 'disabled'])

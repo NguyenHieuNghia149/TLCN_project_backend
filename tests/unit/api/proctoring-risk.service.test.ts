@@ -81,6 +81,35 @@ describe('ProctoringRiskService', () => {
     expect(result.riskLevel).toBe('medium');
   });
 
+  it('applies deterministic camera event weights and caps', () => {
+    const service = new ProctoringRiskService();
+    const events = [
+      event({ id: 'e1', type: 'telemetry.batch', clientSeq: 1, payloadJson: { eventName: 'camera_started' } }),
+      event({ id: 'e2', type: 'telemetry.batch', clientSeq: 2, payloadJson: { eventName: 'camera_track_unmuted' } }),
+      event({ id: 'e3', type: 'telemetry.batch', clientSeq: 3, payloadJson: { eventName: 'camera_stopped' } }),
+      event({ id: 'e4', type: 'telemetry.batch', clientSeq: 4, payloadJson: { eventName: 'camera_stopped' } }),
+      event({ id: 'e5', type: 'telemetry.batch', clientSeq: 5, payloadJson: { eventName: 'camera_stopped' } }),
+      event({ id: 'e6', type: 'telemetry.batch', clientSeq: 6, payloadJson: { eventName: 'camera_stopped' } }),
+      event({ id: 'e7', type: 'telemetry.batch', clientSeq: 7, payloadJson: { eventName: 'camera_permission_denied' } }),
+      event({ id: 'e8', type: 'telemetry.batch', clientSeq: 8, payloadJson: { eventName: 'camera_track_muted' } }),
+      event({ id: 'e9', type: 'telemetry.batch', clientSeq: 9, payloadJson: { eventName: 'camera_error' } }),
+    ];
+
+    const result = service.compute(events as any, { velocityCap: 0 });
+
+    expect(result.eventCountsJson).toEqual({
+      camera_started: 1,
+      camera_track_unmuted: 1,
+      camera_stopped: 4,
+      camera_permission_denied: 1,
+      camera_track_muted: 1,
+      camera_error: 1,
+    });
+    expect(result.eventScore).toBe(36);
+    expect(result.velocityScore).toBe(0);
+    expect(result.riskLevel).toBe('medium');
+  });
+
   it('orders velocity windows by capturedAt instead of receivedAt', () => {
     const service = new ProctoringRiskService();
     const events = [

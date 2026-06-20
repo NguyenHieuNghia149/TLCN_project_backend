@@ -34,6 +34,12 @@ export type ExamChallengeInput = z.infer<typeof ExamChallengeInputSchema>;
 // does not allow .partial() on schemas that have .refine().
 const CreateExamBaseSchema = z.object({
   title: z.string().min(1, 'Exam title is required.').max(255, 'Exam title is too long.'),
+  slug: z
+    .string()
+    .min(3, 'Exam slug must be at least 3 characters.')
+    .max(255, 'Exam slug is too long.')
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Exam slug must use lowercase letters, numbers, and hyphens only.')
+    .optional(),
   password: z.string().min(1, 'Exam password is required.').max(255, 'Password is too long.'),
   duration: z
     .number()
@@ -62,7 +68,7 @@ export const CreateExamSchema = CreateExamBaseSchema.refine(
   }
 );
 
-export const UpdateExamSchema = CreateExamBaseSchema.partial();
+export const UpdateExamSchema = CreateExamBaseSchema.omit({ slug: true }).partial();
 export type CreateExamInput = z.infer<typeof CreateExamSchema>;
 export type UpdateExamInput = z.infer<typeof UpdateExamSchema>;
 

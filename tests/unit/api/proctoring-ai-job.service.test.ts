@@ -70,19 +70,6 @@ describe('ProctoringAiJobService', () => {
       },
     ],
     [
-      'shadow mode off',
-      {
-        settingsRepository: {
-          findByExamId: jest.fn().mockResolvedValue({
-            enabled: true,
-            aiAnomalyEnabled: true,
-            aiShadowMode: false,
-            aiJobWindowSeconds: 300,
-          }),
-        },
-      },
-    ],
-    [
       'consent missing',
       {
         consentRepository: {

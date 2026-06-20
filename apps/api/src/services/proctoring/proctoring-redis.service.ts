@@ -55,6 +55,9 @@ const sensitivePayloadKeys = new Set([
   'audiodata',
   'clipboardtext',
   'rawclipboardtext',
+  'text',
+  'rawtext',
+  'content',
   'keystrokes',
   'keystrokecontent',
   'keycontent',
@@ -87,6 +90,10 @@ export function getProctoringTelemetryStreamKey(shard: number | string = 0): str
   return `${PROCTORING_TELEMETRY_STREAM_PREFIX}:${shard}`;
 }
 
+function normalizedKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function sanitizeTelemetryValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(item => sanitizeTelemetryValue(item));
@@ -97,7 +104,7 @@ function sanitizeTelemetryValue(value: unknown): unknown {
 
   return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>(
     (acc, [key, nestedValue]) => {
-      if (sensitivePayloadKeys.has(key.toLowerCase())) {
+      if (sensitivePayloadKeys.has(normalizedKey(key))) {
         return acc;
       }
       acc[key] = sanitizeTelemetryValue(nestedValue);

@@ -12,6 +12,10 @@ import {
   createProctoringModelRegistryService,
   ProctoringModelRegistryService,
 } from './proctoring-model-registry.service';
+import {
+  createProctoringMetricsService,
+  ProctoringMetricsService,
+} from './proctoring-metrics.service';
 
 type Actor = {
   userId?: string | null;
@@ -22,9 +26,10 @@ type Dependencies = {
   settingsRepository?: Pick<ProctoringSettingsRepository, 'findByExamId'>;
   modelRegistryService?: Pick<ProctoringModelRegistryService, 'resolveSummaryModel'>;
   inputService?: Pick<ProctoringLlmSummaryInputService, 'buildInput'>;
-  summaryRepository?: Pick<ProctoringLlmSummaryRepository, 'insertOrFindActive' | 'updateJobId'>;
+  summaryRepository?: Pick<ProctoringLlmSummaryRepository, 'insertOrFindActive' | 'updateJobId' | 'countRecentForParticipation'>;
   aiJobRepository?: Pick<ProctoringAiJobRepository, 'insert'>;
   auditLogRepository?: Pick<AdminAuditLogRepository, 'create'>;
+  metricsService?: Pick<ProctoringMetricsService, 'incrementSummaryRequested' | 'incrementSummaryRateLimited'>;
   nowFactory?: () => Date;
 };
 
@@ -52,10 +57,11 @@ export class ProctoringLlmSummaryService {
   private readonly inputService: Pick<ProctoringLlmSummaryInputService, 'buildInput'>;
   private readonly summaryRepository: Pick<
     ProctoringLlmSummaryRepository,
-    'insertOrFindActive' | 'updateJobId'
+    'insertOrFindActive' | 'updateJobId' | 'countRecentForParticipation'
   >;
   private readonly aiJobRepository: Pick<ProctoringAiJobRepository, 'insert'>;
   private readonly auditLogRepository: Pick<AdminAuditLogRepository, 'create'>;
+  private readonly metricsService: Pick<ProctoringMetricsService, 'incrementSummaryRequested' | 'incrementSummaryRateLimited'>;
   private readonly nowFactory: () => Date;
 
   constructor(deps: Dependencies = {}) {
@@ -65,6 +71,7 @@ export class ProctoringLlmSummaryService {
     this.summaryRepository = deps.summaryRepository ?? new ProctoringLlmSummaryRepository();
     this.aiJobRepository = deps.aiJobRepository ?? new ProctoringAiJobRepository();
     this.auditLogRepository = deps.auditLogRepository ?? new AdminAuditLogRepository();
+    this.metricsService = deps.metricsService ?? createProctoringMetricsService();
     this.nowFactory = deps.nowFactory ?? (() => new Date());
   }
 
@@ -86,15 +93,37 @@ export class ProctoringLlmSummaryService {
     }
 
     const model = await this.modelRegistryService.resolveSummaryModel(
-      settings.llmSummaryModelVersion ?? null
+      settings.llmSummaryModelVersion ?? null,
+      'summary_generator'
     );
+    const judgeEnabled = settings.llmSummaryJudgeEnabled !== false;
+    const judgeModel = judgeEnabled
+      ? await this.modelRegistryService.resolveSummaryModel(null, 'summary_judge')
+      : null;
+
+    const promptVersion = settings.llmSummaryPromptVersion ?? 'proctoring-summary-v1';
+    const rateLimitPerParticipation = settings.llmSummaryRateLimitPerParticipation ?? 3;
+    const rateLimitWindowHours = settings.llmSummaryRateLimitWindowHours ?? 24;
+    const now = this.nowFactory();
+    const rateLimitSince = new Date(now.getTime() - rateLimitWindowHours * 60 * 60 * 1000);
+    const recentCount = await this.summaryRepository.countRecentForParticipation(
+      input.participationId,
+      rateLimitSince
+    );
+    if (recentCount >= rateLimitPerParticipation) {
+      this.metricsService.incrementSummaryRateLimited();
+      throw new AppException(
+        'LLM summary rate limit exceeded for this participation.',
+        429,
+        'PROCTORING_LLM_SUMMARY_RATE_LIMITED'
+      );
+    }
+
     const built = await this.inputService.buildInput({
       examId: input.examId,
       participationId: input.participationId,
     });
-    const promptVersion = settings.llmSummaryPromptVersion ?? 'proctoring-summary-v1';
     const minValidationScore = numericSetting(settings.llmSummaryMinValidationScore, 0.85);
-    const now = this.nowFactory();
     const summaryResult = unwrapSummaryInsertResult(
       await this.summaryRepository.insertOrFindActive({
         examId: input.examId,
@@ -124,6 +153,8 @@ export class ProctoringLlmSummaryService {
       };
     }
 
+    this.metricsService.incrementSummaryRequested();
+
     const job = await this.aiJobRepository.insert({
       jobKey: [
         'proctoring-llm-summary',
@@ -147,9 +178,10 @@ export class ProctoringLlmSummaryService {
         inputHash: built.inputHash,
         provider: settings.llmSummaryProvider,
         modelVersion: model.modelVersion,
+        judgeModelVersion: judgeModel?.modelVersion ?? null,
         promptVersion,
         minValidationScore,
-        judgeEnabled: settings.llmSummaryJudgeEnabled !== false,
+        judgeEnabled,
       },
       modelVersion: model.modelVersion,
       featureSchemaVersion: 'proctoring-summary-input-v1',
@@ -169,6 +201,7 @@ export class ProctoringLlmSummaryService {
         llmSummaryId: summaryResult.row.id,
         jobId: job.id,
         modelVersion: model.modelVersion,
+        judgeModelVersion: judgeModel?.modelVersion ?? null,
         promptVersion,
         inputHash: built.inputHash,
       },

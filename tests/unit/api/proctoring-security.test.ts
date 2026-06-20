@@ -124,15 +124,43 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
           receivedAt: '2026-06-12T10:00:01.000Z',
           schemaVersion: 1,
           severity: 'info',
-          payloadJson: { eventName: 'paste', textLength: 12 },
+          payloadJson: { eventName: 'clipboard_event', action: 'paste', textLength: 12 },
         }),
       ).not.toThrow();
+    });
+
+    it.each([
+      ['text', { text: 'secret text' }],
+      ['rawText', { rawText: 'secret text' }],
+      ['content', { content: 'secret text' }],
+    ])('rejects %s clipboard content aliases', (_label, payloadJson) => {
+      expect(() =>
+        loadValidator().validateTelemetryFrame({
+          type: 'telemetry.batch',
+          participationId: 'p1',
+          clientSessionId: 'c1',
+          clientSeq: 8,
+          capturedAt: '2026-06-12T10:00:00.000Z',
+          receivedAt: '2026-06-12T10:00:01.000Z',
+          schemaVersion: 1,
+          severity: 'info',
+          payloadJson: {
+            eventName: 'clipboard_event',
+            action: 'paste',
+            ...payloadJson,
+          },
+        }),
+      ).toThrow(/forbidden/i);
     });
 
     it('rejects raw clipboard and media even when passed through sanitizeTelemetryPayload', () => {
       const { sanitizeTelemetryPayload } = require('../../../apps/api/src/services/proctoring/proctoring-redis.service');
       const result = sanitizeTelemetryPayload({
-        eventName: 'paste',
+        eventName: 'clipboard_event',
+        action: 'paste',
+        text: 'secret',
+        rawText: 'secret',
+        content: 'secret',
         clipboardText: 'secret',
         rawClipboardText: 'secret',
         media: 'blob',
@@ -141,6 +169,9 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
       });
       expect(result).not.toHaveProperty('clipboardText');
       expect(result).not.toHaveProperty('rawClipboardText');
+      expect(result).not.toHaveProperty('text');
+      expect(result).not.toHaveProperty('rawText');
+      expect(result).not.toHaveProperty('content');
       expect(result).not.toHaveProperty('media');
       expect(result.nested).not.toHaveProperty('videodata');
       expect(result.safeField).toBe('keep');
@@ -321,6 +352,13 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
       };
       const finalFlushRepository = { findByParticipation: jest.fn().mockResolvedValue([]) };
       const dataRequestRepository = { findByParticipation: jest.fn().mockResolvedValue([]) };
+      const settingsRepository = {
+        findByExamId: jest.fn().mockResolvedValue({
+          aiShadowMode: true,
+          aiAdvisoryVisible: false,
+          aiMinimumEvaluationStatus: 'passed_gate',
+        }),
+      };
       const summaryService = { recomputeForParticipation: jest.fn() };
       const auditLogRepository = { create: jest.fn() };
       const examRepository = {
@@ -330,10 +368,14 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
         findById: jest.fn().mockResolvedValue({ id: 'participation-1', examId: 'exam-1' }),
       };
 
+      const reviewLabelRepository = {
+        findByParticipation: jest.fn().mockResolvedValue([]),
+      };
       const service = new ProctoringAdminReviewService({
         examRepository, participationRepository, summaryRepository, eventRepository,
         consentRepository, precheckRepository, bypassRepository, finalFlushRepository,
-        dataRequestRepository, summaryService, auditLogRepository,
+        dataRequestRepository, settingsRepository, summaryService, auditLogRepository,
+        reviewLabelRepository,
       });
 
       const review = await service.getReview('exam-1', 'participation-1', {
@@ -387,10 +429,29 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
         isStaleBufferedEvent: jest.fn().mockReturnValue(false),
       };
 
-      new ProctoringWebSocketService({ namespace, redisService, validator, rateLimitService });
+      const socketTokenService = {
+        verifyTokenForHello: jest.fn().mockResolvedValue({
+          sub: 'u1',
+          userId: 'u1',
+          examId: 'exam-1',
+          participationId: 'p1',
+          clientSessionId: 'c1',
+          proctoringSessionId: 'session-1',
+          entrySessionId: 'entry-1',
+        }),
+      };
+
+      new ProctoringWebSocketService({
+        namespace,
+        redisService,
+        validator,
+        rateLimitService,
+        socketTokenService,
+      });
 
       const socket = {
         id: 'socket-1',
+        handshake: { auth: { proctoringToken: 'socket-token' } },
         on: jest.fn(),
         emit: jest.fn().mockReturnValue(true),
         join: jest.fn(),

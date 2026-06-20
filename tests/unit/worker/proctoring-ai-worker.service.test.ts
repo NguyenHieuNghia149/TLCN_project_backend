@@ -427,6 +427,7 @@ describe('ProctoringAiResultWriterService', () => {
       anomalyResultRepository: {
         upsertByWindowModel: jest.fn(),
         updateExplanationStatus: jest.fn(),
+        resolveStaleExplanations: jest.fn(),
       } as any,
       llmSummaryRepository,
     });
@@ -458,5 +459,51 @@ describe('ProctoringAiResultWriterService', () => {
     expect(JSON.stringify(llmSummaryRepository.updateStatus.mock.calls)).not.toMatch(
       /raw response secret|must not persist/i
     );
+  });
+
+  it('resolves stale pending explanations to failed via resolveStaleExplanations', async () => {
+    const anomalyResultRepository = {
+      upsertByWindowModel: jest.fn(),
+      updateExplanationStatus: jest.fn(),
+      resolveStaleExplanations: jest.fn().mockResolvedValue(3),
+    };
+    const writer = new ProctoringAiResultWriterService({
+      anomalyResultRepository,
+      llmSummaryRepository: { updateStatus: jest.fn() },
+    });
+
+    const count = await writer.resolveStaleExplanations(3600000);
+
+    expect(count).toBe(3);
+    expect(anomalyResultRepository.resolveStaleExplanations).toHaveBeenCalledWith(3600000, undefined);
+  });
+
+  it('periodically resolves stale pending explanations during process loop', async () => {
+    const jobRepository = {
+      claimNext: jest.fn().mockResolvedValue(null),
+      upsertByJobKey: jest.fn(),
+      updateStatus: jest.fn(),
+    };
+    const resolveStaleExplanations = jest.fn().mockResolvedValue(0);
+    const worker = new ProctoringAiWorkerService({
+      jobRepository: jobRepository as any,
+      httpClient: { predict: jest.fn(), explain: jest.fn(), generateSummary: jest.fn() },
+      resultWriter: {
+        persistPrediction: jest.fn(),
+        persistExplanation: jest.fn(),
+        markExplanationFailed: jest.fn(),
+        persistSummary: jest.fn(),
+        markSummaryFailed: jest.fn(),
+        resolveStaleExplanations,
+      },
+      pollIntervalMs: 100,
+    });
+
+    // Run enough cycles to trigger cleanup (every 12 cycles)
+    for (let i = 0; i < 24; i++) {
+      await worker.processNext();
+    }
+
+    expect(resolveStaleExplanations).toHaveBeenCalled();
   });
 });
