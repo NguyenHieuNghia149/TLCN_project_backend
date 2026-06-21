@@ -10,6 +10,13 @@ import { createWorkerService, IWorkerService } from './services/worker.service';
 
 type ShutdownSignal = 'SIGINT' | 'SIGTERM' | 'uncaughtException';
 
+function envFlagEnabled(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  return !['0', 'false', 'off', 'no'].includes(value.toLowerCase());
+}
+
 function registerProcessHandlers(workerServices: IWorkerService[]): void {
   const shutdown = async (signal: ShutdownSignal) => {
     logger.info('Stopping worker...', { signal });
@@ -50,11 +57,24 @@ export async function startWorkerProcess(): Promise<void> {
     sandboxClient,
     createBreaker: createSandboxBreaker,
   });
-  const proctoringAiWorkerService = createProctoringAiWorkerService();
+  const proctoringAiEnabled = envFlagEnabled(process.env.PROCTORING_AI_ENABLED, true);
+  const proctoringAiShadowMode = envFlagEnabled(process.env.PROCTORING_AI_SHADOW_MODE, true);
+  const workerServices: IWorkerService[] = [workerService];
 
-  registerProcessHandlers([workerService, proctoringAiWorkerService]);
+  if (proctoringAiEnabled && proctoringAiShadowMode) {
+    workerServices.push(createProctoringAiWorkerService());
+  } else {
+    logger.info('Proctoring AI worker disabled by configuration', {
+      proctoringAiEnabled,
+      proctoringAiShadowMode,
+    });
+  }
+
+  registerProcessHandlers(workerServices);
   await workerService.start();
-  await proctoringAiWorkerService.start();
+  if (workerServices.length > 1) {
+    await workerServices[1]!.start();
+  }
 }
 
 if (require.main === module) {

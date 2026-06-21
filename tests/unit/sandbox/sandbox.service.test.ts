@@ -218,6 +218,39 @@ describe('sandbox service dependency composition', () => {
     await expect(service.healthCheck()).resolves.toBe(true);
   });
 
+  it('treats plain stdout as accepted output when wrapper envelope is absent', async () => {
+    const service = createTestService();
+    const config = createExecutionConfig();
+
+    (service as any).getLanguageConfig = jest.fn().mockReturnValue({
+      value: 'python',
+      test_case_run: {
+        source_file_name: 'main.py',
+        program_file_name: 'main.py',
+        command_template: ['python3', '$PROGRAM'],
+      },
+    });
+    ;(service as any).runWithNsjail = jest.fn().mockResolvedValue({
+      stdout: '1\n',
+      stderr: '',
+      exitCode: 0,
+      executionTime: 0,
+    })
+
+    const result = await (service as any).executeInSandbox('/tmp/job', config)
+
+    expect(result.summary).toMatchObject({
+      passed: 1,
+      total: 1,
+      status: 'ACCEPTED',
+    })
+    expect(result.results[0]).toMatchObject({
+      actualOutput: '1',
+      isPassed: true,
+      error: null,
+    })
+  });
+
   it('createSandboxService returns fresh instances and uses the default runtime providers', () => {
     process.env.SANDBOX_MAX_CONCURRENT = '9';
     process.env.WORKSPACE_DIR = '/factory/workspace';
