@@ -90,6 +90,9 @@
       context: .
       dockerfile: docker/Dockerfile.backend
       target: sandbox
+    # Some VPS kernels still block nsjail procfs mounts unless the container
+    # runs fully privileged, even with SYS_ADMIN + unconfined security opts.
+    privileged: true
     expose:
       - '4000'
     environment:
