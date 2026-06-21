@@ -16,6 +16,7 @@ import { ProctoringReviewLabelRepository } from '@backend/api/repositories/proct
 import { ProctoringSettingsRepository } from '@backend/api/repositories/proctoring/proctoringSettings.repository';
 import { ProctoringSummaryRepository } from '@backend/api/repositories/proctoring/proctoringSummary.repository';
 import { ProctoringAnomalyResultRepository } from '@backend/shared/db/repositories/proctoringAnomalyResult.repository';
+import { ProctoringLlmSummaryRepository } from '@backend/shared/db/repositories/proctoringLlmSummary.repository';
 import {
   AdminProctoringReviewQueryInput,
   RecordProctoringReviewLabelInput,
@@ -55,6 +56,7 @@ type AdminReviewDependencies = {
   >;
   settingsRepository?: Pick<ProctoringSettingsRepository, 'findByExamId'>;
   anomalyResultRepository?: Pick<ProctoringAnomalyResultRepository, 'findLatestByParticipation'>;
+  llmSummaryRepository?: Pick<ProctoringLlmSummaryRepository, 'findLatestByParticipation'>;
   evaluationReportRepository?: Pick<ProctoringEvaluationReportRepository, 'findLatestForModel'>;
   summaryService?: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
   aiJobService?: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
@@ -164,6 +166,10 @@ export class ProctoringAdminReviewService {
     ProctoringAnomalyResultRepository,
     'findLatestByParticipation'
   >;
+  private readonly llmSummaryRepository: Pick<
+    ProctoringLlmSummaryRepository,
+    'findLatestByParticipation'
+  >;
   private readonly evaluationReportRepository: Pick<
     ProctoringEvaluationReportRepository,
     'findLatestForModel'
@@ -189,6 +195,8 @@ export class ProctoringAdminReviewService {
     this.settingsRepository = deps.settingsRepository ?? new ProctoringSettingsRepository();
     this.anomalyResultRepository =
       deps.anomalyResultRepository ?? new ProctoringAnomalyResultRepository();
+    this.llmSummaryRepository =
+      deps.llmSummaryRepository ?? new ProctoringLlmSummaryRepository();
     this.evaluationReportRepository =
       deps.evaluationReportRepository ?? new ProctoringEvaluationReportRepository();
     this.summaryService = deps.summaryService ?? createProctoringSummaryService();
@@ -250,7 +258,7 @@ export class ProctoringAdminReviewService {
     const offset = normalizeOffset(query.offset);
     const eventName = query.eventName?.trim();
     const userId = actor.userId;
-    const [summary, events, consent, precheck, bypass, finalFlush, dataRequests, allReviewLabels] =
+    const [summary, events, consent, precheck, bypass, finalFlush, dataRequests, allReviewLabels, llmSummaryRecord, settings] =
       await Promise.all([
         this.summaryRepository.findByParticipation(participationId),
         this.eventRepository.findByParticipation(participationId, { limit: 1000 }),
@@ -260,6 +268,8 @@ export class ProctoringAdminReviewService {
         this.finalFlushRepository.findByParticipation(participationId),
         this.dataRequestRepository.findByParticipation(participationId),
         this.reviewLabelRepository.findByParticipation(participationId),
+        this.llmSummaryRepository.findLatestByParticipation(participationId),
+        this.settingsRepository.findByExamId(examId),
       ]);
     const reviewLabel = userId
       ? (allReviewLabels ?? []).filter(l => l.reviewerId === userId)
@@ -291,6 +301,8 @@ export class ProctoringAdminReviewService {
     });
 
     const aiAdvisory = await this.buildAiAdvisory(examId, participationId);
+
+    const llmSummary = this.buildLlmSummary(examId, settings, llmSummaryRecord);
 
     return {
       summary: summary
@@ -335,6 +347,7 @@ export class ProctoringAdminReviewService {
           }
         : null,
       aiAdvisory,
+      llmSummary,
     };
   }
 
@@ -396,6 +409,54 @@ export class ProctoringAdminReviewService {
       latestRiskLevel: maxResult.riskLevel,
       maxAnomalyScore: Number(maxResult.anomalyScore),
       windows,
+    };
+  }
+
+  private buildLlmSummary(
+    examId: string,
+    settings: any,
+    llmSummaryRecord: any
+  ): Record<string, unknown> | null {
+    if (!settings || !settings.llmSummaryEnabled) {
+      return {
+        visible: false,
+        status: 'hidden_disabled',
+        riskFacts: [] as string[],
+        citations: [] as string[],
+        missingDataNotes: [] as string[],
+        modelNotes: [] as string[],
+      };
+    }
+
+    if (!llmSummaryRecord || llmSummaryRecord.status !== 'accepted') {
+      return {
+        visible: false,
+        status: 'unavailable',
+        riskFacts: [] as string[],
+        citations: [] as string[],
+        missingDataNotes: [] as string[],
+        modelNotes: [] as string[],
+      };
+    }
+
+    return {
+      visible: true,
+      status: 'accepted' as const,
+      summaryId: llmSummaryRecord.id,
+      provider: llmSummaryRecord.provider,
+      modelVersion: llmSummaryRecord.modelVersion,
+      promptVersion: llmSummaryRecord.promptVersion,
+      validationStatus: llmSummaryRecord.validationStatus,
+      validationScore: Number(llmSummaryRecord.validationScore ?? 0),
+      summaryText: llmSummaryRecord.summaryJson?.summaryText ?? '',
+      riskFacts: llmSummaryRecord.riskFactsJson ?? [],
+      citations: llmSummaryRecord.sourceEventIdsJson?.map((sid: string) => ({
+        eventId: sid,
+        reason: 'summary evidence',
+      })) ?? [],
+      missingDataNotes: llmSummaryRecord.missingDataNotesJson ?? [],
+      modelNotes: llmSummaryRecord.modelNotesJson ?? [],
+      completedAt: serializeDate(llmSummaryRecord.completedAt),
     };
   }
 

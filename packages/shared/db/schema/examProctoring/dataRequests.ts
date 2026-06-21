@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 import { exam } from '../exam';
 import { examParticipations } from '../examParticipations';
@@ -12,6 +12,7 @@ export const examProctoringDataRequests = pgTable(
       .notNull()
       .references(() => exam.id),
     participationId: uuid('participation_id').references(() => examParticipations.id),
+    requesterUserId: uuid('requester_user_id').references(() => users.id),
     candidateUserId: uuid('candidate_user_id')
       .notNull()
       .references(() => users.id),
@@ -20,10 +21,20 @@ export const examProctoringDataRequests = pgTable(
     requestedAt: timestamp('requested_at').notNull(),
     approvedByUserId: uuid('approved_by_user_id').references(() => users.id),
     approvedAt: timestamp('approved_at'),
+    rejectedAt: timestamp('rejected_at'),
+    reasonCode: varchar('reason_code', { length: 80 }),
     statutoryDueAt: timestamp('statutory_due_at').notNull(),
     internalTargetDueAt: timestamp('internal_target_due_at').notNull(),
+    executionTargetHours: integer('execution_target_hours').default(72).notNull(),
     completedAt: timestamp('completed_at'),
+    legalHoldUntil: timestamp('legal_hold_until'),
+    requestMetadataJson: jsonb('request_metadata_json').$type<Record<string, unknown> | null>(),
     resultJson: jsonb('result_json').$type<Record<string, unknown> | null>(),
+    evidenceReportJson: jsonb('evidence_report_json').$type<Record<string, unknown> | null>(),
+    lastExecutionDryRun: boolean('last_execution_dry_run'),
+    lastExecutionRequestedAt: timestamp('last_execution_requested_at'),
+    lastExecutionRequestedBy: uuid('last_execution_requested_by').references(() => users.id),
+    dryRunMode: varchar('dry_run_mode', { length: 20 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -34,6 +45,8 @@ export const examProctoringDataRequests = pgTable(
       table.requestedAt
     ),
     index('idx_exam_proctoring_data_requests_participation').on(table.participationId),
+    index('idx_exam_proctoring_data_requests_status_due').on(table.status, table.internalTargetDueAt),
+    index('idx_exam_proctoring_data_requests_type_status').on(table.requestType, table.status),
   ]
 );
 

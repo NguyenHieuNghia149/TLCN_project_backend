@@ -10,6 +10,20 @@ export type ProctoringMetricsSnapshot = {
   summaryDeadLetterTotal: number;
   summaryRegeneratedTotal: number;
   summaryRateLimitedTotal: number;
+  wsTelemetryAcceptedTotal: number;
+  wsTelemetryRejectedTotal: number;
+  redisAppendLatencyMs: number[];
+  telemetryPersisterBatchSizes: number[];
+  telemetryPersisterBatchDurationsMs: number[];
+  finalFlushWaitDurationsMs: number[];
+  aiJobPendingTotal: number;
+  aiJobRetryTotal: number;
+  aiJobDeadLetterTotal: number;
+  llmSummaryJobPendingTotal: number;
+  llmSummaryJobRetryTotal: number;
+  llmSummaryJobDeadLetterTotal: number;
+  serverAiLatencyMs: number[];
+  serverAiFailureTotal: number;
 };
 
 export class ProctoringMetricsService {
@@ -25,6 +39,21 @@ export class ProctoringMetricsService {
   private summaryDeadLetter = 0;
   private summaryRegenerated = 0;
   private summaryRateLimited = 0;
+
+  private wsAccepted = 0;
+  private wsRejected = 0;
+  private redisAppendLatenciesMs: number[] = [];
+  private persisterBatchSizes: number[] = [];
+  private persisterBatchDurationsMs: number[] = [];
+  private finalFlushWaitDurationsMs: number[] = [];
+  private aiPending = 0;
+  private aiRetry = 0;
+  private aiDeadLetter = 0;
+  private llmPending = 0;
+  private llmRetry = 0;
+  private llmDeadLetter = 0;
+  private serverAiLatenciesMs: number[] = [];
+  private serverAiFailure = 0;
 
   recordFinalFlushPollDuration(durationMs: number): void {
     this.pollDurationsMs.push(durationMs);
@@ -53,6 +82,49 @@ export class ProctoringMetricsService {
   incrementSummaryRegenerated(): void { this.summaryRegenerated += 1; }
   incrementSummaryRateLimited(): void { this.summaryRateLimited += 1; }
 
+  incrementWsTelemetryAccepted(): void { this.wsAccepted += 1; }
+  incrementWsTelemetryRejected(): void { this.wsRejected += 1; }
+
+  recordRedisAppendLatency(durationMs: number): void {
+    this.redisAppendLatenciesMs.push(durationMs);
+    if (this.redisAppendLatenciesMs.length > this.maxPollSamples) {
+      this.redisAppendLatenciesMs.shift();
+    }
+  }
+
+  recordTelemetryPersisterBatch(batchSize: number, durationMs: number): void {
+    this.persisterBatchSizes.push(batchSize);
+    this.persisterBatchDurationsMs.push(durationMs);
+    if (this.persisterBatchSizes.length > this.maxPollSamples) {
+      this.persisterBatchSizes.shift();
+      this.persisterBatchDurationsMs.shift();
+    }
+  }
+
+  recordFinalFlushWaitDuration(durationMs: number): void {
+    this.finalFlushWaitDurationsMs.push(durationMs);
+    if (this.finalFlushWaitDurationsMs.length > this.maxPollSamples) {
+      this.finalFlushWaitDurationsMs.shift();
+    }
+  }
+
+  incrementAiJobPending(): void { this.aiPending += 1; }
+  incrementAiJobRetry(): void { this.aiRetry += 1; }
+  incrementAiJobDeadLetter(): void { this.aiDeadLetter += 1; }
+
+  incrementLlmSummaryJobPending(): void { this.llmPending += 1; }
+  incrementLlmSummaryJobRetry(): void { this.llmRetry += 1; }
+  incrementLlmSummaryJobDeadLetter(): void { this.llmDeadLetter += 1; }
+
+  recordServerAiLatency(durationMs: number): void {
+    this.serverAiLatenciesMs.push(durationMs);
+    if (this.serverAiLatenciesMs.length > this.maxPollSamples) {
+      this.serverAiLatenciesMs.shift();
+    }
+  }
+
+  incrementServerAiFailure(): void { this.serverAiFailure += 1; }
+
   snapshot(): ProctoringMetricsSnapshot {
     return {
       finalFlushPollDurationMs: [...this.pollDurationsMs],
@@ -66,6 +138,20 @@ export class ProctoringMetricsService {
       summaryDeadLetterTotal: this.summaryDeadLetter,
       summaryRegeneratedTotal: this.summaryRegenerated,
       summaryRateLimitedTotal: this.summaryRateLimited,
+      wsTelemetryAcceptedTotal: this.wsAccepted,
+      wsTelemetryRejectedTotal: this.wsRejected,
+      redisAppendLatencyMs: [...this.redisAppendLatenciesMs],
+      telemetryPersisterBatchSizes: [...this.persisterBatchSizes],
+      telemetryPersisterBatchDurationsMs: [...this.persisterBatchDurationsMs],
+      finalFlushWaitDurationsMs: [...this.finalFlushWaitDurationsMs],
+      aiJobPendingTotal: this.aiPending,
+      aiJobRetryTotal: this.aiRetry,
+      aiJobDeadLetterTotal: this.aiDeadLetter,
+      llmSummaryJobPendingTotal: this.llmPending,
+      llmSummaryJobRetryTotal: this.llmRetry,
+      llmSummaryJobDeadLetterTotal: this.llmDeadLetter,
+      serverAiLatencyMs: [...this.serverAiLatenciesMs],
+      serverAiFailureTotal: this.serverAiFailure,
     };
   }
 
@@ -92,6 +178,20 @@ export class ProctoringMetricsService {
     this.summaryDeadLetter = 0;
     this.summaryRegenerated = 0;
     this.summaryRateLimited = 0;
+    this.wsAccepted = 0;
+    this.wsRejected = 0;
+    this.redisAppendLatenciesMs = [];
+    this.persisterBatchSizes = [];
+    this.persisterBatchDurationsMs = [];
+    this.finalFlushWaitDurationsMs = [];
+    this.aiPending = 0;
+    this.aiRetry = 0;
+    this.aiDeadLetter = 0;
+    this.llmPending = 0;
+    this.llmRetry = 0;
+    this.llmDeadLetter = 0;
+    this.serverAiLatenciesMs = [];
+    this.serverAiFailure = 0;
   }
 }
 

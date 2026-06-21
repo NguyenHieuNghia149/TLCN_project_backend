@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm';
 
 import { db } from '../connection';
 import {
@@ -57,6 +57,18 @@ export class ProctoringLlmSummaryRepository {
         )
       );
     return result?.total ?? 0;
+  }
+
+  async findLatestByParticipation(
+    participationId: string
+  ): Promise<ExamProctoringLlmSummaryEntity | null> {
+    const [row] = await this.database
+      .select()
+      .from(examProctoringLlmSummaries)
+      .where(eq(examProctoringLlmSummaries.participationId, participationId))
+      .orderBy(desc(examProctoringLlmSummaries.createdAt))
+      .limit(1);
+    return row ?? null;
   }
 
   async updateJobId(id: string, jobId: string): Promise<ExamProctoringLlmSummaryEntity | null> {

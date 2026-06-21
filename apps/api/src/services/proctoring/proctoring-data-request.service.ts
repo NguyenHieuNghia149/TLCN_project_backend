@@ -1,208 +1,289 @@
+import { AppException } from '@backend/api/exceptions/base.exception';
+import { AdminAuditLogRepository } from '@backend/api/repositories/adminAuditLog.repository';
+import { ProctoringDataRequestRepository } from '@backend/shared/db/repositories/proctoringDataRequest.repository';
+import { db } from '@backend/shared/db/connection';
+import { examParticipations } from '@backend/shared/db/schema';
 import { eq } from 'drizzle-orm';
 
-import { AppException } from '@backend/api/exceptions/base.exception';
-import { ExamParticipationRepository } from '@backend/api/repositories/examParticipation.repository';
-import { ProctoringDataRequestRepository } from '@backend/api/repositories/proctoring/proctoringDataRequest.repository';
-import { db } from '@backend/shared/db/connection';
 import {
-  examProctoringAnomalyResults,
-  examProctoringBypassCodes,
-  examProctoringConsents,
-  examProctoringDataRequests,
-  examProctoringEvents,
-  examProctoringFinalFlushReceipts,
-  examProctoringLlmSummaries,
-  examProctoringPrechecks,
-  examProctoringReviewLabels,
-  examProctoringSessions,
-  examProctoringSummaries,
-  proctoringAiJobs,
-} from '@backend/shared/db/schema';
-import { CreateProctoringDataRequestInput } from '@backend/shared/validations/proctoring.validation';
+  createProctoringRbacService,
+  ProctoringRbacService,
+} from './proctoring-rbac.service';
 
-type ProctoringDataRequestServiceDependencies = {
-  dataRequestRepository: Pick<
-    ProctoringDataRequestRepository,
-    'insert' | 'findById' | 'findByParticipation' | 'updateStatus'
+type Actor = {
+  userId?: string | null;
+  role?: string | null;
+};
+
+type Dependencies = {
+  dataRequestRepository?: ProctoringDataRequestRepository;
+  rbacService?: Pick<
+    ProctoringRbacService,
+    'assertDataRequestCreate' | 'assertDataRequestValidate' | 'assertDataRequestExecute'
   >;
-  examParticipationRepository: Pick<ExamParticipationRepository, 'findById'>;
-  consentRepository?: unknown;
-  proctoringAiJobRepository?: unknown;
-  db?: any;
+  auditLogRepository?: Pick<AdminAuditLogRepository, 'create'>;
+  nowFactory?: () => Date;
 };
-
-type DataRequestInputWithClock = CreateProctoringDataRequestInput & {
-  now?: Date;
-};
-
-type CleanupActor = {
-  actorType: 'system' | 'user';
-  actorId?: string | null;
-};
-
-type CleanupTableResult = {
-  table: string;
-  action: 'deleted';
-  rowsDeleted: number;
-};
-
-const CLEANUP_TABLES = [
-  {
-    name: 'exam_proctoring_events',
-    table: examProctoringEvents,
-    column: examProctoringEvents.participationId,
-  },
-  {
-    name: 'exam_proctoring_final_flush_receipts',
-    table: examProctoringFinalFlushReceipts,
-    column: examProctoringFinalFlushReceipts.participationId,
-  },
-  {
-    name: 'exam_proctoring_summaries',
-    table: examProctoringSummaries,
-    column: examProctoringSummaries.participationId,
-  },
-  {
-    name: 'proctoring_ai_jobs',
-    table: proctoringAiJobs,
-    column: proctoringAiJobs.participationId,
-  },
-  {
-    name: 'exam_proctoring_sessions',
-    table: examProctoringSessions,
-    column: examProctoringSessions.participationId,
-  },
-  {
-    name: 'exam_proctoring_prechecks',
-    table: examProctoringPrechecks,
-    column: examProctoringPrechecks.participationId,
-  },
-  {
-    name: 'exam_proctoring_bypass_codes',
-    table: examProctoringBypassCodes,
-    column: examProctoringBypassCodes.participationId,
-  },
-  {
-    name: 'exam_proctoring_consents',
-    table: examProctoringConsents,
-    column: examProctoringConsents.participationId,
-  },
-  {
-    name: 'exam_proctoring_anomaly_results',
-    table: examProctoringAnomalyResults,
-    column: examProctoringAnomalyResults.participationId,
-  },
-  {
-    name: 'exam_proctoring_review_labels',
-    table: examProctoringReviewLabels,
-    column: examProctoringReviewLabels.participationId,
-  },
-  {
-    name: 'exam_proctoring_llm_summaries',
-    table: examProctoringLlmSummaries,
-    column: examProctoringLlmSummaries.participationId,
-  },
-];
-
-function addHours(date: Date, hours: number): Date {
-  return new Date(date.getTime() + hours * 60 * 60 * 1000);
-}
-
-function readRowCount(result: unknown): number {
-  const maybeRowCount = (result as { rowCount?: number } | undefined)?.rowCount;
-  return typeof maybeRowCount === 'number' ? maybeRowCount : 0;
-}
 
 export class ProctoringDataRequestService {
-  private readonly database: any;
+  private readonly dataRequestRepository: ProctoringDataRequestRepository;
+  private readonly rbacService: Pick<
+    ProctoringRbacService,
+    'assertDataRequestCreate' | 'assertDataRequestValidate' | 'assertDataRequestExecute'
+  >;
+  private readonly auditLogRepository: Pick<AdminAuditLogRepository, 'create'>;
+  private readonly nowFactory: () => Date;
 
-  constructor(private readonly deps: ProctoringDataRequestServiceDependencies) {
-    this.database = deps.db ?? db;
+  constructor(deps: Dependencies = {}) {
+    this.dataRequestRepository =
+      deps.dataRequestRepository ?? new ProctoringDataRequestRepository();
+    this.rbacService = deps.rbacService ?? createProctoringRbacService();
+    this.auditLogRepository = deps.auditLogRepository ?? new AdminAuditLogRepository();
+    this.nowFactory = deps.nowFactory ?? (() => new Date());
+  }
+
+  async create(input: {
+    examId: string;
+    participationId: string;
+    candidateUserId: string;
+    requestType: string;
+    actor: Actor;
+  }) {
+    this.rbacService.assertDataRequestCreate(input.actor);
+    const now = this.nowFactory();
+    const executionHours = 72;
+    const dueAt = new Date(now.getTime() + executionHours * 60 * 60 * 1000);
+
+    const request = await this.dataRequestRepository.insert({
+      examId: input.examId,
+      participationId: input.participationId,
+      candidateUserId: input.candidateUserId,
+      requesterUserId: input.actor.userId ?? null,
+      requestType: input.requestType,
+      status: 'requested',
+      requestedAt: now,
+      statutoryDueAt: dueAt,
+      internalTargetDueAt: dueAt,
+      executionTargetHours: executionHours,
+      requestMetadataJson: { source: 'admin-panel', actorRole: input.actor.role },
+    } as any);
+
+    await this.auditLogRepository.create({
+      actorType: input.actor.userId ? 'user' : 'system',
+      actorId: input.actor.userId ?? null,
+      action: 'proctoring_data_request_create',
+      targetType: 'exam_proctoring_data_request',
+      targetId: request.id,
+      metadata: {
+        examId: input.examId,
+        requestType: input.requestType,
+      },
+    } as any);
+
+    return request;
+  }
+
+  async validate(input: { requestId: string; actor: Actor }) {
+    this.rbacService.assertDataRequestValidate(input.actor);
+
+    const existing = await this.dataRequestRepository.findById(input.requestId);
+    if (!existing) {
+      throw new AppException(
+        'Data request not found.',
+        404,
+        'PROCTORING_DATA_REQUEST_NOT_FOUND'
+      );
+    }
+    if (existing.status !== 'requested') {
+      throw new AppException(
+        'Data request can only be validated from requested status.',
+        400,
+        'PROCTORING_DATA_REQUEST_INVALID_STATUS'
+      );
+    }
+
+    const now = this.nowFactory();
+    const result = await this.dataRequestRepository.updateStatus(input.requestId, {
+      status: 'validated',
+      approvedByUserId: input.actor.userId ?? null,
+      approvedAt: now,
+    });
+
+    await this.auditLogRepository.create({
+      actorType: input.actor.userId ? 'user' : 'system',
+      actorId: input.actor.userId ?? null,
+      action: 'proctoring_data_request_validate',
+      targetType: 'exam_proctoring_data_request',
+      targetId: input.requestId,
+    } as any);
+
+    return result;
+  }
+
+  async reject(input: { requestId: string; reason: string; actor: Actor }) {
+    this.rbacService.assertDataRequestValidate(input.actor);
+
+    const existing = await this.dataRequestRepository.findById(input.requestId);
+    if (!existing) {
+      throw new AppException(
+        'Data request not found.',
+        404,
+        'PROCTORING_DATA_REQUEST_NOT_FOUND'
+      );
+    }
+    if (existing.status !== 'requested') {
+      throw new AppException(
+        'Data request can only be rejected from requested status.',
+        400,
+        'PROCTORING_DATA_REQUEST_INVALID_STATUS'
+      );
+    }
+
+    const now = this.nowFactory();
+    const result = await this.dataRequestRepository.updateStatus(input.requestId, {
+      status: 'rejected',
+      rejectedAt: now,
+      reasonCode: input.reason.slice(0, 80),
+    });
+
+    await this.auditLogRepository.create({
+      actorType: input.actor.userId ? 'user' : 'system',
+      actorId: input.actor.userId ?? null,
+      action: 'proctoring_data_request_reject',
+      targetType: 'exam_proctoring_data_request',
+      targetId: input.requestId,
+      metadata: { reasonCode: input.reason.slice(0, 40) },
+    } as any);
+
+    return result;
+  }
+
+  async execute(input: { requestId: string; dryRun: boolean; reason: string; actor: Actor }) {
+    this.rbacService.assertDataRequestExecute(input.actor);
+
+    const existing = await this.dataRequestRepository.findById(input.requestId);
+    if (!existing) {
+      throw new AppException(
+        'Data request not found.',
+        404,
+        'PROCTORING_DATA_REQUEST_NOT_FOUND'
+      );
+    }
+    if (existing.status !== 'validated') {
+      throw new AppException(
+        'Data request must be validated before execution.',
+        400,
+        'PROCTORING_DATA_REQUEST_INVALID_STATUS'
+      );
+    }
+    if (!input.dryRun && process.env.NODE_ENV !== 'staging' && process.env.NODE_ENV !== 'test') {
+      throw new AppException(
+        'Mutating execution is only allowed in staging environment.',
+        400,
+        'PROCTORING_DATA_REQUEST_MUTATION_REFUSED'
+      );
+    }
+
+    const now = this.nowFactory();
+    const result = await this.dataRequestRepository.updateStatus(input.requestId, {
+      lastExecutionDryRun: input.dryRun,
+      lastExecutionRequestedAt: now,
+      lastExecutionRequestedBy: input.actor.userId ?? null,
+      dryRunMode: input.dryRun ? 'dry_run' : 'mutating',
+    } as any);
+
+    await this.auditLogRepository.create({
+      actorType: input.actor.userId ? 'user' : 'system',
+      actorId: input.actor.userId ?? null,
+      action: input.dryRun
+        ? 'proctoring_data_request_execute_dry_run'
+        : 'proctoring_data_request_execute_mutating',
+      targetType: 'exam_proctoring_data_request',
+      targetId: input.requestId,
+      metadata: { dryRun: input.dryRun, reason: input.reason },
+    } as any);
+
+    return result;
   }
 
   async createDataRequest(
     participationId: string,
-    candidateUserId: string | undefined,
-    input: DataRequestInputWithClock,
+    userId: string | undefined,
+    body: Record<string, unknown>
   ) {
-    if (!candidateUserId) {
-      throw new AppException('Authentication required', 401, 'AUTHENTICATION_REQUIRED');
-    }
-
-    const participation = await this.deps.examParticipationRepository.findById(participationId);
-    if (!participation || participation.userId !== candidateUserId) {
-      throw new AppException('Participation not found', 404, 'PARTICIPATION_NOT_FOUND');
-    }
-
-    const requestedAt = input.now ?? new Date();
-    const statutoryDueAt = new Date(input.statutoryDueAt);
-
-    return this.deps.dataRequestRepository.insert({
-      examId: participation.examId,
-      participationId,
-      candidateUserId,
-      requestType: input.requestType,
-      status: 'requested',
-      requestedAt,
-      statutoryDueAt,
-      internalTargetDueAt: addHours(requestedAt, 72),
-      resultJson: input.reason ? { reason: input.reason } : null,
-    } as any);
-  }
-
-  async executeDataRequestCleanup(requestId: string, actor: CleanupActor) {
-    const request = await this.deps.dataRequestRepository.findById(requestId);
-    if (!request) {
-      throw new AppException('Proctoring data request not found', 404, 'PROCTORING_DATA_REQUEST_NOT_FOUND');
-    }
-    if (!request.participationId) {
+    if (!userId) {
       throw new AppException(
-        'Participation-scoped cleanup is required for Phase 1',
-        422,
-        'PROCTORING_DATA_REQUEST_SCOPE_UNSUPPORTED',
+        'Authentication required.',
+        401,
+        'PROCTORING_DATA_REQUEST_UNAUTHENTICATED'
       );
     }
 
-    const startedAt = new Date();
-    const tablesTouched = await this.database.transaction(async (tx: any) => {
-      const results: CleanupTableResult[] = [];
-      for (const target of CLEANUP_TABLES) {
-        const deleteResult = await tx.delete(target.table).where(eq(target.column as any, request.participationId));
-        results.push({
-          table: target.name,
-          action: 'deleted',
-          rowsDeleted: readRowCount(deleteResult),
-        });
-      }
-      return results;
-    });
-    const completedAt = new Date();
-    const resultJson = {
-      requestType: request.requestType,
-      tablesTouched,
-      rowsDeleted: tablesTouched.reduce((total: number, row: CleanupTableResult) => total + row.rowsDeleted, 0),
-      skippedRows: [],
-      startedAt: startedAt.toISOString(),
-      completedAt: completedAt.toISOString(),
-      actor: {
-        actorType: actor.actorType,
-        actorId: actor.actorId ?? null,
-      },
-      includedAiJobStatuses: ['pending', 'running', 'completed', 'retry', 'dead_letter', 'skipped'],
-    };
+    const [participation] = await db
+      .select({ examId: examParticipations.examId, userId: examParticipations.userId })
+      .from(examParticipations)
+      .where(eq(examParticipations.id, participationId));
 
-    return this.deps.dataRequestRepository.updateStatus(requestId, {
-      status: 'completed',
-      completedAt,
-      resultJson,
-      updatedAt: completedAt,
+    if (!participation) {
+      throw new AppException(
+        'Participation not found.',
+        404,
+        'PROCTORING_PARTICIPATION_NOT_FOUND'
+      );
+    }
+    if (participation.userId !== userId) {
+      throw new AppException(
+        'Participation does not belong to the authenticated user.',
+        403,
+        'PROCTORING_DATA_REQUEST_OWNERSHIP_MISMATCH'
+      );
+    }
+
+    const now = this.nowFactory();
+    const executionHours = 72;
+    const dueAt = new Date(now.getTime() + executionHours * 60 * 60 * 1000);
+    const requestType = typeof body.requestType === 'string' ? body.requestType : 'delete';
+
+    const request = await this.dataRequestRepository.insert({
+      examId: participation.examId,
+      participationId,
+      candidateUserId: userId,
+      requesterUserId: userId,
+      requestType,
+      status: 'requested',
+      requestedAt: now,
+      statutoryDueAt: dueAt,
+      internalTargetDueAt: dueAt,
+      executionTargetHours: executionHours,
+      requestMetadataJson: { source: 'candidate' },
     } as any);
+
+    await this.auditLogRepository.create({
+      actorType: 'user',
+      actorId: userId,
+      action: 'data_request_created',
+      targetType: 'exam_proctoring_data_request',
+      targetId: request.id,
+      metadata: {
+        participationId,
+        requestType,
+      },
+    } as any);
+
+    return request;
+  }
+
+  async findByExamId(examId: string, actor: Actor) {
+    this.rbacService.assertDataRequestCreate(actor);
+    return this.dataRequestRepository.findByExamId(examId);
+  }
+
+  async findById(id: string, actor: Actor) {
+    this.rbacService.assertDataRequestCreate(actor);
+    return this.dataRequestRepository.findById(id);
   }
 }
 
 export function createProctoringDataRequestService(): ProctoringDataRequestService {
-  return new ProctoringDataRequestService({
-    dataRequestRepository: new ProctoringDataRequestRepository(),
-    examParticipationRepository: new ExamParticipationRepository(),
-  });
+  return new ProctoringDataRequestService();
 }
