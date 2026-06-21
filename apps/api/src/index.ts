@@ -19,6 +19,7 @@ const allowedOrigins = [
   'https://app.algoforge.site',
   'https://sandbox.algoforge.site',
   'https://api.algoforge.site',
+  'https://app.virgodapoet.site',
 ];
 
 const adminRouterBindings = new WeakMap<Express, (handler: RequestHandler) => void>();
@@ -64,6 +65,8 @@ export function createApiApp(): Express {
           imgSrc: ["'self'", 'data:', 'https:'],
         },
       },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginOpenerPolicy: { policy: 'unsafe-none' },
       crossOriginEmbedderPolicy: false,
     })
   );
