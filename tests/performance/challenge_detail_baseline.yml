@@ -1,0 +1,13 @@
+config:
+  target: 'http://localhost/api/challenges'
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: Challenge detail baseline
+  variables:
+    challengeId: 'REPLACE_WITH_50_TO_100_TESTCASE_CHALLENGE_ID'
+scenarios:
+  - name: 'Challenge Detail Baseline'
+    flow:
+      - get:
+          url: '/{{ challengeId }}'

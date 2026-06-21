@@ -1,0 +1,173 @@
+{
+  "version": "5",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1764330082627,
+      "tag": "20251128114122_chunky_snowbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1765436009903,
+      "tag": "20251211065329_fast_purifiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765439675631,
+      "tag": "20251211075435_slimy_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765722782813,
+      "tag": "20251214143302_add_submission_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773862395708,
+      "tag": "20260318193315_far_infant_terrible",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773906243069,
+      "tag": "20260319074403_lovely_giant_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773925730606,
+      "tag": "20260319130850_daily_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773932167938,
+      "tag": "20260319145607_graceful_ricochet",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775054034792,
+      "tag": "20260401143354_public_violations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775054811828,
+      "tag": "20260401144651_dry_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775062935071,
+      "tag": "20260401170215_dear_shen",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775119646417,
+      "tag": "20260402084726_kind_leopardon",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1775121379872,
+      "tag": "20260402091619_repair_solution_approaches_drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1775145939401,
+      "tag": "20260402160539_goofy_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775150023490,
+      "tag": "20260402171343_loose_ultimatum",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1775217697800,
+      "tag": "20260403120137_grey_prowler",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1775327933689,
+      "tag": "20260404183853_rare_overlord",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1776176189282,
+      "tag": "20260414141629_good_cargill",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1777461498656,
+      "tag": "20260429111818_flashy_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1777734384684,
+      "tag": "20260502150624_use_plain_exam_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779883200000,
+      "tag": "20260527120000_optimize_slow_query_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781131200000,
+      "tag": "20260611120000_add_exam_proctoring_phase1",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1781447400000,
+      "tag": "20260614143000_add_exam_proctoring_phase2",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1781460000000,
+      "tag": "20260614180000_add_exam_proctoring_phase3",
+      "breakpoints": true
+    }
+  ]
+}

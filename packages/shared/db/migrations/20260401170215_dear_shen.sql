@@ -1,0 +1,1 @@
+ALTER TABLE "solution_approaches" DROP COLUMN "language";

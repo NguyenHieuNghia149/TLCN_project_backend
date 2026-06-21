@@ -1,0 +1,653 @@
+import { logger } from '@backend/shared/utils';
+import { NotFoundException } from '../exceptions/solution.exception';
+import { ChallengeHasSubmissionsException } from '../exceptions/challenge.exceptions';
+import { BaseException, ValidationException } from '../exceptions/auth.exceptions';
+import { ProblemRepository } from '../repositories/problem.repository';
+import { SolutionRepository } from '../repositories/solution.repository';
+import { TestcaseRepository } from '../repositories/testcase.repository';
+import { TopicRepository } from '../repositories/topic.repository';
+import { updateSolutionVisibilitySchema } from '@backend/shared/db/schema';
+import { buildStarterCodeByLanguage, buildTestcaseDisplay, getIntegratedExecutableLanguageKeys, normalizeFunctionSignature } from '@backend/shared/utils';
+import { ChallengeResponse, ProblemInput } from '@backend/shared/validations/problem.validation';
+import { LessonRepository } from '../repositories/lesson.repository';
+import { SubmissionRepository } from '../repositories/submission.repository';
+import { SolutionApproachRepository } from '../repositories/solutionApproach.repository';
+import {
+  normalizeSolutionApproachCodeVariants,
+  SolutionResponse,
+} from '@backend/shared/validations/solution.validation';
+import { FavoriteRepository } from '../repositories/favorite.repository';
+import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
+import { ProblemVisibility } from '@backend/shared/types';
+import { submissionMetadataInvalidator } from './submission-metadata-cache';
+
+type ChallengeServiceDependencies = {
+  topicRepository: TopicRepository;
+  problemRepository: ProblemRepository;
+  testcaseRepository: TestcaseRepository;
+  solutionRepository: SolutionRepository;
+  lessonRepository: LessonRepository;
+  solutionApproachRepository: SolutionApproachRepository;
+  submissionRepository: SubmissionRepository;
+  favoriteRepository: FavoriteRepository;
+  supportedLanguageRepository: SupportedLanguageRepository;
+};
+
+export class ChallengeService {
+  private topicRepository: TopicRepository;
+  private problemRepository: ProblemRepository;
+  private testcaseRepository: TestcaseRepository;
+  private solutionRepository: SolutionRepository;
+  private lessonRepository: LessonRepository;
+  private solutionApproachRepository: SolutionApproachRepository;
+  private submissionRepository: SubmissionRepository;
+  private favoriteRepository: FavoriteRepository;
+  private supportedLanguageRepository: SupportedLanguageRepository;
+
+  constructor(deps: ChallengeServiceDependencies) {
+    this.topicRepository = deps.topicRepository;
+    this.problemRepository = deps.problemRepository;
+    this.testcaseRepository = deps.testcaseRepository;
+    this.solutionRepository = deps.solutionRepository;
+    this.lessonRepository = deps.lessonRepository;
+    this.solutionApproachRepository = deps.solutionApproachRepository;
+    this.submissionRepository = deps.submissionRepository;
+    this.favoriteRepository = deps.favoriteRepository;
+    this.supportedLanguageRepository = deps.supportedLanguageRepository;
+  }
+
+  async createChallenge(challengeData: ProblemInput): Promise<ChallengeResponse> {
+    const { testcases: testcaseInputs, solution, ...problemData } = challengeData;
+
+    // Validate topic and lesson existence
+    await this.validateTopicAndLesson(problemData.topicId, problemData.lessonId);
+    await this.validateSolutionLanguageCoverage(solution);
+
+    // Create challenge using repository
+    const result = await this.problemRepository.createProblemTransactional(challengeData);
+
+    // Map to response format
+    return this.mapToChallengeResponse(result);
+  }
+
+  private async validateTopicAndLesson(topicId?: string, lessonId?: string): Promise<void> {
+    if (topicId) {
+      const topic = await this.topicRepository.findById(topicId);
+      if (!topic) {
+        throw new NotFoundException(`Topic with ID ${topicId} not found.`);
+      }
+    }
+
+    if (lessonId) {
+      const lesson = await this.lessonRepository.findById(lessonId);
+      if (!lesson) {
+        throw new NotFoundException(`Lesson with ID ${lessonId} not found.`);
+      }
+    }
+  }
+
+  private buildEmptyStarterCodeByLanguage(): Record<string, string> {
+    return getIntegratedExecutableLanguageKeys().reduce<Record<string, string>>((acc, language) => {
+      acc[language] = '';
+      return acc;
+    }, {});
+  }
+
+  private async validateSolutionLanguageCoverage(
+    solution?: ProblemInput['solution'],
+  ): Promise<void> {
+    if (!solution?.solutionApproaches) {
+      return;
+    }
+
+    const activeLanguageKeys = (
+      await this.supportedLanguageRepository.findActiveExecutableLanguages()
+    ).map(language => language.key);
+
+    if (activeLanguageKeys.length === 0) {
+      return;
+    }
+
+    for (const approach of solution.solutionApproaches) {
+      const codeVariants = normalizeSolutionApproachCodeVariants(approach);
+      const seenLanguages = new Set<string>();
+      const duplicateLanguages = new Set<string>();
+
+      for (const variant of codeVariants) {
+        if (seenLanguages.has(variant.language)) {
+          duplicateLanguages.add(variant.language);
+        }
+        seenLanguages.add(variant.language);
+      }
+
+      if (duplicateLanguages.size > 0) {
+        throw new ValidationException(
+          `Duplicate solution code variants: ${Array.from(duplicateLanguages).join(', ')}`,
+        );
+      }
+
+      const unsupportedLanguages = codeVariants
+        .map(variant => variant.language)
+        .filter(language => !activeLanguageKeys.includes(language));
+      if (unsupportedLanguages.length > 0) {
+        throw new ValidationException(
+          `Solution code contains inactive or unsupported languages: ${Array.from(new Set(unsupportedLanguages)).join(', ')}`,
+        );
+      }
+
+      const missingLanguages = activeLanguageKeys.filter(
+        language => !codeVariants.some(variant => variant.language === language),
+      );
+      if (missingLanguages.length > 0) {
+        throw new ValidationException(
+          `Missing solution code for active languages: ${missingLanguages.join(', ')}`,
+        );
+      }
+    }
+  }
+
+  private requireNormalizedFunctionSignature(problemId: string, functionSignature: unknown) {
+    try {
+      return normalizeFunctionSignature(functionSignature);
+    } catch (error) {
+      logger.error('Problem functionSignature invalid while building challenge response', {
+        problemId,
+        error,
+        functionSignature,
+      });
+      throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
+    }
+  }
+
+  private buildStarterCodeByLanguageSafe(functionSignature: any) {
+    if (!functionSignature) {
+      return this.buildEmptyStarterCodeByLanguage();
+    }
+
+    try {
+      return buildStarterCodeByLanguage(functionSignature);
+    } catch (error) {
+      logger.warn('Failed to build starter code for challenge response', {
+        error,
+        functionSignature,
+      });
+      return this.buildEmptyStarterCodeByLanguage();
+    }
+  }
+
+  private mapToChallengeResponse(result: any): ChallengeResponse {
+    const { problem, testcases, solution } = result;
+    const functionSignature = this.requireNormalizedFunctionSignature(
+      problem.id,
+      problem.functionSignature,
+    );
+    const totalPoints = (testcases || []).reduce((sum: number, tc: any) => {
+      const point = typeof tc.point === 'number' ? tc.point : 0;
+      return sum + point;
+    }, 0);
+
+    const isSolved = Boolean((problem as any).isSolved ?? false);
+    const isFavorite = Boolean((problem as any).isFavorite ?? false);
+
+    return {
+      problem: {
+        id: problem.id,
+        title: problem.title,
+        description: problem.description ?? '',
+        difficulty: problem.difficult,
+        constraint: problem.constraint ?? '',
+        tags: (problem.tags ?? '').split(',').filter(Boolean),
+        lessonId: problem.lessonId ?? '',
+        topicId: problem.topicId ?? '',
+        totalPoints,
+        isSolved,
+        isFavorite,
+        functionSignature,
+        starterCodeByLanguage: this.buildStarterCodeByLanguageSafe(functionSignature),
+        createdAt: problem.createdAt?.toISOString?.() ?? String(problem.createdAt),
+        updatedAt: problem.updatedAt?.toISOString?.() ?? String(problem.updatedAt),
+      },
+      testcases: testcases.map((tc: any) => {
+        const display = buildTestcaseDisplay(functionSignature, {
+          inputJson: tc.inputJson as Record<string, unknown>,
+          outputJson: tc.outputJson,
+        });
+
+        return {
+          id: tc.id,
+          inputJson: tc.inputJson,
+          outputJson: tc.outputJson,
+          input: display.input,
+          output: display.output,
+          isPublic: tc.isPublic,
+          point: tc.point,
+          createdAt: tc.createdAt?.toISOString?.() ?? String(tc.createdAt),
+          updatedAt: tc.updatedAt?.toISOString?.() ?? String(tc.updatedAt),
+        };
+      }),
+      solution: solution ? this.mapSolutionToResponse(solution) : this.getEmptySolution(),
+    };
+  }
+  private mapSolutionToResponse(solution: any) {
+    return {
+      id: solution.id,
+      title: solution.title,
+      description: solution.description ?? '',
+      videoUrl: solution.videoUrl ?? '',
+      imageUrl: solution.imageUrl ?? '',
+      isVisible: solution.isVisible,
+      solutionApproaches: (solution.solutionApproaches ?? []).map((ap: any) => {
+        const codeVariants = normalizeSolutionApproachCodeVariants(ap);
+
+        return {
+          id: ap.id,
+          title: ap.title,
+          description: ap.description ?? '',
+          codeVariants,
+          timeComplexity: ap.timeComplexity ?? '',
+          spaceComplexity: ap.spaceComplexity ?? '',
+          explanation: ap.explanation ?? '',
+          order: ap.order,
+          createdAt: ap.createdAt?.toISOString?.() ?? String(ap.createdAt),
+          updatedAt: ap.updatedAt?.toISOString?.() ?? String(ap.updatedAt),
+        };
+      }),
+      createdAt: solution.createdAt?.toISOString?.() ?? String(solution.createdAt),
+      updatedAt: solution.updatedAt?.toISOString?.() ?? String(solution.updatedAt),
+    };
+  }
+
+  private getEmptySolution() {
+    return {
+      id: '',
+      title: '',
+      description: '',
+      videoUrl: '',
+      imageUrl: '',
+      isVisible: true,
+      solutionApproaches: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async updateSolutionVisibility(
+    solutionId: string,
+    isVisible: boolean
+  ): Promise<{ id: string; isVisible: boolean; updatedAt: string }> {
+    // Validate input using Zod schema
+    updateSolutionVisibilitySchema.parse({ isVisible });
+
+    const updatedSolution = await this.solutionRepository.updateVisibility(solutionId, isVisible);
+
+    if (!updatedSolution) {
+      throw new NotFoundException(`Solution with ID ${solutionId} not found.`);
+    }
+
+    return {
+      id: updatedSolution.id,
+      isVisible: updatedSolution.isVisible,
+      updatedAt:
+        updatedSolution.updatedAt instanceof Date
+          ? updatedSolution.updatedAt.toISOString()
+          : String(updatedSolution.updatedAt),
+    };
+  }
+
+  async listProblemsByTopicInfinite(params: {
+    topicId: string;
+    limit?: number;
+    cursor?: { createdAt: string; id: string } | null;
+    userId?: string;
+  }): Promise<{
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficulty: string;
+      createdAt: Date | string;
+      totalPoints: number;
+      isSolved: boolean;
+      isFavorite: boolean;
+    }>;
+    nextCursor: { createdAt: string; id: string } | null;
+  }> {
+    const { topicId, limit = 10, cursor, userId } = params;
+
+    const isTopicExisting = await this.topicRepository.findById(topicId);
+    if (!isTopicExisting) {
+      throw new NotFoundException(`Topic with ID ${topicId} not found.`);
+    }
+
+    const { items, nextCursor } = await this.problemRepository.findByTopicWithCursor({
+      topicId,
+      limit,
+      cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
+    });
+
+    // Batch sum points
+    const problemIds = items.map((p: any) => p.id);
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
+
+    // Batch solved/favorite map if user provided
+    let solvedSet: Set<string> = new Set();
+    let favoriteSet: Set<string> = new Set();
+    if (userId) {
+      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(userId, problemIds);
+      favoriteSet = await this.favoriteRepository.getFavoriteProblemIds(userId, problemIds);
+    }
+
+    return {
+      items: items.map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        difficulty: p.difficult,
+        createdAt: p.createdAt,
+        totalPoints: pointsMap[p.id] ?? 0,
+        isSolved: userId ? solvedSet.has(p.id) : false,
+        isFavorite: userId ? favoriteSet.has(p.id) : false,
+      })),
+      nextCursor: nextCursor
+        ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
+        : null,
+    };
+  }
+
+  async getTopicTags(topicId: string): Promise<string[]> {
+    const isTopicExisting = await this.topicRepository.findById(topicId);
+    if (!isTopicExisting) {
+      throw new NotFoundException(`Topic with ID ${topicId} not found.`);
+    }
+    return this.problemRepository.getTagsByTopicId(topicId);
+  }
+
+  async getAllTags(): Promise<string[]> {
+    return this.problemRepository.getAllTags();
+  }
+
+  async listProblemsByTopicAndTags(params: {
+    topicId: string;
+    tags: string[];
+    limit?: number;
+    cursor?: { createdAt: string; id: string } | null;
+    userId?: string;
+  }): Promise<{
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficulty: string;
+      createdAt: Date | string;
+      totalPoints: number;
+      isSolved: boolean;
+      isFavorite: boolean;
+    }>;
+    nextCursor: { createdAt: string; id: string } | null;
+  }> {
+    const { topicId, tags, limit = 10, cursor, userId } = params;
+
+    const isTopicExisting = await this.topicRepository.findById(topicId);
+    if (!isTopicExisting) {
+      throw new NotFoundException(`Topic with ID ${topicId} not found.`);
+    }
+
+    const { items, nextCursor } = await this.problemRepository.findByTopicWithTagsCursor({
+      topicId,
+      tags,
+      limit,
+      cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
+    });
+
+    // Batch sum points
+    const problemIds = items.map((p: any) => p.id);
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
+
+    // Batch solved/favorite map if user provided
+    let solvedSet: Set<string> = new Set();
+    let favoriteSet: Set<string> = new Set();
+    if (userId) {
+      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(userId, problemIds);
+      favoriteSet = await this.favoriteRepository.getFavoriteProblemIds(userId, problemIds);
+    }
+
+    return {
+      items: items.map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        difficulty: p.difficult,
+        createdAt: p.createdAt,
+        totalPoints: pointsMap[p.id] ?? 0,
+        isSolved: userId ? solvedSet.has(p.id) : false,
+        isFavorite: userId ? favoriteSet.has(p.id) : false,
+      })),
+      nextCursor: nextCursor
+        ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
+        : null,
+    };
+  }
+
+  async getAllChallenges(
+    page: number,
+    limit: number,
+    search?: string,
+    sortField?: string,
+    sortOrder?: 'asc' | 'desc'
+  ): Promise<{
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficulty: string;
+      visibility: boolean;
+      topicId: string;
+      topicName: string;
+      lessonId: string | null;
+      createdAt: Date | string;
+    }>;
+    total: number;
+  }> {
+    const { data, total } = await this.problemRepository.findAllProblems(
+      page,
+      limit,
+      search,
+      sortField,
+      sortOrder
+    );
+    const items = data.map((p: any) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      difficulty: p.difficult,
+      visibility: p.visibility,
+      topicId: p.topicId,
+      topicName: p.topicName,
+      lessonId: p.lessonId,
+      createdAt: p.createdAt,
+    }));
+    return { items, total };
+  }
+
+  async getChallengeById(
+    challengeId: string,
+    userId?: string,
+    options?: { showAllTestcases?: boolean; allowPrivateVisibility?: boolean }
+  ): Promise<ChallengeResponse> {
+    const problem = await this.problemRepository.findById(challengeId);
+
+    if (!problem) {
+      throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
+    }
+
+    const canBypassVisibility =
+      options?.showAllTestcases === true || options?.allowPrivateVisibility === true;
+    if (problem.visibility !== ProblemVisibility.PUBLIC && !canBypassVisibility) {
+      throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
+    }
+    // Admin/Teacher can view all testcases, regular users see only public testcases
+    const testcases = options?.showAllTestcases
+      ? await this.testcaseRepository.findByProblemId(challengeId)
+      : await this.testcaseRepository.findPublicByProblemId(challengeId);
+    const visibleSolution = await this.fetchVisibleSolutionWithApproaches(challengeId);
+
+    const isSolved = userId
+      ? (await this.submissionRepository.getAcceptedProblemIdsByUser(userId, [challengeId])).has(
+          challengeId
+        )
+      : false;
+
+    const isFavorite = userId
+      ? await this.favoriteRepository.isFavorite(userId, challengeId)
+      : false;
+
+    return this.mapToChallengeResponse({
+      problem: { ...problem, isSolved, isFavorite },
+      testcases: testcases,
+      solution: visibleSolution,
+    });
+  }
+
+  private async fetchVisibleSolutionWithApproaches(
+    problemId: string
+  ): Promise<SolutionResponse | null> {
+    const solution = await this.solutionRepository.findByProblemId(problemId, true);
+    if (!solution) return null;
+    const approaches = await this.solutionApproachRepository.findBySolutionId(solution.id);
+    return { ...(solution as any), solutionApproaches: approaches } as any;
+  }
+
+  async updateChallenge(
+    challengeId: string,
+    updateData: Partial<ProblemInput>
+  ): Promise<ChallengeResponse> {
+    const existingProblem = await this.problemRepository.findById(challengeId);
+    if (!existingProblem) {
+      throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
+    }
+
+    // Check if challenge has any submissions
+    const submissions = await this.submissionRepository.findByProblemId(challengeId, {
+      page: 1,
+      limit: 1,
+    });
+    if (submissions.data.length > 0) {
+      throw new ChallengeHasSubmissionsException();
+    }
+
+    // Validate topic and lesson if provided
+    if (updateData.topicId || updateData.lessonId) {
+      await this.validateTopicAndLesson(updateData.topicId, updateData.lessonId);
+    }
+
+    if (updateData.solution?.solutionApproaches !== undefined) {
+      await this.validateSolutionLanguageCoverage(updateData.solution);
+    }
+
+    const effectiveFunctionSignature =
+      updateData.functionSignature !== undefined
+        ? updateData.functionSignature
+        : existingProblem.functionSignature;
+
+    if (!effectiveFunctionSignature) {
+      logger.error('Problem functionSignature missing while updating challenge', { problemId: challengeId });
+      throw new BaseException('problem configuration invalid', 500, 'PROBLEM_CONFIGURATION_INVALID');
+    }
+
+    const normalizedFunctionSignature = this.requireNormalizedFunctionSignature(
+      challengeId,
+      effectiveFunctionSignature,
+    );
+
+    const dbUpdateData: any = {
+      ...updateData,
+      tags: updateData.tags ? updateData.tags.join(',') : undefined,
+      topicId: updateData.topicId,
+      lessonId: updateData.lessonId,
+      difficult: updateData.difficulty,
+      functionSignature: normalizedFunctionSignature,
+    };
+
+    // Remove fields that shouldn't be updated directly
+    delete dbUpdateData.topicId;
+    delete dbUpdateData.lessonId;
+    delete dbUpdateData.difficulty;
+    delete dbUpdateData.testcases;
+    delete dbUpdateData.solution;
+
+    const updatedProblem = await this.problemRepository.update(challengeId, dbUpdateData);
+    if (!updatedProblem) {
+      throw new NotFoundException(`Failed to update challenge with ID ${challengeId}.`);
+    }
+
+    // Handle solution update if provided
+    if (updateData.solution) {
+      await this.problemRepository.updateSolutionTransactional(challengeId, updateData.solution);
+    }
+
+    // Handle testcases update if provided
+    if (updateData.testcases) {
+      logger.info('Updating testcases:', updateData.testcases.length);
+      await this.testcaseRepository.updateTestcasesTransactional(challengeId, updateData.testcases);
+    } else {
+      logger.info('No testcases provided in updateData');
+    }
+
+    submissionMetadataInvalidator.invalidateProblem(challengeId);
+
+    return this.getChallengeById(challengeId, undefined, { showAllTestcases: true });
+  }
+
+  async deleteChallenge(challengeId: string): Promise<void> {
+    const existingProblem = await this.problemRepository.findById(challengeId);
+    if (!existingProblem) {
+      throw new NotFoundException(`Challenge with ID ${challengeId} not found.`);
+    }
+
+    // Check if challenge has any submissions
+    const submissions = await this.submissionRepository.findByProblemId(challengeId, {
+      page: 1,
+      limit: 1,
+    });
+    if (submissions.data.length > 0) {
+      throw new ChallengeHasSubmissionsException();
+    }
+
+    const deletedSolution = await this.solutionRepository.deleteByProblemId(challengeId);
+    if (!deletedSolution) {
+      throw new NotFoundException(
+        `Failed to delete solution for challenge with ID ${challengeId}.`
+      );
+    }
+    const deletedTestcases = await this.testcaseRepository.deleteByProblemId(challengeId);
+    if (!deletedTestcases) {
+      throw new NotFoundException(
+        `Failed to delete testcases for challenge with ID ${challengeId}.`
+      );
+    }
+
+    const deleted = await this.problemRepository.delete(challengeId);
+    if (!deleted) {
+      throw new NotFoundException(`Failed to delete challenge with ID ${challengeId}.`);
+    }
+
+    submissionMetadataInvalidator.invalidateProblem(challengeId);
+  }
+}
+
+/** Creates a ChallengeService with concrete repository dependencies. */
+export function createChallengeService(): ChallengeService {
+  return new ChallengeService({
+    topicRepository: new TopicRepository(),
+    problemRepository: new ProblemRepository(),
+    testcaseRepository: new TestcaseRepository(),
+    solutionRepository: new SolutionRepository(),
+    lessonRepository: new LessonRepository(),
+    solutionApproachRepository: new SolutionApproachRepository(),
+    submissionRepository: new SubmissionRepository(),
+    favoriteRepository: new FavoriteRepository(),
+    supportedLanguageRepository: new SupportedLanguageRepository(),
+  });
+}
+
+

@@ -1,0 +1,377 @@
+import {
+  exam,
+  ExamEntity,
+  ExamInsert,
+  problems,
+  examToProblems,
+  examParticipations,
+  examParticipants,
+} from '@backend/shared/db/schema';
+import { BaseRepository } from './base.repository';
+import { ProblemRepository } from './problem.repository';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  not,
+  sql,
+} from 'drizzle-orm';
+
+type ExamRepositoryDependencies = {
+  problemRepository: ProblemRepository;
+};
+
+export class ExamRepository extends BaseRepository<typeof exam, ExamEntity, ExamInsert> {
+  private problemRepository: ProblemRepository;
+
+  constructor(deps: ExamRepositoryDependencies) {
+    super(exam);
+    this.problemRepository = deps.problemRepository;
+  }
+
+  getAllExams(): Promise<ExamEntity[]> {
+    return this.db
+      .select()
+      .from(exam)
+      .where(and(eq(exam.isVisible, true), eq(exam.status, 'published')))
+      .orderBy(desc(exam.createdAt));
+  }
+
+  getExamsWithIncompleteParticipations(): Promise<ExamEntity[]> {
+    const activeParticipationSubquery = this.db
+      .select({ id: examParticipations.id })
+      .from(examParticipations)
+      .where(
+        and(
+          eq(examParticipations.examId, exam.id),
+          eq(examParticipations.status, 'IN_PROGRESS'),
+        ),
+      )
+      .limit(1);
+
+    return this.db
+      .select()
+      .from(exam)
+      .where(
+        and(
+          eq(exam.isVisible, true),
+          eq(exam.status, 'published'),
+          exists(activeParticipationSubquery),
+        ),
+      )
+      .orderBy(desc(exam.createdAt));
+  }
+
+  async getExamsPaginated(
+    limit = 50,
+    offset = 0,
+    options?: {
+      search?: string;
+      createdBy?: string;
+      examIds?: string[];
+      isVisible?: boolean;
+      status?: string;
+      statuses?: string[];
+      excludeInviteOnly?: boolean;
+    }
+  ): Promise<{ items: ExamEntity[]; total: number }> {
+    const predicates: any[] = [];
+
+    if (options?.isVisible !== undefined) {
+      predicates.push(eq(exam.isVisible, options.isVisible));
+    }
+
+    if (options?.createdBy) {
+      predicates.push(eq(exam.createdBy, options.createdBy));
+    }
+
+    if (options?.statuses?.length) {
+      predicates.push(inArray(exam.status, options.statuses));
+    } else if (options?.status) {
+      predicates.push(eq(exam.status, options.status));
+    }
+
+    if (options?.excludeInviteOnly) {
+      predicates.push(ne(exam.accessMode, 'invite_only'));
+    }
+
+    if (options?.examIds && options.examIds.length > 0) {
+      predicates.push(inArray(exam.id, options.examIds));
+    }
+
+    if (options?.search) {
+      // case-insensitive search on title
+      const pattern = `%${options.search.toLowerCase()}%`;
+      predicates.push(sql`LOWER(${exam.title}) LIKE ${pattern}`);
+    }
+
+    const items = await this.db
+      .select()
+      .from(exam)
+      .where(and(...predicates))
+      .orderBy(desc(exam.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const totalRes = await this.db
+      .select({ total: count() })
+      .from(exam)
+      .where(and(...predicates));
+    const total = Number((totalRes && totalRes[0] && (totalRes[0] as any).total) || 0);
+
+    return { items: items as ExamEntity[], total };
+  }
+
+  async findBySlug(slug: string): Promise<ExamEntity | null> {
+    const [row] = await this.db.select().from(exam).where(eq(exam.slug, slug)).limit(1);
+    return row || null;
+  }
+
+  async countActiveParticipants(examId: string): Promise<number> {
+    const [result] = await this.db
+      .select({ total: count() })
+      .from(examParticipants)
+      .where(
+        and(
+          eq(examParticipants.examId, examId),
+          isNull(examParticipants.mergedIntoParticipantId),
+        ),
+      );
+
+    return Number(result?.total ?? 0);
+  }
+
+  async publishIfDraft(examId: string): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'published',
+        isVisible: true,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'draft')))
+      .returning();
+
+    return updated || null;
+  }
+
+  async cancelIfPublishedWithoutParticipants(examId: string): Promise<ExamEntity | null> {
+    const activeParticipantSubquery = this.db
+      .select({ id: examParticipants.id })
+      .from(examParticipants)
+      .where(
+        and(
+          eq(examParticipants.examId, examId),
+          isNull(examParticipants.mergedIntoParticipantId),
+        ),
+      )
+      .limit(1);
+
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'cancelled',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(exam.id, examId),
+          eq(exam.status, 'published'),
+          not(exists(activeParticipantSubquery)),
+        ),
+      )
+      .returning();
+
+    return updated || null;
+  }
+
+  async archivePublishedIfEnded(examId: string, now: Date): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'archived',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'published'), lt(exam.endDate, now)))
+      .returning();
+
+    return updated || null;
+  }
+
+  async archiveCancelled(examId: string): Promise<ExamEntity | null> {
+    const [updated] = await this.db
+      .update(exam)
+      .set({
+        status: 'archived',
+        isVisible: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(exam.id, examId), eq(exam.status, 'cancelled')))
+      .returning();
+
+    return updated || null;
+  }
+
+  /**
+   * Create an exam along with linking challenges. The entire operation is executed
+   * inside a single transaction so callers don't need to manage `tx`.
+   * - `examFields` corresponds to the columns for `exam` table
+   * - `challenges` is an array where each item is either `{ type: 'existing', challengeId, orderIndex }`
+   *   or `{ type: 'new', challenge: ProblemInput, orderIndex }`.
+   */
+  async createExamWithChallenges(examFields: ExamInsert, challenges: any[]): Promise<string> {
+    return this.db.transaction(async (tx: any) => {
+      // Create exam row
+      const createdExam = await this.createExamWithTx(tx, examFields);
+
+      const challengeIds: string[] = [];
+      const orderMap = new Map<string, number>();
+
+      const existingChallengeIds = (challenges || [])
+        .filter(ch => ch && ch.type === 'existing')
+        .map(ch => ch.challengeId);
+
+      if (existingChallengeIds.length > 0) {
+        const rows = await tx
+          .select({ id: problems.id })
+          .from(problems)
+          .where(inArray(problems.id, existingChallengeIds));
+
+        if (rows.length !== existingChallengeIds.length) {
+          throw new Error('One or more existing challenges not found');
+        }
+      }
+
+      for (let i = 0; i < (challenges || []).length; i++) {
+        const ch = challenges[i];
+        if (!ch) continue;
+        const orderIndex = ch.orderIndex ?? i;
+
+        if (ch.type === 'existing') {
+          challengeIds.push(ch.challengeId);
+          orderMap.set(ch.challengeId, orderIndex);
+        } else if (ch.type === 'new') {
+          const res = await this.problemRepository.createProblemTransactional(ch.challenge, tx);
+          challengeIds.push(res.problem.id);
+          orderMap.set(res.problem.id, orderIndex);
+        }
+      }
+
+      // Link problems to exam
+      const inserts = challengeIds.map(pid => ({
+        examId: createdExam.id,
+        problemId: pid,
+        orderIndex: orderMap.get(pid) ?? 0,
+      }));
+      if (inserts.length > 0) {
+        await tx.insert(examToProblems).values(inserts).returning();
+      }
+
+      return createdExam.id;
+    });
+  }
+
+  /**
+   * Create an exam using a provided transaction client `tx` so callers can compose
+   * larger transactions that include exam creation.
+   */
+  async createExamWithTx(tx: any, input: ExamInsert): Promise<ExamEntity> {
+    const rows = await tx.insert(exam).values(input).returning();
+    const created = rows && rows[0];
+    if (!created) throw new Error('Failed to create exam');
+    return created as ExamEntity;
+  }
+
+  /**
+   * Update an existing exam and replace its challenge links.
+   */
+  async updateExamWithChallenges(
+    examId: string,
+    examFields: Partial<ExamInsert>,
+    challenges: { challengeId: string; orderIndex: number }[]
+  ): Promise<boolean> {
+    return this.db.transaction(async (tx: any) => {
+      // 1. Update exam details
+      const [updated] = await tx
+        .update(exam)
+        .set({ ...examFields, updatedAt: new Date() })
+        .where(eq(exam.id, examId))
+        .returning();
+
+      if (!updated) {
+        throw new Error('Exam not found or update failed');
+      }
+
+      // 2. Clear existing problems links
+      await tx.delete(examToProblems).where(eq(examToProblems.examId, examId));
+
+      // 3. Insert new problem links
+      if (challenges && challenges.length > 0) {
+        const inserts = challenges.map(ch => ({
+          examId: examId,
+          problemId: ch.challengeId,
+          orderIndex: ch.orderIndex,
+        }));
+        await tx.insert(examToProblems).values(inserts);
+      }
+
+      return true;
+    });
+  }
+
+  /**
+   * Delete an exam and all related data (links, participations).
+   */
+  async deleteExamWithRelations(examId: string): Promise<boolean> {
+    return this.db.transaction(async (tx: any) => {
+      // 1. Delete exam_to_problems links
+      await tx.delete(examToProblems).where(eq(examToProblems.examId, examId));
+
+      // 2. Delete participations
+      await tx.delete(examParticipations).where(eq(examParticipations.examId, examId));
+
+      // 3. Delete the exam itself
+      const [deleted] = await tx.delete(exam).where(eq(exam.id, examId)).returning();
+
+      return !!deleted;
+    });
+  }
+
+  // --- Dashboard Methods ---
+
+  async countTotal(): Promise<number> {
+    const result = await this.db.select({ count: count() }).from(exam);
+    return result[0]?.count || 0;
+  }
+
+  async getRecent(limit: number = 3): Promise<
+    Array<{
+      id: string;
+      title: string | null;
+      createdAt: Date;
+    }>
+  > {
+    return await this.db
+      .select({
+        id: exam.id,
+        title: exam.title,
+        createdAt: exam.createdAt,
+      })
+      .from(exam)
+      .orderBy(desc(exam.createdAt))
+      .limit(limit);
+  }
+}
+
+/** Creates an ExamRepository with a concrete problem repository dependency. */
+export function createExamRepository(): ExamRepository {
+  return new ExamRepository({ problemRepository: new ProblemRepository() });
+}

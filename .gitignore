@@ -110,3 +110,20 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+.worktrees/
+workspace/
+
+GEMINI.md
+
+.gitignore
+.speckitignore
+.prettierrc
+.prettierignore
+.editorconfig
+
+.gemini/
+.specify/
+specs/
+
+.gitignore
+.dockerignore

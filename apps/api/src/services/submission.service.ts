@@ -1,0 +1,872 @@
+import { JudgeUtils, logger, buildTestcaseDisplay, isIntegratedExecutableLanguageKey, normalizeFunctionSignature } from '@backend/shared/utils';
+import { ESubmissionStatus, FunctionSignature } from '@backend/shared/types';
+import { getJudgeQueueService } from '@backend/shared/runtime/judge-queue';
+import type { QueueJob } from '@backend/shared/runtime/judge-queue';
+import crypto from 'crypto';
+import {
+  CreateSubmissionInput,
+  SubmissionStatus,
+  SubmissionResult,
+  SubmissionDataResponse,
+} from '@backend/shared/validations/submission.validation';
+import { SubmissionRepository } from '../repositories/submission.repository';
+import { ResultSubmissionRepository } from '../repositories/result-submission.repository';
+import { TestcaseRepository } from '../repositories/testcase.repository';
+import { ProblemRepository } from '../repositories/problem.repository';
+import { UserRepository } from '../repositories/user.repository';
+import { ExamParticipationRepository } from '../repositories/examParticipation.repository';
+import { createExamRepository, ExamRepository } from '../repositories/exam.repository';
+import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
+import { submissionMetadataCaches } from './submission-metadata-cache';
+// Removed direct schema entity imports - using validation types instead
+import { PaginationOptions } from '../repositories/base.repository';
+import axios from 'axios';
+import { BaseException } from '../exceptions/auth.exceptions';
+
+export interface SubmissionInput {
+  sourceCode: string;
+  language: string;
+  problemId: string;
+  userId: string;
+}
+
+/** Defines the minimal queue dependency required by SubmissionService. */
+export interface ISubmissionQueueService {
+  addJob(job: QueueJob): Promise<unknown>;
+  getQueueLength(): Promise<number>;
+  getQueueStatus(): Promise<{ length: number; isHealthy: boolean }>;
+}
+
+type SubmissionServiceDependencies = {
+  submissionRepository: SubmissionRepository;
+  resultSubmissionRepository: ResultSubmissionRepository;
+  testcaseRepository: TestcaseRepository;
+  problemRepository: ProblemRepository;
+  userRepository: UserRepository;
+  examParticipationRepository: ExamParticipationRepository;
+  examRepository: ExamRepository;
+  supportedLanguageRepository: SupportedLanguageRepository;
+  getQueueService: () => ISubmissionQueueService;
+}
+
+const DEFAULT_JUDGE_QUEUE_MAX_BACKLOG = 5000;
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name];
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    logger.warn(`Invalid ${name}; using fallback`, { value: rawValue, fallback });
+    return fallback;
+  }
+
+  return parsed;
+}
+
+export class SubmissionService {
+  private submissionRepository: SubmissionRepository;
+  private resultSubmissionRepository: ResultSubmissionRepository;
+  private testcaseRepository: TestcaseRepository;
+  private problemRepository: ProblemRepository;
+  private userRepository: UserRepository;
+  private examParticipationRepository: ExamParticipationRepository;
+  private examRepository: ExamRepository;
+  private supportedLanguageRepository: SupportedLanguageRepository;
+  private readonly queueServiceFactory: () => ISubmissionQueueService;
+  // Problem/testcase/language edits during an exam can briefly see stale cache data;
+  // targeted admin invalidation and a short TTL keep that tradeoff bounded.
+  private readonly problemMetadataCache = submissionMetadataCaches.problem;
+  private readonly languageCache = submissionMetadataCaches.language;
+
+  constructor(deps: SubmissionServiceDependencies) {
+    this.submissionRepository = deps.submissionRepository;
+    this.resultSubmissionRepository = deps.resultSubmissionRepository;
+    this.testcaseRepository = deps.testcaseRepository;
+    this.problemRepository = deps.problemRepository;
+    this.userRepository = deps.userRepository;
+    this.examParticipationRepository = deps.examParticipationRepository;
+    this.examRepository = deps.examRepository;
+    this.supportedLanguageRepository = deps.supportedLanguageRepository;
+    this.queueServiceFactory = deps.getQueueService;
+  }
+
+  private getQueueService(): ISubmissionQueueService {
+    return this.queueServiceFactory();
+  }
+
+  async submitCode(input: CreateSubmissionInput & { userId: string }): Promise<{
+    submissionId: string;
+    status: ESubmissionStatus;
+    queuePosition: number;
+    estimatedWaitTime: number;
+  }> {
+    const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
+    this.assertFunctionSignatureLanguage(problem, input.language);
+    const activeLanguage = await this.requireActiveExecutableLanguage(input.language);
+
+    let examParticipationId: string | undefined = undefined;
+    if ((input as any).participationId) {
+      examParticipationId = await this.validateExamParticipation(
+        input.userId,
+        (input as any).participationId
+      );
+    }
+
+    const queueLength = await this.ensureQueueCanAcceptJob();
+
+    const submission = await this.submissionRepository.create({
+      sourceCode: input.sourceCode,
+      languageId: activeLanguage.id,
+      problemId: input.problemId,
+      userId: input.userId,
+      status: ESubmissionStatus.PENDING,
+      ...(examParticipationId ? { examParticipationId } : {}),
+    });
+
+    const estimatedWaitTime = queueLength * 30;
+
+    const job = this.prepareQueueJob({ ...submission, language: input.language }, problem, testcases);
+
+    await this.addPersistedSubmissionJobOrFail(job, submission.id, input.problemId);
+
+    return {
+      submissionId: submission.id,
+      status: ESubmissionStatus.PENDING,
+      queuePosition: queueLength + 1,
+      estimatedWaitTime,
+    };
+  }
+
+  async runCode(
+    input: CreateSubmissionInput & { userId?: string },
+    options?: { authHeader?: string }
+  ) {
+    const { problem, testcases } = await this.validateProblemAndTestcases(input.problemId);
+    this.assertFunctionSignatureLanguage(problem, input.language);
+    await this.requireActiveExecutableLanguage(input.language);
+    await this.ensureQueueCanAcceptJob();
+
+    const submissionId = crypto.randomUUID();
+
+    const job = this.prepareQueueJob(
+      {
+        id: submissionId,
+        userId: input.userId || 'anonymous',
+        problemId: input.problemId,
+        sourceCode: input.sourceCode,
+        language: input.language,
+      },
+      problem,
+      testcases,
+      'RUN_CODE'
+    );
+
+    try {
+      await this.getQueueService().addJob(job);
+    } catch (error) {
+      throw this.buildQueueUnavailableException('Run-code job could not be queued', {
+        submissionId,
+        problemId: input.problemId,
+        error,
+      });
+    }
+
+    return {
+      submissionId,
+      status: ESubmissionStatus.PENDING,
+      message: 'Queued for execution',
+    };
+  }
+
+  private async requireActiveExecutableLanguage(language: string) {
+    return this.languageCache.getOrLoad(`language:${language}`, async () => {
+      const activeLanguage = await this.supportedLanguageRepository.findActiveExecutableLanguageByKey(
+        language,
+      );
+
+      if (!activeLanguage) {
+        throw new BaseException(
+          `Language ${language} is inactive or unsupported.`,
+          400,
+          'LANGUAGE_NOT_ACTIVE',
+        );
+      }
+
+      return activeLanguage;
+    });
+  }
+
+  private assertFunctionSignatureLanguage(problem: any, language: string): void {
+    if (!problem?.functionSignature) {
+      throw new BaseException(
+        'Problem functionSignature is not configured',
+        500,
+        'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+      );
+    }
+
+    if (!isIntegratedExecutableLanguageKey(language)) {
+      throw new BaseException(
+        `Language ${language} is not supported for function-signature problems`,
+        400,
+        'FUNCTION_SIGNATURE_LANGUAGE_UNSUPPORTED'
+      );
+    }
+  }
+
+  private requireNormalizedFunctionSignature(problemId: string, functionSignature: unknown): FunctionSignature {
+    try {
+      return normalizeFunctionSignature(functionSignature);
+    } catch (error) {
+      logger.error('Problem functionSignature invalid while preparing submission execution', {
+        problemId,
+        error,
+        functionSignature,
+      });
+      throw new BaseException(
+        'problem configuration invalid',
+        500,
+        'PROBLEM_CONFIGURATION_INVALID'
+      );
+    }
+  }
+
+  private async validateProblemAndTestcases(problemId: string) {
+    return this.problemMetadataCache.getOrLoad(`problem:${problemId}`, async () => {
+      const problem = await this.problemRepository.findById(problemId);
+      if (!problem) {
+        throw new BaseException('Problem not found', 404, 'PROBLEM_NOT_FOUND');
+      }
+
+      if (!problem.functionSignature) {
+        throw new BaseException(
+          'Problem functionSignature is not configured',
+          500,
+          'FUNCTION_SIGNATURE_NOT_CONFIGURED'
+        );
+      }
+
+      const testcases = await this.testcaseRepository.findByProblemId(problemId);
+      if (testcases.length === 0) {
+        throw new BaseException('No testcases found for this problem', 404, 'NO_TESTCASES_FOUND');
+      }
+
+      const missingStructuredTestcase = testcases.find(
+        testcase => testcase.inputJson === null || testcase.outputJson === null
+      );
+
+      if (missingStructuredTestcase) {
+        throw new BaseException(
+          'Problem testcases are missing structured function-signature data',
+          500,
+          'FUNCTION_SIGNATURE_TESTCASE_INVALID'
+        );
+      }
+
+      return { problem, testcases };
+    });
+  }
+
+  private async validateExamParticipation(
+    userId: string,
+    participationId: string
+  ): Promise<string> {
+    const participation = await this.examParticipationRepository.findById(participationId);
+    if (!participation || participation.userId !== userId) {
+      throw new BaseException('Invalid participationId', 403, 'INVALID_PARTICIPATION');
+    }
+
+    const exam = await this.examRepository.findById(participation.examId);
+    if (!exam) {
+      throw new BaseException('Exam not found for participation', 404, 'EXAM_NOT_FOUND');
+    }
+
+    const startMs = participation.startTime.getTime();
+    const durationMs = (exam.duration || 0) * 60 * 1000;
+    const participationEndByDuration = new Date(startMs + durationMs);
+    const examGlobalEnd = exam.endDate instanceof Date ? exam.endDate : new Date(exam.endDate);
+    const effectiveEnd =
+      participationEndByDuration.getTime() <= examGlobalEnd.getTime()
+        ? participationEndByDuration
+        : examGlobalEnd;
+
+    const now = new Date();
+    if (now.getTime() > effectiveEnd.getTime()) {
+      throw new BaseException('Participation has expired', 400, 'PARTICIPATION_EXPIRED');
+    }
+
+    return participationId;
+  }
+
+  private prepareQueueJob(
+    submission: any,
+    problem: any,
+    testcases: any[],
+    jobType: 'SUBMISSION' | 'RUN_CODE' = 'SUBMISSION'
+  ): QueueJob {
+    const functionSignature = this.requireNormalizedFunctionSignature(
+      problem.id ?? submission.problemId,
+      problem.functionSignature,
+    );
+
+    return {
+      submissionId: submission.id,
+      userId: submission.userId,
+      problemId: submission.problemId,
+      code: submission.sourceCode,
+      language: submission.language,
+      functionSignature,
+      testcases: testcases.map((tc: any) => ({
+        id: tc.id,
+        inputJson: tc.inputJson as Record<string, unknown>,
+        outputJson: tc.outputJson,
+        point: tc.point,
+        isPublic: tc.isPublic ?? false,
+      })),
+      timeLimit: problem.timeLimit || 1000,
+      memoryLimit: problem.memoryLimit || '128m',
+      createdAt: new Date().toISOString(),
+      jobType,
+    };
+  }
+
+  private async getQueueLengthSafely(): Promise<number> {
+    try {
+      return await this.getQueueService().getQueueLength();
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  private getMaxQueueBacklog(): number {
+    return parsePositiveIntegerEnv('JUDGE_QUEUE_MAX_BACKLOG', DEFAULT_JUDGE_QUEUE_MAX_BACKLOG);
+  }
+
+  private async ensureQueueCanAcceptJob(): Promise<number> {
+    const queueLength = await this.getQueueLengthSafely();
+    const maxBacklog = this.getMaxQueueBacklog();
+
+    if (queueLength >= maxBacklog) {
+      throw new BaseException(
+        'Judge queue is saturated. Please retry shortly.',
+        503,
+        'JUDGE_QUEUE_SATURATED',
+        {
+          queueLength,
+          maxBacklog,
+        },
+      );
+    }
+
+    return queueLength;
+  }
+
+  private async addPersistedSubmissionJobOrFail(
+    job: QueueJob,
+    submissionId: string,
+    problemId: string,
+  ): Promise<void> {
+    try {
+      await this.getQueueService().addJob(job);
+    } catch (error) {
+      logger.error('Failed to enqueue persisted submission', {
+        submissionId,
+        problemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      try {
+        await this.submissionRepository.updateStatus(submissionId, ESubmissionStatus.SYSTEM_ERROR);
+      } catch (statusError) {
+        logger.error('Failed to mark submission as system_error after queue enqueue failure', {
+          submissionId,
+          problemId,
+          error: statusError instanceof Error ? statusError.message : String(statusError),
+        });
+      }
+
+      throw this.buildQueueUnavailableException('Submission could not be queued for judging', {
+        submissionId,
+        problemId,
+        error,
+      });
+    }
+  }
+
+  private buildQueueUnavailableException(
+    message: string,
+    details: { submissionId: string; problemId: string; error: unknown },
+  ): BaseException {
+    return new BaseException(message, 503, 'SUBMISSION_QUEUE_UNAVAILABLE', {
+      submissionId: details.submissionId,
+      problemId: details.problemId,
+      cause: details.error instanceof Error ? details.error.message : String(details.error),
+    });
+  }
+
+  private isCompletedStatus(status: string): boolean {
+    return status !== ESubmissionStatus.PENDING && status !== ESubmissionStatus.RUNNING;
+  }
+
+  private async buildSubmissionStatuses(
+    submissions: (SubmissionDataResponse & { problemTitle?: string })[]
+  ): Promise<SubmissionStatus[]> {
+    if (submissions.length === 0) {
+      return [];
+    }
+
+    const completedSubmissions = submissions.filter(submission =>
+      this.isCompletedStatus(submission.status)
+    );
+
+    const submissionIds = completedSubmissions.map(submission => submission.id);
+    const problemIds = Array.from(
+      new Set(completedSubmissions.map(submission => submission.problemId))
+    );
+
+    const [resultSubmissions, testcases, problems] = await Promise.all([
+      submissionIds.length > 0
+        ? this.resultSubmissionRepository.findBySubmissionIds(submissionIds)
+        : Promise.resolve([]),
+      problemIds.length > 0
+        ? this.testcaseRepository.findByProblemIds(problemIds)
+        : Promise.resolve([]),
+      problemIds.length > 0
+        ? this.problemRepository.findByIds(problemIds)
+        : Promise.resolve([]),
+    ]);
+
+    const resultsBySubmissionId = new Map<string, any[]>();
+    for (const resultSubmission of resultSubmissions) {
+      if (!resultsBySubmissionId.has(resultSubmission.submissionId)) {
+        resultsBySubmissionId.set(resultSubmission.submissionId, []);
+      }
+
+      resultsBySubmissionId.get(resultSubmission.submissionId)!.push(resultSubmission);
+    }
+
+    const testcasesByProblemId = new Map<string, any[]>();
+    for (const testcase of testcases) {
+      if (!testcasesByProblemId.has(testcase.problemId)) {
+        testcasesByProblemId.set(testcase.problemId, []);
+      }
+
+      testcasesByProblemId.get(testcase.problemId)!.push(testcase);
+    }
+
+    const problemsById = new Map(problems.map(problem => [problem.id, problem]));
+
+    return submissions.map(submission =>
+      this.mapSubmissionStatus(
+        submission,
+        resultsBySubmissionId.get(submission.id) || [],
+        testcasesByProblemId.get(submission.problemId) || [],
+        problemsById.get(submission.problemId) || null
+      )
+    );
+  }
+
+  private mapSubmissionStatus(
+    submission: SubmissionDataResponse & { problemTitle?: string },
+    resultSubmissions: any[],
+    testcases: any[],
+    problem: { functionSignature: FunctionSignature | null } | null
+  ): SubmissionStatus {
+    let result: SubmissionResult | undefined;
+    let score: number | undefined;
+
+    if (this.isCompletedStatus(submission.status)) {
+      if (!problem?.functionSignature) {
+        logger.error('Problem functionSignature missing while mapping submission status', {
+          problemId: submission.problemId,
+          submissionId: submission.id,
+        });
+        throw new BaseException(
+          'problem configuration invalid',
+          500,
+          'PROBLEM_CONFIGURATION_INVALID'
+        );
+      }
+
+      const functionSignature = this.requireNormalizedFunctionSignature(
+        submission.problemId,
+        problem.functionSignature,
+      );
+      const testcasesById = new Map(testcases.map(testcase => [testcase.id, testcase]));
+
+      result = {
+        passed: resultSubmissions.filter((resultSubmission: any) => resultSubmission.isPassed).length,
+        total: resultSubmissions.length,
+        results: resultSubmissions.map((resultSubmission: any) => {
+          const testcase = testcasesById.get(resultSubmission.testcaseId);
+          const display = testcase
+            ? buildTestcaseDisplay(functionSignature, {
+                inputJson: testcase.inputJson as Record<string, unknown>,
+                outputJson: testcase.outputJson,
+              })
+            : { input: '', output: '' };
+
+          return {
+            testcaseId: resultSubmission.testcaseId,
+            input: display.input,
+            expectedOutput: display.output,
+            actualOutput: resultSubmission.actualOutput,
+            isPassed: resultSubmission.isPassed,
+            executionTime: resultSubmission.executionTime,
+            memoryUse: resultSubmission.memoryUse,
+            error: resultSubmission.error,
+            isPublic: testcase?.isPublic || false,
+          };
+        }),
+      };
+
+      score = JudgeUtils.calculateScore(resultSubmissions, testcases);
+    }
+
+    const mappedStatus: SubmissionStatus = {
+      submissionId: submission.id,
+      userId: submission.userId,
+      problemId: submission.problemId,
+      language: submission.language,
+      sourceCode: submission.sourceCode,
+      status: submission.status as any,
+      result: result
+        ? {
+            passed: result.passed,
+            total: result.total,
+            results: result.results.map((item: any, index: number) => ({
+              index,
+              input: item.input,
+              expected: item.expectedOutput,
+              actual: item.actualOutput || '',
+              ok: item.isPassed,
+              stderr: item.error || '',
+              executionTime: item.executionTime || 0,
+              error: item.error || undefined,
+              isPublic: item.isPublic || false,
+            })),
+          }
+        : undefined,
+      score,
+      submittedAt:
+        submission.submittedAt instanceof Date
+          ? submission.submittedAt
+          : new Date(submission.submittedAt),
+      judgedAt: submission.judgedAt
+        ? submission.judgedAt instanceof Date
+          ? submission.judgedAt
+          : new Date(submission.judgedAt)
+        : undefined,
+      executionTime: result?.results.reduce(
+        (sum: number, item: any) => sum + (item.executionTime || 0),
+        0
+      ),
+    };
+
+    if (submission.problemTitle) {
+      (mappedStatus as any).problemTitle = submission.problemTitle;
+    }
+
+    return mappedStatus;
+  }
+
+  async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus | null> {
+    const submission = await this.submissionRepository.findById(submissionId);
+    if (!submission) {
+      return null;
+    }
+
+    const [status] = await this.buildSubmissionStatuses([this.mapToSubmissionDataResponse(submission)]);
+    return status || null;
+  }
+
+  async updateSubmissionStatus(
+    submissionId: string,
+    status: ESubmissionStatus
+  ): Promise<{ id: string; status: string } | null> {
+    const result = await this.submissionRepository.updateStatus(submissionId, status);
+    if (!result) return null;
+    return {
+      id: result.id,
+      status: result.status,
+    };
+  }
+
+  async requeuePendingSubmission(submissionId: string): Promise<boolean> {
+    const submission = await this.submissionRepository.findById(submissionId);
+
+    if (!submission || submission.status !== ESubmissionStatus.PENDING) {
+      return false;
+    }
+
+    const { problem, testcases } = await this.validateProblemAndTestcases(submission.problemId);
+    const job = this.prepareQueueJob(submission, problem, testcases, 'SUBMISSION');
+
+    await this.ensureQueueCanAcceptJob();
+    await this.getQueueService().addJob(job);
+
+    return true;
+  }
+
+  async updateSubmissionResult(
+    submissionId: string,
+    data: {
+      status: ESubmissionStatus;
+      result: SubmissionResult;
+      score: number;
+      judgedAt?: string;
+    }
+  ): Promise<{ id: string; status: string } | null> {
+    const submission = await this.submissionRepository.finalizeSubmissionResult({
+      submissionId,
+      status: data.status,
+      result: data.result,
+      judgedAt: data.judgedAt,
+    });
+
+    if (!submission) {
+      logger.warn(
+        `[Idempotency] Submission ${submissionId} already in terminal state. Ignoring retry.`
+      );
+      return null;
+    }
+
+    return submission;
+  }
+
+  private async enrichSubmissionsWithStatus(
+    submissions: (SubmissionDataResponse & { problemTitle?: string })[]
+  ): Promise<SubmissionStatus[]> {
+    return this.buildSubmissionStatuses(submissions);
+  }
+
+  async listUserSubmissions(
+    userId: string,
+    status?: ESubmissionStatus,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    let result;
+    if (status) {
+      result = await this.submissionRepository.findByUserAndStatus(
+        userId,
+        status,
+        paginationOptions
+      );
+    } else {
+      result = await this.submissionRepository.findByUserId(userId, paginationOptions);
+    }
+
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    return { data, pagination: result.pagination };
+  }
+
+  async listProblemSubmissions(
+    problemId: string,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    const result = await this.submissionRepository.findByProblemId(problemId, paginationOptions);
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    return { data, pagination: result.pagination };
+  }
+
+  async listUserProblemSubmissions(
+    userId: string,
+    problemId: string,
+    participationId?: string,
+    options: { limit?: number; offset?: number; status?: ESubmissionStatus } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    let result;
+    if (participationId) {
+      result = await this.submissionRepository.findByParticipationAndProblem(
+        participationId,
+        problemId,
+        paginationOptions
+      );
+    } else {
+      result = await this.submissionRepository.findByUserAndProblem(
+        userId,
+        problemId,
+        paginationOptions
+      );
+    }
+
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    return { data, pagination: result.pagination };
+  }
+
+  async listAllSubmissions(
+    status?: ESubmissionStatus,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    data: SubmissionStatus[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const paginationOptions: PaginationOptions = {
+      page: Math.floor((options.offset || 0) / (options.limit || 20)) + 1,
+      limit: options.limit || 20,
+    };
+
+    let result;
+    if (status) {
+      result = await this.submissionRepository.findByStatus(status, paginationOptions);
+    } else {
+      result = await this.submissionRepository.findMany(paginationOptions);
+    }
+
+    const submissions = result.data.map((sub: any) => this.mapToSubmissionDataResponse(sub));
+    const data = await this.enrichSubmissionsWithStatus(submissions);
+
+    return { data, pagination: result.pagination };
+  }
+
+  async getSubmissionByProblemIdAndUserId(
+    problemId: string,
+    userId: string
+  ): Promise<SubmissionStatus | null> {
+    const result = await this.submissionRepository.findByUserAndProblem(userId, problemId, {
+      page: 1,
+      limit: 1,
+    });
+
+    const submission = result.data[0];
+    if (!submission) {
+      return null;
+    }
+
+    return this.getSubmissionStatus(submission.id);
+  }
+
+  async getQueueStatus(): Promise<{
+    queueLength: number;
+    isHealthy: boolean;
+  }> {
+    const status = await this.getQueueService().getQueueStatus();
+    return {
+      queueLength: status.length,
+      isHealthy: status.isHealthy,
+    };
+  }
+
+  private mapToSubmissionDataResponse(submission: any): SubmissionDataResponse {
+    return {
+      id: submission.id,
+      userId: submission.userId,
+      problemId: submission.problemId,
+      language: submission.language,
+      sourceCode: submission.sourceCode,
+      status: submission.status,
+      submittedAt:
+        submission.submittedAt instanceof Date
+          ? submission.submittedAt
+          : new Date(submission.submittedAt),
+      judgedAt: submission.judgedAt
+        ? submission.judgedAt instanceof Date
+          ? submission.judgedAt
+          : new Date(submission.judgedAt)
+        : undefined,
+    };
+  }
+
+  async getSubmissionStats(
+    userId?: string,
+    problemId?: string
+  ): Promise<{
+    total: number;
+    pending: number;
+    running: number;
+    accepted: number;
+    wrongAnswer: number;
+    timeLimitExceeded: number;
+    memoryLimitExceeded: number;
+    runtimeError: number;
+    compilationError: number;
+  }> {
+    return await this.submissionRepository.getSubmissionStats(userId, problemId);
+  }
+}
+
+/** Creates a SubmissionService with concrete repositories and a lazy queue accessor. */
+export function createSubmissionService(): SubmissionService {
+  return new SubmissionService({
+    submissionRepository: new SubmissionRepository(),
+    resultSubmissionRepository: new ResultSubmissionRepository(),
+    testcaseRepository: new TestcaseRepository(),
+    problemRepository: new ProblemRepository(),
+    userRepository: new UserRepository(),
+    examParticipationRepository: new ExamParticipationRepository(),
+    examRepository: createExamRepository(),
+    supportedLanguageRepository: new SupportedLanguageRepository(),
+    getQueueService: getJudgeQueueService,
+  });
+}
+
+
+
+
+
+
+
+
+
+

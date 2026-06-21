@@ -1,0 +1,22 @@
+{
+    "extends":  "../../tsconfig.json",
+    "compilerOptions":  {
+        "outDir":  "./dist",
+        "ignoreDeprecations":  "5.0",
+
+        "paths":  {
+        "@/*":  [
+               "./src/*"
+        ],
+        "@backend/shared/*":  [
+                                "../../packages/shared/*"
+                            ],
+        "@backend/api/*":  [
+                                "./src/*"
+                            ]
+        }
+        },
+        "include":  [
+                    "src/**/*"
+                ]
+}

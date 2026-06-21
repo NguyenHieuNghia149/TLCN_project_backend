@@ -1,0 +1,46 @@
+config:
+  target: 'http://localhost/api'
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 20
+      name: Heavy load test
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+      Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3N2NkNzk4MC03ZTE1LTQ3ZTAtODAyMi04ZjIxZDM2NDliNWQiLCJlbWFpbCI6ImhpZXVuZ2hpYTQ4NEBnbWFpbC5jb20iLCJyb2xlIjoidGVhY2hlciIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE3NzI5NzAyODAsImV4cCI6MTc3Mjk3MTE4MH0.JR1a-Ev2kuopEENke_lUTntdWIJlmiTa_G_kcoTRUro'
+
+scenarios:
+  - name: 'Submit Two Sum Solution'
+    flow:
+      - post:
+          url: '/submissions'
+          json:
+            problemId: '0f465ec8-b3a7-402e-8d5a-a7e99a2f37cb'
+            language: 'cpp'
+            sourceCode: |
+              #include <unordered_map>
+              #include <vector>
+              using namespace std;
+
+              class Solution {
+              public:
+                  vector<int> twoSum(vector<int>& nums, int target) {
+                      unordered_map<int, int> seen;
+                      for (int i = 0; i < static_cast<int>(nums.size()); ++i) {
+                          int complement = target - nums[i];
+                          auto it = seen.find(complement);
+                          if (it != seen.end()) {
+                              return {it->second, i};
+                          }
+                          seen[nums[i]] = i;
+                      }
+                      return {};
+                  }
+              };
+          capture:
+            - json: '$.submissionId'
+              as: 'submissionId'
+      - think: 2
+      - get:
+          url: '/submissions/{{ submissionId }}'

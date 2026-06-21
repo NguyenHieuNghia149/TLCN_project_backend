@@ -1,0 +1,26 @@
+{
+  "name": "@backend/sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/apps/sandbox/src/sandbox.server.js",
+  "types": "./dist/apps/sandbox/src/sandbox.server.d.ts",
+  "exports": {
+    ".": "./dist/apps/sandbox/src/sandbox.server.js",
+    "./*": "./dist/apps/sandbox/src/*.js"
+  },
+  "scripts": {
+    "dev:sandbox": "ts-node -r tsconfig-paths/register src/sandbox.server.ts",
+    "start:sandbox": "node dist/apps/sandbox/src/sandbox.server.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.3",
+    "@grpc/proto-loader": "^0.8.0",
+    "dotenv": "*"
+  }
+}

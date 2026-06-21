@@ -1,0 +1,19 @@
+config:
+  target: 'http://localhost/api'
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: Warm up
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 30
+      name: Ramp up load
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+
+scenarios:
+  - name: 'Health Check'
+    flow:
+      - get:
+          url: '/submissions/health'

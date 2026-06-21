@@ -1,0 +1,97 @@
+import { TopicRepository } from '../repositories/topic.repository';
+import { NotFoundException } from '../exceptions/solution.exception';
+import {
+  CreateTopicInput,
+  TopicResponse,
+  UpdateTopicInput,
+} from '@backend/shared/validations/topic.validation';
+import { BaseException } from '../exceptions/auth.exceptions';
+
+type TopicServiceDependencies = {
+  topicRepository: TopicRepository;
+};
+
+export class TopicService {
+  private topicRepository: TopicRepository;
+
+  constructor({ topicRepository }: TopicServiceDependencies) {
+    this.topicRepository = topicRepository;
+  }
+
+  async getTopicByName(topicName: string): Promise<TopicResponse | null> {
+    const topic = await this.topicRepository.findByName(topicName);
+    if (!topic) {
+      return null;
+    }
+    return {
+      id: topic.id,
+      topicName: topic.topicName,
+    };
+  }
+
+  async createTopic(topicData: CreateTopicInput): Promise<TopicResponse> {
+    try {
+      const topic = await this.topicRepository.createTopic({ topicName: topicData.topicName });
+
+      if (!topic) {
+        throw new BaseException('Failed to create topic', 500, 'FAILED_TO_CREATE_TOPIC');
+      }
+
+      return {
+        id: topic.id,
+        topicName: topic.topicName,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getTopicById(id: string): Promise<TopicResponse> {
+    const topic = await this.topicRepository.findById(id);
+    if (!topic) {
+      throw new NotFoundException(`Topic with ID ${id} not found.`);
+    }
+    return {
+      id: topic.id,
+      topicName: topic.topicName,
+    };
+  }
+
+  async getAllTopics(): Promise<TopicResponse[]> {
+    const topics = await this.topicRepository.findMany({
+      page: 1,
+      limit: 1000,
+    });
+    return topics.data.map((topic: any) => ({
+      id: topic.id,
+      topicName: topic.topicName,
+    }));
+  }
+
+  async updateTopic(id: string, topicData: UpdateTopicInput): Promise<TopicResponse> {
+    const topic = await this.topicRepository.update(id, { topicName: topicData.topicName });
+
+    if (!topic) {
+      throw new NotFoundException(`Topic with ID ${id} not found.`);
+    }
+    return {
+      id: topic.id,
+      topicName: topic.topicName,
+    };
+  }
+
+  async deleteTopic(id: string): Promise<void> {
+    const topic = await this.topicRepository.findById(id);
+    if (!topic) {
+      throw new NotFoundException(`Topic with ID ${id} not found.`);
+    }
+    await this.topicRepository.deleteTopicWithCascade(id);
+  }
+}
+
+/** Creates a TopicService with concrete repository dependencies. */
+export function createTopicService(): TopicService {
+  return new TopicService({
+    topicRepository: new TopicRepository(),
+  });
+}

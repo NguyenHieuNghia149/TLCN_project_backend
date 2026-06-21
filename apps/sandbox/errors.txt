@@ -1,0 +1,3 @@
+../api/src/services/monitoring.service.ts(1,31): error TS2307: Cannot find module '@/exceptions/auth.exceptions' or its corresponding type declarations.
+../api/src/services/security.service.ts(1,31): error TS2307: Cannot find module '@/exceptions/auth.exceptions' or its corresponding type declarations.
+../../packages/shared/utils/jwt.ts(3,62): error TS2307: Cannot find module '@/exceptions/auth.exceptions' or its corresponding type declarations.
