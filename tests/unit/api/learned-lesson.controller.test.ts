@@ -24,6 +24,10 @@ describe('LearnedLessonController', () => {
       'lesson-1',
     );
     expect(response.status).toHaveBeenCalledWith(200);
-    expect(response.json).toHaveBeenCalledWith({ isCompleted: true });
+    expect(response.json).toHaveBeenCalledWith({
+      success: true,
+      data: { isCompleted: true },
+      error: null,
+    });
   });
 });

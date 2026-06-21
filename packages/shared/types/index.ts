@@ -2,6 +2,7 @@ export * from './error-codes';
 export * from './examParticipationStatus.enum';
 export * from './notificationType.enum';
 export * from './problemVisibility.enum';
+export * from './proctoring.types';
 export * from './submissionStatus.enum';
 export * from './userGender.enum';
 export * from './userRole.enum';

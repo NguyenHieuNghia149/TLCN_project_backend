@@ -1,6 +1,8 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 
+import { createProctoringWebSocketService } from './proctoring/proctoring-websocket.service';
+
 export interface IWebSocketNotifier {
   emitToUser(userId: string, event: string, data: unknown): void;
   getIO(): { emit(event: string, data: unknown): boolean };
@@ -17,6 +19,11 @@ interface ISocketIOAdapter {
   on(event: 'connection', listener: (socket: ISocketIOClientAdapter) => void): this;
   to(room: string): { emit(event: string, data: unknown): boolean };
   emit(event: string, data: unknown): boolean;
+  of?(namespace: string): {
+    on(event: 'connection', listener: (socket: unknown) => void): unknown;
+    to(room: string): { emit(event: string, data: unknown): boolean };
+    emit(event: string, data: unknown): boolean;
+  };
   engine: { clientsCount: number };
 }
 
@@ -31,6 +38,15 @@ export class WebSocketService implements IWebSocketNotifier {
   constructor({ io }: WebSocketServiceDependencies) {
     this.io = io;
     this.setupEventHandlers();
+    this.setupProctoringNamespace();
+  }
+
+  private setupProctoringNamespace(): void {
+    if (typeof this.io.of !== 'function') {
+      return;
+    }
+
+    createProctoringWebSocketService(this.io.of('/proctoring') as any);
   }
 
   private setupEventHandlers(): void {

@@ -22,6 +22,8 @@ export * from './examParticipants';
 export * from './examInvites';
 export * from './examEntrySessions';
 export * from './examAuditLogs';
+export * from './adminAuditLogs';
+export * from './examProctoring';
 export * from './notification';
 export * from './roadmap';
 export * from './roadmapItem';

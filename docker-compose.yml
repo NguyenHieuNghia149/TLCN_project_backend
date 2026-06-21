@@ -49,6 +49,7 @@
       - REDIS_CACHE_URL=redis://redis-cache:6379
       - SANDBOX_URL=http://sandbox:4000
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - PROCTORING_SOCKET_TOKEN_SECRET=${PROCTORING_SOCKET_TOKEN_SECRET}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_USER=${DB_USER}

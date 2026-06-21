@@ -6,13 +6,24 @@ function loadWebSocketModule() {
     on: jest.Mock;
     to: jest.Mock;
     emit: jest.Mock;
+    of: jest.Mock;
     engine: { clientsCount: number };
     connectionHandler?: (socket: unknown) => void;
+    namespace?: {
+      on: jest.Mock;
+      to: jest.Mock;
+      emit: jest.Mock;
+    };
   };
 
   const ioInstances: MockIoInstance[] = [];
   const SocketIOServerMock = jest.fn().mockImplementation(() => {
     const io = {} as MockIoInstance;
+    const namespace = {
+      on: jest.fn().mockReturnThis(),
+      to: jest.fn(() => ({ emit: jest.fn().mockReturnValue(true) })),
+      emit: jest.fn().mockReturnValue(true),
+    };
     io.on = jest.fn((event: string, listener: (socket: unknown) => void) => {
       if (event === 'connection') {
         io.connectionHandler = listener;
@@ -21,6 +32,12 @@ function loadWebSocketModule() {
     });
     io.to = jest.fn(() => ({ emit: jest.fn().mockReturnValue(true) }));
     io.emit = jest.fn().mockReturnValue(true);
+    io.of = jest.fn((namespaceName: string) => {
+      if (namespaceName === '/proctoring') {
+        io.namespace = namespace;
+      }
+      return namespace;
+    });
     io.engine = { clientsCount: 0 };
     ioInstances.push(io);
     return io;
@@ -129,6 +146,7 @@ describe('websocket service bootstrap', () => {
     fakeIo.engine = { clientsCount: 0 };
 
     const service = new websocketModule.WebSocketService({ io: fakeIo as any });
+    (service as any).connectedClients.set('user-1', new Set(['socket-1']));
     service.emitToUser('user-1', 'notification_new', { id: 'notification-1' });
 
     expect(fakeIo.to).toHaveBeenCalledWith('user_user-1');
@@ -138,7 +156,7 @@ describe('websocket service bootstrap', () => {
   });
 
   it('exposes and clears the active websocket service around initialization', () => {
-    const { websocketModule, SocketIOServerMock } = loadWebSocketModule();
+    const { websocketModule, SocketIOServerMock, ioInstances } = loadWebSocketModule();
     resetWebSocketServiceForTesting = websocketModule.resetWebSocketServiceForTesting;
 
     expect(websocketModule.getWebSocketService()).toBeNull();
@@ -154,6 +172,8 @@ describe('websocket service bootstrap', () => {
       },
       transports: ['websocket', 'polling'],
     });
+    expect(ioInstances[0]!.of).toHaveBeenCalledWith('/proctoring');
+    expect(ioInstances[0]!.namespace?.on).toHaveBeenCalledWith('connection', expect.any(Function));
     expect(websocketModule.getWebSocketService()).toBe(service);
 
     websocketModule.resetWebSocketServiceForTesting();

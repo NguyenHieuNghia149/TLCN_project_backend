@@ -2,6 +2,7 @@ import { AdminRoadmapService } from '@backend/api/services/admin/adminRoadmap.se
 import type { RoadmapRepository } from '@backend/api/repositories/roadmap.repository';
 import type { LessonRepository } from '@backend/api/repositories/lesson.repository';
 import type { ProblemRepository } from '@backend/api/repositories/problem.repository';
+import type { RoadmapItemRepository } from '@backend/api/repositories/roadmapItem.repository';
 
 // Helper: create a minimal mock repo set
 function createMockRepos() {
@@ -30,12 +31,32 @@ function createMockRepos() {
   return { roadmapRepo, lessonRepo, problemRepo };
 }
 
+function createMockRoadmapItemRepository() {
+  return {
+    compactOrdersAfterDelete: jest.fn().mockResolvedValue(undefined),
+    reorderItems: jest.fn().mockResolvedValue({ reordered: true }),
+  } as unknown as RoadmapItemRepository;
+}
+
+function createAdminRoadmapService(
+  roadmapRepo: RoadmapRepository,
+  lessonRepo: LessonRepository,
+  problemRepo: ProblemRepository
+) {
+  return new AdminRoadmapService(
+    roadmapRepo,
+    lessonRepo,
+    problemRepo,
+    createMockRoadmapItemRepository()
+  );
+}
+
 // ─── listRoadmaps ────────────────────────────────────────────────────────────
 
 describe('AdminRoadmapService.listRoadmaps', () => {
   it('clamps limit to 100 and offsets negative to 0', async () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await service.listRoadmaps({
       limit: 999,
@@ -54,7 +75,7 @@ describe('AdminRoadmapService.listRoadmaps', () => {
 
   it('throws INVALID_DATE when createdAtFrom is not a valid date string', async () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.listRoadmaps({ limit: 20, offset: 0, createdAtFrom: 'not-a-date' })
@@ -67,7 +88,7 @@ describe('AdminRoadmapService.listRoadmaps', () => {
 describe('AdminRoadmapService.createRoadmap', () => {
   it('throws INVALID_INPUT when title is empty', async () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.createRoadmap({ title: '  ', createdBy: 'user-id' })
@@ -79,7 +100,7 @@ describe('AdminRoadmapService.createRoadmap', () => {
     const fakeRoadmap = { id: 'r1', title: 'Test' };
     (roadmapRepo as any).create.mockResolvedValue(fakeRoadmap);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
     const result = await service.createRoadmap({ title: 'Test', createdBy: 'admin-1' });
 
     expect(result).toEqual(fakeRoadmap);
@@ -96,7 +117,7 @@ describe('AdminRoadmapService.deleteRoadmap', () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
     (roadmapRepo as any).deleteRoadmapCascade.mockResolvedValue(false);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.deleteRoadmap({ id: 'non-existent', adminId: 'admin-1' })
@@ -107,7 +128,7 @@ describe('AdminRoadmapService.deleteRoadmap', () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
     (roadmapRepo as any).deleteRoadmapCascade.mockResolvedValue(true);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
     const result = await service.deleteRoadmap({ id: 'r1', adminId: 'admin-1' });
 
     expect(result).toEqual({ deleted: true });
@@ -135,7 +156,7 @@ describe('AdminRoadmapService.addItemToRoadmap', () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
     (roadmapRepo as any).findById.mockResolvedValue(null);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.addItemToRoadmap({ roadmapId: 'r1', itemType: 'lesson', itemId: 'l1' })
@@ -147,7 +168,7 @@ describe('AdminRoadmapService.addItemToRoadmap', () => {
     (roadmapRepo as any).findById.mockResolvedValue({ id: 'r1' });
     (lessonRepo as any).findById.mockResolvedValue(null);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.addItemToRoadmap({ roadmapId: 'r1', itemType: 'lesson', itemId: 'l-nonexistent' })
@@ -159,7 +180,7 @@ describe('AdminRoadmapService.addItemToRoadmap', () => {
     (roadmapRepo as any).findById.mockResolvedValue({ id: 'r1' });
     (problemRepo as any).findById.mockResolvedValue(null);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.addItemToRoadmap({ roadmapId: 'r1', itemType: 'problem', itemId: 'p-nonexistent' })
@@ -174,7 +195,7 @@ describe('AdminRoadmapService.removeItemFromRoadmap', () => {
     const { roadmapRepo, lessonRepo, problemRepo } = createMockRepos();
     (roadmapRepo as any).findById.mockResolvedValue(null);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.removeItemFromRoadmap({ roadmapId: 'r1', itemId: 'item-1' })
@@ -186,7 +207,7 @@ describe('AdminRoadmapService.removeItemFromRoadmap', () => {
     (roadmapRepo as any).findById.mockResolvedValue({ id: 'r1' });
     (roadmapRepo as any).removeRoadmapItem.mockResolvedValue(false);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
 
     await expect(
       service.removeItemFromRoadmap({ roadmapId: 'r1', itemId: 'item-nonexistent' })
@@ -198,7 +219,7 @@ describe('AdminRoadmapService.removeItemFromRoadmap', () => {
     (roadmapRepo as any).findById.mockResolvedValue({ id: 'r1' });
     (roadmapRepo as any).removeRoadmapItem.mockResolvedValue(true);
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
     const result = await service.removeItemFromRoadmap({ roadmapId: 'r1', itemId: 'item-1' });
 
     expect(result).toEqual({ removed: true });
@@ -216,7 +237,7 @@ describe('AdminRoadmapService.getAvailableItems', () => {
       total: 1,
     });
 
-    const service = new AdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
+    const service = createAdminRoadmapService(roadmapRepo, lessonRepo, problemRepo);
     const result = await service.getAvailableItems();
 
     expect(result.lessons).toEqual([{ id: 'l1', title: 'Lesson 1', type: 'lesson' }]);

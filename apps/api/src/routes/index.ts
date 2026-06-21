@@ -22,11 +22,13 @@ import { createLeaderboardRouter } from './leaderboard.routes';
 import { createExamAccessRouter } from './examAccess.routes';
 import { createExamRouter } from './exam.routes';
 import { createPublicExamRouter } from './publicExam.routes';
+import { createProctoringRouter } from './proctoring.routes';
 import { createNotificationRouter } from './notification.routes';
 import { createRoadmapRouter } from './roadmap.routes';
 import { createAdminRoadmapRouter } from './admin/adminRoadmap.routes';
 import { createUserRouter } from './user.routes';
 import { createAdminExamRouter } from './admin/adminExam.routes';
+import { createAdminProctoringRouter } from './admin/adminProctoring.routes';
 
 /** Mounts all API routes in the existing middleware order. */
 export function registerRoutes(app: Application): void {
@@ -53,7 +55,9 @@ export function registerRoutes(app: Application): void {
   app.use('/api/learned-lessons', createLearnedLessonRouter());
   app.use('/api/public/exams', createPublicExamRouter());
   app.use('/api/admin/exams', createAdminExamRouter());
+  app.use('/api/admin/exams', createAdminProctoringRouter());
   app.use('/api/exams', createExamAccessRouter());
+  app.use('/api/exams', createProctoringRouter());
   app.use('/api/exams', createExamRouter());
   app.use('/api/leaderboard', createLeaderboardRouter());
   app.use('/api/notifications', createNotificationRouter());

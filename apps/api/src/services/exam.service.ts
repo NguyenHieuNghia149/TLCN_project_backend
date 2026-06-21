@@ -324,7 +324,7 @@ export class ExamService {
 
   async createExam(examData: CreateExamInput): Promise<ExamResponse> {
     const { challenges, ...examFields } = examData;
-    const slug = await this.generateUniqueLegacySlug(examFields.title);
+    const slug = examFields.slug ?? await this.generateUniqueLegacySlug(examFields.title);
 
     // Delegate the full create-with-challenges operation to the repository so
     // the service does not open transactions or interact with the DB directly.

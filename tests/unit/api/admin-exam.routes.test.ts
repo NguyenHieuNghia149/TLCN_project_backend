@@ -75,6 +75,8 @@ describe('Admin exam HTTP routes', () => {
         selfRegistrationApprovalMode: 'auto',
         selfRegistrationPasswordRequired: false,
         allowExternalCandidates: true,
+        registrationOpenAt: '2099-04-01T00:00:00.000Z',
+        registrationCloseAt: '2099-04-30T23:59:59.000Z',
         challenges: [
           {
             type: 'existing',

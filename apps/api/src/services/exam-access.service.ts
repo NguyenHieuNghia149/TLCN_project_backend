@@ -24,6 +24,16 @@ import { createExamRepository, ExamRepository } from '../repositories/exam.repos
 import { ExamToProblemsRepository } from '../repositories/examToProblems.repository';
 import { TokenRepository } from '../repositories/token.repository';
 import { UserRepository } from '../repositories/user.repository';
+import {
+  createProctoringStartGateService,
+  ProctoringStartGateService,
+  ProctoringStartInput,
+} from './proctoring/proctoring-start-gate.service';
+import {
+  createProctoringSubmitGuardService,
+  ProctoringSubmitGuardService,
+  ProctoringSubmitGuardInput,
+} from './proctoring/proctoring-submit-guard.service';
 import { EExamParticipationStatus } from '@backend/shared/types';
 import {
   JWTUtils,
@@ -44,6 +54,8 @@ type ExamAccessServiceDependencies = {
   userRepository: UserRepository | any;
   tokenRepository: TokenRepository | any;
   emailService: any;
+  proctoringStartGateService?: ProctoringStartGateService | any;
+  proctoringSubmitGuardService?: ProctoringSubmitGuardService | any;
 };
 
 type RegisterForExamInput = {
@@ -62,12 +74,24 @@ type SyncParticipationInput = {
   answers: Record<string, unknown>;
 };
 
+type StartEntrySessionBodyInput = ProctoringStartInput & {
+  examPassword?: string;
+};
+
+type SubmitActiveParticipationInput = Omit<ProctoringSubmitGuardInput, 'participationId'>;
+
 const OTP_RESEND_COOLDOWN_MS = 60_000;
 const REGISTRATION_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const OTP_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const OTP_RESEND_COOLDOWNS = new Map<string, number>();
 
 export class ExamAccessService {
+  private readonly submitAttemptResults = new Map<string, {
+    participationId: string;
+    submittedAt: string;
+    scoreStatus: string;
+  }>();
+
   constructor(private readonly deps: ExamAccessServiceDependencies) {}
 
   async listAdminExams(input: {
@@ -1329,7 +1353,19 @@ export class ExamAccessService {
     return this.buildAccessState(exam, participant, entrySession, participation, userId);
   }
 
-  async startEntrySession(entrySessionId: string, userId: string, examPassword?: string) {
+  async startEntrySession(
+    entrySessionId: string,
+    userId: string,
+    examPasswordOrInput?: string | StartEntrySessionBodyInput,
+    proctoringInput?: ProctoringStartInput,
+  ) {
+    const examPassword =
+      typeof examPasswordOrInput === 'string'
+        ? examPasswordOrInput
+        : examPasswordOrInput?.examPassword;
+    const resolvedProctoringInput =
+      proctoringInput ??
+      (typeof examPasswordOrInput === 'object' ? examPasswordOrInput : undefined);
     const session = await this.deps.examEntrySessionRepository.findById(entrySessionId);
     if (!session) {
       throw new AppException('Entry session not found', 404, 'ENTRY_SESSION_NOT_FOUND');
@@ -1344,7 +1380,13 @@ export class ExamAccessService {
       return this.resumeStartedEntrySession(session, participant, userId);
     }
 
-    return this.startNewEntrySession(session, participant, userId, examPassword);
+    return this.startNewEntrySession(
+      session,
+      participant,
+      userId,
+      examPassword,
+      resolvedProctoringInput,
+    );
   }
 
   private async resumeStartedEntrySession(session: any, participant: any, userId: string) {
@@ -1398,6 +1440,7 @@ export class ExamAccessService {
     participant: any,
     userId: string,
     examPassword?: string,
+    proctoringInput?: ProctoringStartInput,
   ) {
     const exam = await this.deps.examRepository.findById(session.examId);
     if (!exam) {
@@ -1457,6 +1500,15 @@ export class ExamAccessService {
     }
 
     this.assertStartPasswordIfRequired(exam, participant, examPassword);
+    const proctoringGateResult = this.deps.proctoringStartGateService
+      ? await this.deps.proctoringStartGateService.validateStartRequest({
+          exam,
+          entrySession: session,
+          participant,
+          userId,
+          proctoring: proctoringInput,
+        })
+      : null;
 
     const startedAt = new Date();
     const expiresAt = this.computeParticipationExpiresAt(startedAt, exam.duration, exam.endDate);
@@ -1521,6 +1573,22 @@ export class ExamAccessService {
     }
 
     await this.deps.examParticipantRepository.updateAccessStatus(participant.id, 'active');
+    if (
+      proctoringGateResult &&
+      proctoringGateResult.proctoringRequired !== false &&
+      this.deps.proctoringStartGateService?.createSessionRecord
+    ) {
+      await this.deps.proctoringStartGateService.createSessionRecord({
+        ...proctoringGateResult,
+        examId: exam.id,
+        participantId: participant.id,
+        userId,
+        participationId: participation.id,
+        entrySessionId: session.id,
+        startedAt,
+      });
+    }
+
     await this.writeAuditLog({
       examId: exam.id,
       actorType: 'user',
@@ -1596,7 +1664,11 @@ export class ExamAccessService {
     };
   }
 
-  async submitActiveParticipation(slug: string, userId: string) {
+  async submitActiveParticipation(
+    slug: string,
+    userId: string,
+    proctoringInput?: SubmitActiveParticipationInput,
+  ) {
     const exam = await this.requireExamBySlug(slug);
     const participant = await this.deps.examParticipantRepository.findByExamAndIdentity(exam.id, {
       userId,
@@ -1614,8 +1686,49 @@ export class ExamAccessService {
     );
 
     if (!activeParticipation) {
+      const submittedParticipation = participations.find(
+        (row: any) => row.status === EExamParticipationStatus.SUBMITTED,
+      );
+      if (submittedParticipation) {
+        const submitAttemptKey = this.getSubmitAttemptKey(
+          submittedParticipation.id,
+          proctoringInput?.submitAttemptId,
+        );
+        const cached = submitAttemptKey ? this.submitAttemptResults.get(submitAttemptKey) : null;
+        if (cached) {
+          return cached;
+        }
+
+        return {
+          participationId: submittedParticipation.id,
+          submittedAt: this.asIsoString(submittedParticipation.submittedAt ?? new Date()),
+          scoreStatus: submittedParticipation.scoreStatus ?? 'pending',
+        };
+      }
+
       throw new ExamParticipationNotFoundException('Active participation not found');
     }
+
+    const submitAttemptKey = this.getSubmitAttemptKey(
+      activeParticipation.id,
+      proctoringInput?.submitAttemptId,
+    );
+    if (submitAttemptKey) {
+      const cached = this.submitAttemptResults.get(submitAttemptKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const finalFlushResult =
+      this.deps.proctoringSubmitGuardService &&
+      (proctoringInput?.submitAttemptId || proctoringInput?.finalFlushReceiptId)
+        ? await this.deps.proctoringSubmitGuardService.awaitFinalFlushReceipt({
+            participationId: activeParticipation.id,
+            submitAttemptId: proctoringInput?.submitAttemptId,
+            finalFlushReceiptId: proctoringInput?.finalFlushReceiptId,
+          })
+        : null;
 
     const submittedAt = new Date();
     await this.deps.examParticipationRepository.updateParticipation(activeParticipation.id, {
@@ -1641,14 +1754,27 @@ export class ExamAccessService {
       action: 'submit_participation',
       targetType: 'exam_participation',
       targetId: activeParticipation.id,
-      metadata: { scoreStatus: 'pending' },
+      metadata: {
+        scoreStatus: 'pending',
+        finalFlushReceiptId: finalFlushResult?.receiptId ?? null,
+        finalFlushStatus: finalFlushResult?.status ?? null,
+      },
     });
 
-    return {
+    const result = {
       participationId: activeParticipation.id,
       submittedAt: submittedAt.toISOString(),
       scoreStatus: 'pending',
     };
+    if (submitAttemptKey) {
+      this.submitAttemptResults.set(submitAttemptKey, result);
+    }
+
+    return result;
+  }
+
+  private getSubmitAttemptKey(participationId: string, submitAttemptId?: string): string | null {
+    return submitAttemptId ? `${participationId}:${submitAttemptId}` : null;
   }
 
   private assertExamConfiguration(input: {
@@ -2445,5 +2571,7 @@ export function createExamAccessService() {
     userRepository: new UserRepository(),
     tokenRepository: new TokenRepository(),
     emailService: createEMailService(),
+    proctoringStartGateService: createProctoringStartGateService(),
+    proctoringSubmitGuardService: createProctoringSubmitGuardService(),
   });
 }

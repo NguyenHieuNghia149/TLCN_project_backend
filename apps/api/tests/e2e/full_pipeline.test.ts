@@ -481,13 +481,25 @@ async function run(): Promise<void> {
   logPass('Full pipeline E2E test completed successfully');
 }
 
-run()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((error: unknown) => {
+async function main(): Promise<void> {
+  try {
+    await run();
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.stack || error.message : String(error);
     logFail(message);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await DatabaseService.disconnect();
+  }
+}
+
+if (process.env.JEST_WORKER_ID) {
+  describe.skip('full pipeline E2E script', () => {
+    it('runs via npm run verify:full-pipeline:e2e', () => {
+      expect(true).toBe(true);
+    });
   });
+} else {
+  void main();
+}
 

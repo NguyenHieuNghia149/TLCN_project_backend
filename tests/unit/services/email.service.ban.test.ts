@@ -1,4 +1,5 @@
 import { EMailService } from '../../../apps/api/src/services/email.service';
+import { logger } from '@backend/shared/utils';
 
 describe('EmailService - Ban Notifications', () => {
   let emailService: EMailService;
@@ -8,8 +9,7 @@ describe('EmailService - Ban Notifications', () => {
     mockTransporter = {
       sendMail: jest.fn().mockResolvedValue({ messageId: 'msg-1' }),
     };
-    // Mock the email service with transporter
-    emailService = new EMailService(mockTransporter);
+    emailService = new EMailService({ transporter: mockTransporter });
   });
 
   afterEach(() => {
@@ -27,7 +27,7 @@ describe('EmailService - Ban Notifications', () => {
       expect(mockTransporter.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: email,
-          subject: expect.stringContaining('Account Suspended'),
+          subject: expect.stringContaining('Account Has Been Suspended'),
           html: expect.stringMatching(/&lt;script&gt;/),
         })
       );
@@ -52,9 +52,9 @@ describe('EmailService - Ban Notifications', () => {
     });
 
     it('logs error but does not throw on send failure', async () => {
-      const consoleErrorSpy = jest
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const loggerErrorSpy = jest
+        .spyOn(logger, 'error')
+        .mockImplementation(() => logger);
       mockTransporter.sendMail.mockRejectedValueOnce(
         new Error('SMTP error')
       );
@@ -68,11 +68,12 @@ describe('EmailService - Ban Notifications', () => {
         emailService.sendBanNotification(email, userName, banReason)
       ).resolves.toBeUndefined();
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to send ban notification')
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to send ban notification'),
+        expect.any(Error)
       );
 
-      consoleErrorSpy.mockRestore();
+      loggerErrorSpy.mockRestore();
     });
   });
 
@@ -86,16 +87,16 @@ describe('EmailService - Ban Notifications', () => {
       expect(mockTransporter.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: email,
-          subject: expect.stringContaining('Account Restored'),
+          subject: expect.stringContaining('Account Has Been Restored'),
           html: expect.stringMatching(/&lt;script&gt;/),
         })
       );
     });
 
     it('logs error but does not throw on send failure', async () => {
-      const consoleErrorSpy = jest
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const loggerErrorSpy = jest
+        .spyOn(logger, 'error')
+        .mockImplementation(() => logger);
       mockTransporter.sendMail.mockRejectedValueOnce(
         new Error('SMTP error')
       );
@@ -108,11 +109,12 @@ describe('EmailService - Ban Notifications', () => {
         emailService.sendUnbanNotification(email, userName)
       ).resolves.toBeUndefined();
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to send unban notification')
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to send unban notification'),
+        expect.any(Error)
       );
 
-      consoleErrorSpy.mockRestore();
+      loggerErrorSpy.mockRestore();
     });
   });
 
@@ -137,7 +139,7 @@ describe('EmailService - Ban Notifications', () => {
     });
 
     it('escapes all dangerous characters', () => {
-      const dangerous = '<img src=x onerror="alert(\'xss\')">';
+      const dangerous = '<img src=x data-info="a&b" onerror="alert(\'xss\')">';
       const escaped = emailService['escapeHtml'](dangerous);
 
       expect(escaped).toContain('&lt;');

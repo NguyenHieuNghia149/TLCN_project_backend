@@ -165,6 +165,43 @@ export async function startApiServer(): Promise<{
   const examAutoSubmitService = createExamAutoSubmitService();
   await examAutoSubmitService.start();
 
+  const { createProctoringTelemetryPersisterService } =
+    require('./services/proctoring/proctoring-telemetry-persister.service') as typeof import('./services/proctoring/proctoring-telemetry-persister.service');
+  const proctoringTelemetryPersister = createProctoringTelemetryPersisterService();
+  try {
+    await proctoringTelemetryPersister.start();
+    logger.info('Proctoring telemetry persister started');
+  } catch (error) {
+    logger.error(
+      'Proctoring telemetry persister failed to start (operational incident):',
+      (error as Error).message,
+    );
+  }
+
+  try {
+    const { createProctoringModelRegistryService } =
+      require('./services/proctoring/proctoring-model-registry.service') as typeof import('./services/proctoring/proctoring-model-registry.service');
+    const modelRegistry = createProctoringModelRegistryService();
+    await modelRegistry.registerAndActivateSummaryModel({
+      modelVersion: 'summary-gemma-v1.0.0',
+      modelType: 'summary_generator',
+      provider: 'local',
+      artifactUri: 'internal://summary/gemma-v1',
+    });
+    await modelRegistry.registerAndActivateSummaryModel({
+      modelVersion: 'geval-judge-v1.0.0',
+      modelType: 'summary_judge',
+      provider: 'local',
+      artifactUri: 'internal://geval/judge-v1',
+    });
+    logger.info('Proctoring summary model versions registered and activated');
+  } catch (error) {
+    logger.error(
+      'Proctoring summary model registration failed (continuing without):',
+      (error as Error).message,
+    );
+  }
+
   getJudgeQueueService()
     .connect()
     .then(() => logger.info('Connected to Redis'))

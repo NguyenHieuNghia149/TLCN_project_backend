@@ -11,7 +11,8 @@ describe('CommentController', () => {
     const commentService = {
       getCommentsByLesson: jest.fn().mockResolvedValue(comments),
     } as any;
-    const controller = new CommentController(commentService);
+    const commentLikeService = {} as any;
+    const controller = new CommentController(commentService, commentLikeService);
     const response = createMockResponse();
 
     await controller.getByLesson(

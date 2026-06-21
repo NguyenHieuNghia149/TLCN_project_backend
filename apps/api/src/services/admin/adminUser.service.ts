@@ -36,10 +36,14 @@ export class AdminUserService {
   private userRepository: UserRepository;
   private emailService: EMailService;
 
-  constructor(deps: { adminUserRepository: AdminUserRepository }) {
+  constructor(deps: {
+    adminUserRepository: AdminUserRepository;
+    userRepository: UserRepository;
+    emailService: EMailService;
+  }) {
     this.repo = deps.adminUserRepository;
-    this.userRepository = new UserRepository();
-    this.emailService = createEMailService();
+    this.userRepository = deps.userRepository;
+    this.emailService = deps.emailService;
   }
 
   async listUsers(params: {
@@ -232,5 +236,7 @@ export class AdminUserService {
 export function createAdminUserService(): AdminUserService {
   return new AdminUserService({
     adminUserRepository: createAdminUserRepository(),
+    userRepository: new UserRepository(),
+    emailService: createEMailService(),
   });
 }

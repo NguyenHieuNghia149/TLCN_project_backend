@@ -1,0 +1,180 @@
+const axiosPost = jest.fn();
+
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    post: axiosPost,
+  },
+}));
+
+import { ProctoringAiHttpClient } from '../../../apps/worker/src/services/proctoring-ai-http-client';
+
+describe('ProctoringAiHttpClient', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('posts telemetry windows with optional service auth header', async () => {
+    axiosPost.mockResolvedValue({
+      data: {
+        windowId: 'window-1',
+        examId: 'exam-1',
+        participationId: 'participation-1',
+        modelVersion: 'iforest-v1',
+        anomalyScore: 0.42,
+        rawScore: 1.2,
+        riskLevel: 'medium',
+        explanationStatus: 'not_requested',
+        topContributors: [],
+      },
+    });
+    const client = new ProctoringAiHttpClient({
+      serverAiUrl: 'http://server-ai:8001/',
+      internalToken: 'secret-token',
+    });
+
+    const result = await client.predict({ windowId: 'window-1' } as any);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://server-ai:8001/anomaly/predict',
+      { windowId: 'window-1' },
+      {
+        timeout: 5000,
+        headers: {
+          Authorization: 'Bearer secret-token',
+        },
+      }
+    );
+    expect(result.riskLevel).toBe('medium');
+  });
+
+  it.each([
+    ['missing model version', { modelVersion: '' }],
+    ['score below range', { anomalyScore: -0.1 }],
+    ['score above range', { anomalyScore: 1.1 }],
+    ['invalid risk level', { riskLevel: 'severe' }],
+  ])('rejects invalid server-ai responses: %s', async (_caseName, patch) => {
+    axiosPost.mockResolvedValue({
+      data: {
+        windowId: 'window-1',
+        examId: 'exam-1',
+        participationId: 'participation-1',
+        modelVersion: 'iforest-v1',
+        anomalyScore: 0.42,
+        rawScore: 1.2,
+        riskLevel: 'medium',
+        ...patch,
+      },
+    });
+    const client = new ProctoringAiHttpClient({ serverAiUrl: 'http://server-ai:8001' });
+
+    await expect(client.predict({ windowId: 'window-1' } as any)).rejects.toThrow(
+      'Invalid proctoring AI response'
+    );
+  });
+
+  it('posts high-risk windows to the explanation endpoint with service auth', async () => {
+    axiosPost.mockResolvedValue({
+      data: {
+        windowId: 'window-1',
+        examId: 'exam-1',
+        participationId: 'participation-1',
+        modelVersion: 'iforest-v1',
+        anomalyScore: 0.91,
+        riskLevel: 'critical',
+        explanationStatus: 'completed',
+        topContributors: [
+          {
+            featureName: 'visibilityHiddenMs',
+            numericValue: 120000,
+            contribution: 120000,
+            direction: 'increased_risk',
+            displayLabel: 'Page hidden duration',
+            rawClipboardText: 'drop me',
+          },
+        ],
+      },
+    });
+    const client = new ProctoringAiHttpClient({
+      serverAiUrl: 'http://server-ai:8001/',
+      internalToken: 'secret-token',
+    });
+
+    const result = await client.explain({
+      telemetry: { windowId: 'window-1' } as any,
+      modelVersion: 'iforest-v1',
+      anomalyScore: 0.91,
+      riskLevel: 'critical',
+    });
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://server-ai:8001/anomaly/explain',
+      {
+        telemetry: { windowId: 'window-1' },
+        modelVersion: 'iforest-v1',
+        anomalyScore: 0.91,
+        riskLevel: 'critical',
+      },
+      {
+        timeout: 5000,
+        headers: {
+          Authorization: 'Bearer secret-token',
+        },
+      }
+    );
+    expect(result.topContributors).toEqual([
+      {
+        featureName: 'visibilityHiddenMs',
+        numericValue: 120000,
+        contribution: 120000,
+        direction: 'increased_risk',
+        displayLabel: 'Page hidden duration',
+      },
+    ]);
+  });
+
+  it('posts sanitized LLM summary payload to the summary endpoint', async () => {
+    axiosPost.mockResolvedValue({
+      data: {
+        summaryText: 'He thong ghi nhan 1 su kien.',
+        riskFacts: [],
+        citations: [{ eventId: 'event-1', reason: 'timeline evidence' }],
+        missingDataNotes: [],
+        modelNotes: [],
+        guardRailWarnings: [],
+        validationStatus: 'passed',
+        validationScore: 0.93,
+        validationErrors: [],
+        modelVersion: 'summary-local-v1',
+        promptVersion: 'proctoring-summary-v1',
+        outputSchemaVersion: 'proctoring-summary-output-v1',
+      },
+    });
+    const client = new ProctoringAiHttpClient({
+      serverAiUrl: 'http://server-ai:8001/',
+      internalToken: 'secret-token',
+    });
+
+    const result = await client.generateSummary({
+      schemaVersion: 'proctoring-summary-input-v1',
+      llmSummaryId: 'llm-summary-1',
+      timeline: [{ eventId: 'event-1' }],
+    } as any);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://server-ai:8001/summary/generate',
+      {
+        schemaVersion: 'proctoring-summary-input-v1',
+        llmSummaryId: 'llm-summary-1',
+        timeline: [{ eventId: 'event-1' }],
+      },
+      {
+        timeout: 5000,
+        headers: {
+          Authorization: 'Bearer secret-token',
+        },
+      }
+    );
+    expect(result.validationStatus).toBe('passed');
+  });
+});

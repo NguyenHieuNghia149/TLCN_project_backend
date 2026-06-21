@@ -12,6 +12,7 @@ import {
   ExamEntrySessionStartParamsSchema,
   ExamSessionSyncSchema,
   ExamSlugParamsSchema,
+  ExamSubmitBodySchema,
 } from '@backend/shared/validations/exam-access.validation';
 
 export function createExamAccessRouter(): Router {
@@ -62,6 +63,7 @@ export function createExamAccessRouter(): Router {
     accessLimiter,
     authenticationToken,
     validate(ExamSlugParamsSchema, 'params'),
+    validate(ExamSubmitBodySchema, 'body'),
     controller.submitExam.bind(controller),
   );
 
