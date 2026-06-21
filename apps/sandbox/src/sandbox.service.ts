@@ -323,18 +323,26 @@ export class SandboxService {
         const result = await this.runWithNsjail(jobDir, langConfig, testcase.input || '', config);
         const rawStdout = result.stdout || '';
         const rawStderr = result.stderr || '';
+        const trimmedStdout = this.trimOutput(rawStdout);
 
         const envelopeResult = this.parseWrapperEnvelope(rawStdout);
         if (!envelopeResult.valid) {
+          const plainOk = result.exitCode === 0 && trimmedStdout === expectedOutput;
+          if (plainOk) {
+            passed++;
+          }
+
           results.push({
             testcaseId: testcase.id,
             input: testcase.input || '',
             expectedOutput,
-            actualOutput: null,
-            isPassed: false,
+            actualOutput: trimmedStdout || null,
+            isPassed: plainOk,
             executionTime: 0,
             memoryUse: null,
-            error: this.buildFailureContext(envelopeResult.error, rawStdout, rawStderr),
+            error: plainOk
+              ? null
+              : this.buildFailureContext(envelopeResult.error, rawStdout, rawStderr),
             stderr: rawStderr,
           });
           continue;
