@@ -371,11 +371,14 @@ describe('Proctoring Security — forbidden payloads, bypass code leak, accusati
       const reviewLabelRepository = {
         findByParticipation: jest.fn().mockResolvedValue([]),
       };
+      const llmSummaryRepository = {
+        findLatestByParticipation: jest.fn().mockResolvedValue(null),
+      };
       const service = new ProctoringAdminReviewService({
         examRepository, participationRepository, summaryRepository, eventRepository,
         consentRepository, precheckRepository, bypassRepository, finalFlushRepository,
         dataRequestRepository, settingsRepository, summaryService, auditLogRepository,
-        reviewLabelRepository,
+        reviewLabelRepository, llmSummaryRepository,
       });
 
       const review = await service.getReview('exam-1', 'participation-1', {

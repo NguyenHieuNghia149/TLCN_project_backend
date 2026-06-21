@@ -83,6 +83,9 @@ describe('ProctoringAdminReviewService', () => {
     const evaluationReportRepository = {
       findLatestForModel: jest.fn().mockResolvedValue(null),
     };
+    const llmSummaryRepository = {
+      findLatestByParticipation: jest.fn().mockResolvedValue(null),
+    };
     const summaryService = {
       recomputeForParticipation: jest.fn().mockResolvedValue({
         id: 'summary-1',
@@ -129,6 +132,7 @@ describe('ProctoringAdminReviewService', () => {
       settingsRepository,
       anomalyResultRepository,
       evaluationReportRepository,
+      llmSummaryRepository,
       summaryService,
       aiJobService,
       modelRegistryService,
@@ -146,6 +150,7 @@ describe('ProctoringAdminReviewService', () => {
       settingsRepository,
       anomalyResultRepository,
       evaluationReportRepository,
+      llmSummaryRepository,
       auditLogRepository,
       summaryService,
       aiJobService,
@@ -193,7 +198,7 @@ describe('ProctoringAdminReviewService', () => {
       finalFlush: [{ id: 'receipt-1', status: 'persisted' }],
       dataRequests: [{ id: 'request-1', requestType: 'delete' }],
     });
-    expect(JSON.stringify(result)).not.toMatch(/aiResult|aiScore|llm/i);
+    expect(JSON.stringify(result)).not.toMatch(/aiResult|aiScore/i);
   });
 
   it('removes snake_case and nested sensitive payload keys from admin timeline responses', async () => {

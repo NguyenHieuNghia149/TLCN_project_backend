@@ -189,6 +189,55 @@ describe('ExamService dependency injection', () => {
     });
   });
 
+  it('falls back to exam participant identity when the linked user record is missing', async () => {
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-missing',
+        startTime: new Date('2025-01-01T00:00:00.000Z'),
+        endTime: new Date('2025-01-01T00:30:00.000Z'),
+      }),
+      findParticipantProfileByParticipationId: jest.fn().mockResolvedValue({
+        fullName: 'External Candidate',
+        normalizedEmail: 'external@example.com',
+      }),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const userRepository = {
+      findById: jest.fn().mockResolvedValue(null),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({
+        examParticipationRepository,
+        examRepository,
+        examToProblemsRepository,
+        userRepository,
+      }),
+    );
+
+    const result = await service.getParticipationSubmission(
+      'exam-1',
+      'participation-1',
+      'user-missing',
+    );
+
+    expect(userRepository.findById).toHaveBeenCalledWith('user-missing');
+    expect(
+      examParticipationRepository.findParticipantProfileByParticipationId,
+    ).toHaveBeenCalledWith('participation-1');
+    expect(result.user).toEqual({
+      firstname: 'External Candidate',
+      lastname: '',
+      email: 'external@example.com',
+    });
+  });
+
   it('includes per-challenge max points in learner submission details', async () => {
     const examParticipationRepository = {
       findById: jest.fn().mockResolvedValue({
