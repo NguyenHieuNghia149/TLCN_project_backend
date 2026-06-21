@@ -155,7 +155,6 @@
 
   # AI Proctoring Service (Python / FastAPI)
   server-ai:
-    profiles: [ai]
     build:
       context: ../server-ai
       dockerfile: Dockerfile
