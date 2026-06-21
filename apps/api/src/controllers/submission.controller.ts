@@ -60,6 +60,11 @@ export class SubmissionController {
       throw new SubmissionIdRequiredException();
     }
 
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(submissionId)) {
+      throw new SubmissionNotFoundException();
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -112,6 +117,11 @@ export class SubmissionController {
 
     if (!submissionId) {
       throw new SubmissionIdRequiredException();
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(submissionId)) {
+      throw new SubmissionNotFoundException();
     }
 
     const status = await this.submissionService.getSubmissionStatus(submissionId as string);
@@ -219,6 +229,11 @@ export class SubmissionController {
 
     if (!submissionId) {
       throw new SubmissionIdRequiredException();
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(submissionId)) {
+      throw new SubmissionNotFoundException();
     }
 
     const status = await this.submissionService.getSubmissionStatus(submissionId as string);
