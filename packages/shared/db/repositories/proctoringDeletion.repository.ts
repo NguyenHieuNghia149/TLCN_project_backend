@@ -117,4 +117,51 @@ export class ProctoringDeletionRepository {
       .where(eq(examProctoringLlmSummaries.participationId, participationId));
     return result.rowCount ?? 0;
   }
+
+  async mutateAllTransactional(
+    participationId: string
+  ): Promise<Record<string, number>> {
+    return await db.transaction(async (tx: any) => {
+      const counts: Record<string, number> = {};
+      counts.events = (await tx
+        .update(examProctoringEvents)
+        .set({ payloadJson: null, updatedAt: new Date() })
+        .where(eq(examProctoringEvents.participationId, participationId))
+      ).rowCount ?? 0;
+      counts.summaries = (await tx
+        .update(examProctoringSummaries)
+        .set({ eventCountsJson: null, velocityJson: null, updatedAt: new Date() })
+        .where(eq(examProctoringSummaries.participationId, participationId))
+      ).rowCount ?? 0;
+      counts.aiJobs = (await tx
+        .update(proctoringAiJobs)
+        .set({ payloadJson: null, resultJson: null, updatedAt: new Date() })
+        .where(eq(proctoringAiJobs.participationId, participationId))
+      ).rowCount ?? 0;
+      counts.anomalyResults = (await tx
+        .update(examProctoringAnomalyResults)
+        .set({ topContributorsJson: null, sourceEventRangeJson: null, updatedAt: new Date() })
+        .where(eq(examProctoringAnomalyResults.participationId, participationId))
+      ).rowCount ?? 0;
+      counts.reviewLabels = (await tx
+        .update(examProctoringReviewLabels)
+        .set({ notes: null, updatedAt: new Date() })
+        .where(eq(examProctoringReviewLabels.participationId, participationId))
+      ).rowCount ?? 0;
+      counts.llmSummaries = (await tx
+        .update(examProctoringLlmSummaries)
+        .set({
+          summaryJson: null,
+          riskFactsJson: null,
+          missingDataNotesJson: null,
+          modelNotesJson: null,
+          sourceEventIdsJson: null,
+          validationErrorsJson: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(examProctoringLlmSummaries.participationId, participationId))
+      ).rowCount ?? 0;
+      return counts;
+    });
+  }
 }

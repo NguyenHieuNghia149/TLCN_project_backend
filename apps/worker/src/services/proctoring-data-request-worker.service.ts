@@ -133,14 +133,7 @@ export class ProctoringDataRequestWorkerService {
     };
 
     try {
-      const counts: Record<string, number> = {};
-
-      counts.events = await this.deletionRepository.anonymizeEvents(participationId);
-      counts.summaries = await this.deletionRepository.anonymizeSummaries(participationId);
-      counts.aiJobs = await this.deletionRepository.redactAiJobPayloads(participationId);
-      counts.anomalyResults = await this.deletionRepository.redactAnomalyResults(participationId);
-      counts.reviewLabels = await this.deletionRepository.redactReviewLabels(participationId);
-      counts.llmSummaries = await this.deletionRepository.redactLlmSummaries(participationId);
+      const counts = await this.deletionRepository.mutateAllTransactional(participationId);
 
       evidence.mutationCounts = counts;
       evidence.completedAt = new Date().toISOString();

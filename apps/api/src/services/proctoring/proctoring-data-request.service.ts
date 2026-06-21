@@ -50,6 +50,30 @@ export class ProctoringDataRequestService {
     actor: Actor;
   }) {
     this.rbacService.assertDataRequestCreate(input.actor);
+
+    const [participation] = await db
+      .select({ examId: examParticipations.examId, userId: examParticipations.userId })
+      .from(examParticipations)
+      .where(eq(examParticipations.id, input.participationId));
+
+    if (!participation) {
+      throw new AppException('Participation not found.', 404, 'PROCTORING_PARTICIPATION_NOT_FOUND');
+    }
+    if (participation.examId !== input.examId) {
+      throw new AppException(
+        'Participation does not belong to the specified exam.',
+        400,
+        'PROCTORING_PARTICIPATION_EXAM_MISMATCH',
+      );
+    }
+    if (participation.userId !== input.candidateUserId) {
+      throw new AppException(
+        'Candidate user does not match the participation owner.',
+        400,
+        'PROCTORING_CANDIDATE_USER_MISMATCH',
+      );
+    }
+
     const now = this.nowFactory();
     const executionHours = 72;
     const dueAt = new Date(now.getTime() + executionHours * 60 * 60 * 1000);
@@ -189,7 +213,6 @@ export class ProctoringDataRequestService {
       lastExecutionDryRun: input.dryRun,
       lastExecutionRequestedAt: now,
       lastExecutionRequestedBy: input.actor.userId ?? null,
-      dryRunMode: input.dryRun ? 'dry_run' : 'mutating',
     } as any);
 
     await this.auditLogRepository.create({
