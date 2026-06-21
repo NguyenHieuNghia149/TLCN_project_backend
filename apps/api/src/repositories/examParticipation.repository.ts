@@ -123,6 +123,22 @@ export class ExamParticipationRepository extends BaseRepository<
     return participation || null;
   }
 
+  async findParticipantProfileByParticipationId(
+    participationId: string,
+  ): Promise<{ fullName: string | null; normalizedEmail: string | null } | null> {
+    const [profile] = await this.db
+      .select({
+        fullName: examParticipants.fullName,
+        normalizedEmail: examParticipants.normalizedEmail,
+      })
+      .from(examParticipations)
+      .innerJoin(examParticipants, eq(examParticipations.participantId, examParticipants.id))
+      .where(eq(examParticipations.id, participationId))
+      .limit(1);
+
+    return profile || null;
+  }
+
   async findSyncStateById(participationId: string): Promise<Pick<
     ExamParticipationEntity,
     'id' | 'userId' | 'status' | 'expiresAt' | 'currentAnswers'

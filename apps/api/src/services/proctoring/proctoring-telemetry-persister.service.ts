@@ -1,6 +1,6 @@
 import os from 'os';
 
-import { ProctoringEventRepository } from '@backend/api/repositories/proctoring/proctoringEvent.repository';
+import { ProctoringBulkInsertResult, ProctoringEventRepository } from '@backend/api/repositories/proctoring/proctoringEvent.repository';
 import { ProctoringFinalFlushRepository } from '@backend/api/repositories/proctoring/proctoringFinalFlush.repository';
 import { ExamProctoringEventInsert } from '@backend/shared/db/schema';
 import { logger } from '@backend/shared/utils';
@@ -333,7 +333,7 @@ export class ProctoringTelemetryPersisterService {
       });
     }
 
-    let bulkResult: { insertedCount: number; dedupedCount: number };
+    let bulkResult: ProctoringBulkInsertResult;
 
     try {
       bulkResult = await this.eventRepository.bulkInsertDedupe(
@@ -355,6 +355,10 @@ export class ProctoringTelemetryPersisterService {
       const acceptedCount = validEntries.filter(
         entry => entry.finalFlushReceiptId === receiptId
       ).length;
+      const persistedCount = bulkResult.inserted.filter(
+        (row: any) => row.finalFlushReceiptId === receiptId
+      ).length;
+      const dedupedCount = acceptedCount - persistedCount;
       await this.finalFlushRepository.transitionStatus({
         receiptId,
         fromStatuses: ['received', 'persisting'],
@@ -362,8 +366,8 @@ export class ProctoringTelemetryPersisterService {
         persistedAt: new Date(),
         counts: {
           acceptedCount,
-          dedupedCount: bulkResult.dedupedCount,
-          persistedCount: bulkResult.insertedCount,
+          dedupedCount,
+          persistedCount,
         },
       });
     }

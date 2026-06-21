@@ -1330,6 +1330,12 @@ export class ExamService {
 
     // Get user info
     const user = await this.userRepository.findById(participation.userId);
+    const participantProfile =
+      !user && participation.participantId
+        ? await this.examParticipationRepository.findParticipantProfileByParticipationId(
+            participationId,
+          )
+        : null;
 
     // Get solutions for each problem
     const solutions = await Promise.all(
@@ -1407,6 +1413,12 @@ export class ExamService {
             lastname: user.lastName || '',
             email: user.email || '',
           }
+        : participantProfile
+          ? {
+              firstname: participantProfile.fullName || '',
+              lastname: '',
+              email: participantProfile.normalizedEmail || '',
+            }
         : undefined,
       solutions,
       totalScore,

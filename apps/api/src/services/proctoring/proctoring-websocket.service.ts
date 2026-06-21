@@ -264,9 +264,12 @@ export class ProctoringWebSocketService {
         now: this.nowFactory(),
       });
 
+      const maxClientSeq = frames.reduce((max, f) => Math.max(max, f.clientSeq), 0);
+
       if (!decision.allowed) {
         socket.emit('telemetry.retry_required', {
           reason: decision.reason ?? 'batch_rejected',
+          lastClientSeq: maxClientSeq,
         });
         return;
       }
@@ -285,6 +288,7 @@ export class ProctoringWebSocketService {
         if (this.rateLimitService.isStaleBufferedEvent(frame, this.nowFactory())) {
           socket.emit('telemetry.retry_required', {
             reason: 'stale_buffered_event',
+            lastClientSeq: frame.clientSeq,
           });
           return;
         }
@@ -318,6 +322,7 @@ export class ProctoringWebSocketService {
         acceptedCount: redisIds.length,
         dedupedCount,
         redisIds,
+        lastClientSeq: maxClientSeq,
       });
     } catch (error) {
       this.handleTelemetryFailure(socket, error as Error);
