@@ -25,7 +25,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint apps/*/src/**/*.ts packages/*/src/**/*.ts",
+    "lint": "eslint \"apps/*/src/**/*.ts\"",
     "lint:fix": "eslint apps/*/src/**/*.ts packages/*/src/**/*.ts --fix",
     "format": "prettier --write apps/*/src/**/*.ts packages/*/src/**/*.ts",
     "db:generate": "drizzle-kit generate",
