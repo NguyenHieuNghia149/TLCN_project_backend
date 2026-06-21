@@ -13,4 +13,14 @@ describe('nginx runtime upstream resolution', () => {
     expect(nginxConfig).toContain('set $sandbox_backend http://sandbox:4000;');
     expect(nginxConfig).toContain('proxy_pass $sandbox_backend/;');
   });
+
+  it('preserves submission stream request URIs when proxy_pass uses variables', () => {
+    const nginxConfigPath = path.resolve(process.cwd(), 'docker/nginx.conf');
+    const nginxConfig = fs.readFileSync(nginxConfigPath, 'utf8');
+
+    expect(nginxConfig).toMatch(
+      /location \/api\/submissions\/stream\/ \{[\s\S]*?proxy_pass \$api_backend;[\s\S]*?\}/,
+    );
+    expect(nginxConfig).not.toContain('proxy_pass $api_backend/api/submissions/stream/;');
+  });
 });
