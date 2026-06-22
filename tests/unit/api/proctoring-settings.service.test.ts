@@ -198,6 +198,45 @@ describe('ProctoringSettingsService', () => {
     expect(settingsRepository.upsertForExam).toHaveBeenCalled();
   });
 
+  it('switches legacy disabled LLM provider rows to local when summary is enabled', async () => {
+    const legacySettingsRepository = {
+      findByExamId: jest.fn().mockResolvedValue({
+        examId: '11111111-1111-4111-8111-111111111111',
+        llmSummaryEnabled: false,
+        llmSummaryProvider: 'disabled',
+      }),
+      upsertForExam: jest.fn().mockImplementation(async values => ({
+        id: 'settings-1',
+        ...values,
+      })),
+    };
+    const { service } = createService({
+      settingsRepository: legacySettingsRepository,
+    });
+
+    const result = await service.updateSettings(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      {
+        llmSummaryEnabled: true,
+        llmPrivacyApprovedAt: '2026-06-20T00:00:00.000Z',
+        llmPrivacyApprovedBy: 'dpo-user',
+        providerDpaReference: 'dpa-2026-001',
+      } as any
+    );
+
+    expect(result).toMatchObject({
+      llmSummaryEnabled: true,
+      llmSummaryProvider: 'local',
+    });
+    expect(legacySettingsRepository.upsertForExam).toHaveBeenCalledWith(
+      expect.objectContaining({
+        llmSummaryEnabled: true,
+        llmSummaryProvider: 'local',
+      })
+    );
+  });
+
   it('rejects external LLM provider without providerDpaReference', async () => {
     const { service, settingsRepository } = createService();
 

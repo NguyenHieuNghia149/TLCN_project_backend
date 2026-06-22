@@ -84,7 +84,12 @@ export class ProctoringLlmSummaryService {
         'PROCTORING_LLM_SUMMARY_DISABLED'
       );
     }
-    if (!settings.llmSummaryProvider || settings.llmSummaryProvider === 'disabled') {
+    const summaryProvider =
+      settings.llmSummaryProvider && settings.llmSummaryProvider !== 'disabled'
+        ? settings.llmSummaryProvider
+        : 'local';
+
+    if (settings.llmSummaryProvider === 'disabled') {
       throw new AppException(
         'LLM summary provider is disabled.',
         400,
@@ -129,7 +134,7 @@ export class ProctoringLlmSummaryService {
         examId: input.examId,
         participationId: input.participationId,
         deterministicSummaryId: built.input.deterministicSummaryId,
-        provider: settings.llmSummaryProvider,
+        provider: summaryProvider,
         modelVersion: model.modelVersion,
         promptVersion,
         inputSchemaVersion: 'proctoring-summary-input-v1',
@@ -176,7 +181,7 @@ export class ProctoringLlmSummaryService {
         ...built.input,
         llmSummaryId: summaryResult.row.id,
         inputHash: built.inputHash,
-        provider: settings.llmSummaryProvider,
+        provider: summaryProvider,
         modelVersion: model.modelVersion,
         judgeModelVersion: judgeModel?.modelVersion ?? null,
         promptVersion,

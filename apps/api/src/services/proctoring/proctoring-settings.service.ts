@@ -118,6 +118,12 @@ function mergeWithDefaults(
   } as ExamProctoringSettingsInsert;
   normalizeScreenShareSettings(merged);
   merged.llmPrivacyApprovedAt = normalizeTimestamp(merged.llmPrivacyApprovedAt) as Date | null | undefined;
+  if (
+    merged.llmSummaryEnabled &&
+    (!merged.llmSummaryProvider || merged.llmSummaryProvider === 'disabled')
+  ) {
+    merged.llmSummaryProvider = 'local';
+  }
   return merged;
 }
 

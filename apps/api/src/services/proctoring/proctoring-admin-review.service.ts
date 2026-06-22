@@ -34,6 +34,10 @@ import {
   ProctoringModelRegistryService,
 } from './proctoring-model-registry.service';
 import {
+  createProctoringLlmSummaryService,
+  ProctoringLlmSummaryService,
+} from './proctoring-llm-summary.service';
+import {
   createProctoringSummaryService,
   ProctoringSummaryService,
 } from './proctoring-summary.service';
@@ -62,6 +66,7 @@ type AdminReviewDependencies = {
   summaryService?: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
   aiJobService?: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
   modelRegistryService?: Pick<ProctoringModelRegistryService, 'resolveAnomalyModel'>;
+  llmSummaryService?: Pick<ProctoringLlmSummaryService, 'generate'>;
   auditLogRepository?: Pick<ExamAuditLogRepository, 'create'>;
   nowFactory?: () => Date;
 };
@@ -202,6 +207,7 @@ export class ProctoringAdminReviewService {
   private readonly summaryService: Pick<ProctoringSummaryService, 'recomputeForParticipation'>;
   private readonly aiJobService: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
   private readonly modelRegistryService: Pick<ProctoringModelRegistryService, 'resolveAnomalyModel'>;
+  private readonly llmSummaryService: Pick<ProctoringLlmSummaryService, 'generate'>;
   private readonly auditLogRepository: Pick<ExamAuditLogRepository, 'create'>;
   private readonly nowFactory: () => Date;
 
@@ -227,6 +233,7 @@ export class ProctoringAdminReviewService {
     this.summaryService = deps.summaryService ?? createProctoringSummaryService();
     this.aiJobService = deps.aiJobService ?? createProctoringAiJobService();
     this.modelRegistryService = deps.modelRegistryService ?? createProctoringModelRegistryService();
+    this.llmSummaryService = deps.llmSummaryService ?? createProctoringLlmSummaryService();
     this.auditLogRepository = deps.auditLogRepository ?? new ExamAuditLogRepository();
     this.nowFactory = deps.nowFactory ?? (() => new Date());
   }
@@ -469,6 +476,27 @@ export class ProctoringAdminReviewService {
     }
 
     if (!llmSummaryRecord || llmSummaryRecord.status !== 'accepted') {
+      if (llmSummaryRecord) {
+        return {
+          visible: false,
+          status: llmSummaryRecord.status,
+          summaryId: llmSummaryRecord.id,
+          provider: llmSummaryRecord.provider,
+          modelVersion: llmSummaryRecord.modelVersion,
+          promptVersion: llmSummaryRecord.promptVersion,
+          validationStatus: llmSummaryRecord.validationStatus,
+          validationScore:
+            llmSummaryRecord.validationScore === null ||
+            llmSummaryRecord.validationScore === undefined
+              ? null
+              : Number(llmSummaryRecord.validationScore),
+          riskFacts: [] as string[],
+          citations: [] as string[],
+          missingDataNotes: llmSummaryRecord.missingDataNotesJson ?? [],
+          modelNotes: llmSummaryRecord.modelNotesJson ?? [],
+          completedAt: serializeDate(llmSummaryRecord.completedAt),
+        };
+      }
       return {
         visible: false,
         status: 'unavailable',
@@ -541,7 +569,9 @@ export class ProctoringAdminReviewService {
     const recomputeAi = input.recomputeAi === true;
     let summary = null;
     let aiJob = null;
+    let llmSummary: Awaited<ReturnType<ProctoringLlmSummaryService['generate']>> | null = null;
     let resolvedModelVersion: string | null = null;
+    const settings = await this.settingsRepository.findByExamId(examId);
 
     if (recomputeDeterministic) {
       summary = await this.summaryService.recomputeForParticipation({
@@ -562,6 +592,14 @@ export class ProctoringAdminReviewService {
       });
     }
 
+    if (settings?.llmSummaryEnabled) {
+      llmSummary = await this.llmSummaryService.generate({
+        examId,
+        participationId,
+        actor,
+      });
+    }
+
     await this.auditLogRepository.create({
       examId,
       actorType: actor.userId ? 'user' : 'system',
@@ -574,6 +612,8 @@ export class ProctoringAdminReviewService {
         recomputeDeterministic,
         recomputeAi,
         modelVersion: resolvedModelVersion,
+        llmSummaryId: llmSummary?.llmSummaryId ?? null,
+        llmSummaryStatus: llmSummary?.status ?? null,
         reasonPresent: Boolean(input.reason?.trim()),
         aiJobId: aiJob?.id ?? null,
       },
