@@ -24,6 +24,7 @@ function createChallengeDependencies(overrides: Partial<any> = {}) {
     supportedLanguageRepository: {
       findActiveExecutableLanguages: jest.fn().mockResolvedValue([]),
     } as any,
+    leaderboardRepository: {} as any,
     ...overrides,
   };
 }
