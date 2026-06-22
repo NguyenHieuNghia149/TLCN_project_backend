@@ -154,10 +154,24 @@ describe('ExamService dependency injection', () => {
       }),
     } as any;
     const examRepository = {
-      findById: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        duration: 60,
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+      }),
     } as any;
     const examToProblemsRepository = {
       findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const submissionRepository = {
+      findLatestByParticipationAndProblems: jest.fn().mockResolvedValue([]),
+      findLatestByUserProblemsBetween: jest.fn().mockResolvedValue([]),
+    } as any;
+    const testcaseRepository = {
+      findByProblemIds: jest.fn().mockResolvedValue([]),
+    } as any;
+    const resultSubmissionRepository = {
+      findBySubmissionIds: jest.fn().mockResolvedValue([]),
     } as any;
     const userRepository = {
       findById: jest.fn().mockResolvedValue({
@@ -171,6 +185,9 @@ describe('ExamService dependency injection', () => {
         examParticipationRepository,
         examRepository,
         examToProblemsRepository,
+        submissionRepository,
+        testcaseRepository,
+        resultSubmissionRepository,
         userRepository,
       }),
     );
@@ -204,10 +221,24 @@ describe('ExamService dependency injection', () => {
       }),
     } as any;
     const examRepository = {
-      findById: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        duration: 60,
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+      }),
     } as any;
     const examToProblemsRepository = {
       findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const submissionRepository = {
+      findLatestByParticipationAndProblems: jest.fn().mockResolvedValue([]),
+      findLatestByUserProblemsBetween: jest.fn().mockResolvedValue([]),
+    } as any;
+    const testcaseRepository = {
+      findByProblemIds: jest.fn().mockResolvedValue([]),
+    } as any;
+    const resultSubmissionRepository = {
+      findBySubmissionIds: jest.fn().mockResolvedValue([]),
     } as any;
     const userRepository = {
       findById: jest.fn().mockResolvedValue(null),
@@ -217,6 +248,9 @@ describe('ExamService dependency injection', () => {
         examParticipationRepository,
         examRepository,
         examToProblemsRepository,
+        submissionRepository,
+        testcaseRepository,
+        resultSubmissionRepository,
         userRepository,
       }),
     );
@@ -248,7 +282,11 @@ describe('ExamService dependency injection', () => {
       }),
     } as any;
     const examRepository = {
-      findById: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        duration: 60,
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+      }),
     } as any;
     const examToProblemsRepository = {
       findByExamId: jest.fn().mockResolvedValue([
@@ -271,6 +309,12 @@ describe('ExamService dependency injection', () => {
         ),
     } as any;
     const testcaseRepository = {
+      findByProblemIds: jest.fn().mockResolvedValue([
+        { id: 'tc-1', problemId: 'problem-1', point: 30 },
+        { id: 'tc-2', problemId: 'problem-1', point: 70 },
+        { id: 'tc-3', problemId: 'problem-2', point: 10 },
+        { id: 'tc-4', problemId: 'problem-2', point: 15 },
+      ]),
       findByProblemId: jest.fn().mockImplementation((problemId: string) =>
         Promise.resolve(
           problemId === 'problem-1'
@@ -286,6 +330,16 @@ describe('ExamService dependency injection', () => {
       ),
     } as any;
     const submissionRepository = {
+      findLatestByParticipationAndProblems: jest.fn().mockResolvedValue([
+        {
+          id: 'submission-1',
+          problemId: 'problem-1',
+          sourceCode: 'print("ok")',
+          language: 'python',
+          submittedAt: new Date('2025-01-01T00:10:00.000Z'),
+        },
+      ]),
+      findLatestByUserProblemsBetween: jest.fn().mockResolvedValue([]),
       findLatestByParticipationAndProblem: jest
         .fn()
         .mockImplementation((_participationId: string, problemId: string) =>
@@ -302,6 +356,10 @@ describe('ExamService dependency injection', () => {
         ),
     } as any;
     const resultSubmissionRepository = {
+      findBySubmissionIds: jest.fn().mockResolvedValue([
+        { submissionId: 'submission-1', testcaseId: 'tc-1', isPassed: true },
+        { submissionId: 'submission-1', testcaseId: 'tc-2', isPassed: false },
+      ]),
       findBySubmissionId: jest.fn().mockResolvedValue([
         { testcaseId: 'tc-1', isPassed: true },
         { testcaseId: 'tc-2', isPassed: false },
@@ -356,6 +414,105 @@ describe('ExamService dependency injection', () => {
         maxPoints: 25,
       }),
     ]);
+  });
+
+  it('falls back to time-window submissions when loading participation submission details', async () => {
+    const startedAt = new Date('2025-01-01T00:00:00.000Z');
+    const fallbackSubmittedAt = new Date('2025-01-01T00:12:00.000Z');
+    const examParticipationRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        startTime: startedAt,
+        endTime: new Date('2025-01-01T00:30:00.000Z'),
+      }),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        duration: 60,
+        endDate: new Date('2025-01-01T01:00:00.000Z'),
+      }),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([{ problemId: 'problem-1' }]),
+    } as any;
+    const userRepository = {
+      findById: jest.fn().mockResolvedValue({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        email: 'jane@example.com',
+      }),
+    } as any;
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'problem-1', title: 'Arrays' }),
+    } as any;
+    const testcaseRepository = {
+      findByProblemIds: jest
+        .fn()
+        .mockResolvedValue([{ id: 'tc-1', problemId: 'problem-1', point: 25 }]),
+    } as any;
+    const submissionRepository = {
+      findLatestByParticipationAndProblems: jest.fn().mockResolvedValue([]),
+      findLatestByUserProblemsBetween: jest.fn().mockResolvedValue([
+        {
+          id: 'submission-fallback-1',
+          problemId: 'problem-1',
+          sourceCode: 'print("fallback")',
+          language: 'python',
+          submittedAt: fallbackSubmittedAt,
+        },
+      ]),
+    } as any;
+    const resultSubmissionRepository = {
+      findBySubmissionIds: jest.fn().mockResolvedValue([
+        {
+          submissionId: 'submission-fallback-1',
+          testcaseId: 'tc-1',
+          isPassed: true,
+        },
+      ]),
+    } as any;
+    const service = new ExamService(
+      createExamDependencies({
+        examParticipationRepository,
+        examRepository,
+        examToProblemsRepository,
+        userRepository,
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        resultSubmissionRepository,
+      }),
+    );
+
+    const result = await service.getParticipationSubmission(
+      'exam-1',
+      'participation-1',
+      'user-1',
+    );
+
+    expect(submissionRepository.findLatestByUserProblemsBetween).toHaveBeenCalledWith(
+      'user-1',
+      ['problem-1'],
+      startedAt,
+      new Date('2025-01-01T01:00:00.000Z'),
+    );
+    expect(resultSubmissionRepository.findBySubmissionIds).toHaveBeenCalledWith([
+      'submission-fallback-1',
+    ]);
+    expect(result.solutions).toEqual([
+      expect.objectContaining({
+        challengeId: 'problem-1',
+        challengeTitle: 'Arrays',
+        code: 'print("fallback")',
+        language: 'python',
+        score: 25,
+        maxPoints: 25,
+        submittedAt: fallbackSubmittedAt.toISOString(),
+      }),
+    ]);
+    expect(result.totalScore).toBe(25);
   });
 
   it('uses time-window submissions when building the exam leaderboard fallback', async () => {

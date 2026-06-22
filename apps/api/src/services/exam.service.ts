@@ -1328,6 +1328,13 @@ export class ExamService {
     const problems = await this.examToProblemsRepository.findByExamId(examId);
     const problemIds = problems.map((p: any) => p.problemId);
 
+    const participationStart = participation.startTime;
+    const effectiveEnd = this.calculateEffectiveEndTime(
+      participation.startTime,
+      exam.duration || 0,
+      exam.endDate
+    );
+
     // Get user info
     const user = await this.userRepository.findById(participation.userId);
     const participantProfile =
@@ -1337,18 +1344,72 @@ export class ExamService {
           )
         : null;
 
-    // Get solutions for each problem
+    const [participationSubs, fallbackSubs, allTestcases] = await Promise.all([
+      this.submissionRepository.findLatestByParticipationAndProblems(
+        participationId,
+        problemIds
+      ),
+      this.submissionRepository.findLatestByUserProblemsBetween(
+        participation.userId,
+        problemIds,
+        participationStart,
+        effectiveEnd
+      ),
+      this.testcaseRepository.findByProblemIds(problemIds),
+    ]);
+
+    const selectedByProblem = new Map<string, any>();
+    for (const sub of fallbackSubs) {
+      selectedByProblem.set(sub.problemId, sub);
+    }
+    for (const sub of participationSubs) {
+      selectedByProblem.set(sub.problemId, sub);
+    }
+
+    const selectedSubmissionIds = Array.from(selectedByProblem.values())
+      .map(sub => sub?.id)
+      .filter((submissionId): submissionId is string => typeof submissionId === 'string');
+
+    const [allResults, problemEntries] = await Promise.all([
+      selectedSubmissionIds.length > 0
+        ? this.resultSubmissionRepository.findBySubmissionIds(selectedSubmissionIds)
+        : Promise.resolve([]),
+      Promise.all(
+        problemIds.map(
+          async (problemId: string): Promise<[string, any]> => [
+            problemId,
+            await this.problemRepository.findById(problemId),
+          ]
+        )
+      ),
+    ]);
+    const problemsById = new Map<string, any>(problemEntries);
+
+    const resultsBySubmissionId = new Map<string, Map<string, any>>();
+    for (const result of allResults as any[]) {
+      if (!resultsBySubmissionId.has(result.submissionId)) {
+        resultsBySubmissionId.set(result.submissionId, new Map());
+      }
+      resultsBySubmissionId.get(result.submissionId)!.set(result.testcaseId, result);
+    }
+
+    const testcasesByProblemId = new Map<string, any[]>();
+    for (const testcase of allTestcases as any[]) {
+      if (!testcasesByProblemId.has(testcase.problemId)) {
+        testcasesByProblemId.set(testcase.problemId, []);
+      }
+      testcasesByProblemId.get(testcase.problemId)!.push(testcase);
+    }
+
+    // Get solutions for each problem using the same submission selection strategy as leaderboard.
     const solutions = await Promise.all(
       problemIds.map(async (problemId: any) => {
-        const problem = await this.problemRepository.findById(problemId);
-        const testcases = await this.testcaseRepository.findByProblemId(problemId);
+        const problem = problemsById.get(problemId);
+        const testcases = testcasesByProblemId.get(problemId) ?? [];
         const maxPoints = testcases.reduce((sum: number, tc: any) => sum + (tc.point || 0), 0) || 1;
 
-        // Get latest submission for this problem in this participation
-        const sub = await this.submissionRepository.findLatestByParticipationAndProblem(
-          participationId,
-          problemId
-        );
+        // Prefer participation-linked submissions, then fall back to submissions within the attempt window.
+        const sub = selectedByProblem.get(problemId) ?? null;
 
         let score = 0;
         let code = '';
@@ -1361,11 +1422,7 @@ export class ExamService {
           language = sub.language || 'unknown';
           submittedAt = (sub.submittedAt || new Date()).toISOString();
 
-          // Calculate score from results
-          const resultRecords = await this.resultSubmissionRepository.findBySubmissionId(sub.id);
-          const tcMap = new Map(
-            resultRecords.map((r: any) => [(r as Record<string, any>).testcaseId, r])
-          );
+          const tcMap = resultsBySubmissionId.get(sub.id) ?? new Map<string, any>();
 
           let passedPoints = 0;
           for (const tc of testcases) {

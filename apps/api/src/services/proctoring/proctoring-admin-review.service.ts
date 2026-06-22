@@ -17,6 +17,7 @@ import { ProctoringSettingsRepository } from '@backend/api/repositories/proctori
 import { ProctoringSummaryRepository } from '@backend/api/repositories/proctoring/proctoringSummary.repository';
 import { ProctoringAnomalyResultRepository } from '@backend/shared/db/repositories/proctoringAnomalyResult.repository';
 import { ProctoringLlmSummaryRepository } from '@backend/shared/db/repositories/proctoringLlmSummary.repository';
+import { ExamProctoringSettingsEntity } from '@backend/shared/db/schema';
 import {
   AdminProctoringReviewQueryInput,
   RecordProctoringReviewLabelInput,
@@ -232,10 +233,7 @@ export class ProctoringAdminReviewService {
     }
 
     const role = actor.role.toLowerCase();
-    if (role === 'owner' || role === 'admin') {
-      return;
-    }
-    if (role === 'teacher' && exam.createdBy === actor.userId) {
+    if (role === 'owner' || role === 'admin' || role === 'teacher') {
       return;
     }
 
@@ -300,7 +298,7 @@ export class ProctoringAdminReviewService {
       };
     });
 
-    const aiAdvisory = await this.buildAiAdvisory(examId, participationId);
+    const aiAdvisory = await this.buildAiAdvisory(examId, participationId, settings);
 
     const llmSummary = this.buildLlmSummary(examId, settings, llmSummaryRecord);
 
@@ -351,8 +349,11 @@ export class ProctoringAdminReviewService {
     };
   }
 
-  private async buildAiAdvisory(examId: string, participationId: string) {
-    const settings = await this.settingsRepository.findByExamId(examId);
+  private async buildAiAdvisory(
+    examId: string,
+    participationId: string,
+    settings: ExamProctoringSettingsEntity | null,
+  ) {
     if (settings?.aiShadowMode !== false) {
       return {
         visible: false,

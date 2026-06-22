@@ -48,71 +48,87 @@ export class AdminProctoringController {
   }
 
   async getReview(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const { examId, participationId } = req.params as {
-      examId: string;
-      participationId: string;
-    };
-    const result = await this.deps.reviewService.getReview(
-      examId,
-      participationId,
-      this.getActor(req),
-      {
-        eventName:
-          typeof req.query.eventName === 'string'
-            ? req.query.eventName
-            : undefined,
-        limit:
-          req.query.limit === undefined
-            ? undefined
-            : Number(req.query.limit),
-        offset:
-          req.query.offset === undefined
-            ? undefined
-            : Number(req.query.offset),
-      },
-    );
-    res.status(200).json(result);
+    try {
+      const { examId, participationId } = req.params as {
+        examId: string;
+        participationId: string;
+      };
+      const result = await this.deps.reviewService.getReview(
+        examId,
+        participationId,
+        this.getActor(req),
+        {
+          eventName:
+            typeof req.query.eventName === 'string'
+              ? req.query.eventName
+              : undefined,
+          limit:
+            req.query.limit === undefined
+              ? undefined
+              : Number(req.query.limit),
+          offset:
+            req.query.offset === undefined
+              ? undefined
+              : Number(req.query.offset),
+        },
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
 
   async recompute(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const { examId, participationId } = req.params as {
-      examId: string;
-      participationId: string;
-    };
-    const result = await this.deps.reviewService.recompute(
-      examId,
-      participationId,
-      this.getActor(req),
-      req.body,
-    );
-    res.status(200).json(result);
+    try {
+      const { examId, participationId } = req.params as {
+        examId: string;
+        participationId: string;
+      };
+      const result = await this.deps.reviewService.recompute(
+        examId,
+        participationId,
+        this.getActor(req),
+        req.body,
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
 
   async recordReviewDecision(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const { examId, participationId } = req.params as {
-      examId: string;
-      participationId: string;
-    };
-    const result = await this.deps.reviewService.recordReviewDecision(
-      examId,
-      participationId,
-      this.getActor(req),
-      req.body,
-    );
-    res.status(200).json(result);
+    try {
+      const { examId, participationId } = req.params as {
+        examId: string;
+        participationId: string;
+      };
+      const result = await this.deps.reviewService.recordReviewDecision(
+        examId,
+        participationId,
+        this.getActor(req),
+        req.body,
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
 
   async recordReviewLabel(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const { examId, participationId } = req.params as {
-      examId: string;
-      participationId: string;
-    };
-    const result = await this.deps.reviewService.recordReviewLabel(
-      examId,
-      participationId,
-      this.getActor(req),
-      req.body,
-    );
-    res.status(200).json(result);
+    try {
+      const { examId, participationId } = req.params as {
+        examId: string;
+        participationId: string;
+      };
+      const result = await this.deps.reviewService.recordReviewLabel(
+        examId,
+        participationId,
+        this.getActor(req),
+        req.body,
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
 }
