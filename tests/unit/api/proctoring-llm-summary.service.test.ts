@@ -1,7 +1,7 @@
 import { ProctoringLlmSummaryService } from '../../../apps/api/src/services/proctoring/proctoring-llm-summary.service';
 
 function createService(overrides: Record<string, unknown> = {}) {
-  const settingsRepository = {
+  const defaultSettingsRepository = {
     findByExamId: jest.fn().mockResolvedValue({
       llmSummaryEnabled: false,
       llmSummaryProvider: null,
@@ -13,14 +13,14 @@ function createService(overrides: Record<string, unknown> = {}) {
       llmSummaryRateLimitWindowHours: 24,
     }),
   };
-  const modelRegistryService = {
+  const defaultModelRegistryService = {
     resolveSummaryModel: jest.fn().mockResolvedValue({
       modelVersion: 'summary-local-v1',
       provider: 'local',
       status: 'active',
     }),
   };
-  const inputService = {
+  const defaultInputService = {
     buildInput: jest.fn().mockResolvedValue({
       inputHash: 'a'.repeat(64),
       input: {
@@ -35,7 +35,7 @@ function createService(overrides: Record<string, unknown> = {}) {
       },
     }),
   };
-  const summaryRepository = {
+  const defaultSummaryRepository = {
     insertOrFindActive: jest.fn().mockResolvedValue({
       id: 'llm-summary-1',
       status: 'pending',
@@ -45,12 +45,27 @@ function createService(overrides: Record<string, unknown> = {}) {
     updateJobId: jest.fn().mockResolvedValue(null),
     countRecentForParticipation: jest.fn().mockResolvedValue(0),
   };
-  const aiJobRepository = {
+  const defaultAiJobRepository = {
     insert: jest.fn().mockResolvedValue({ id: 'job-1' }),
+    upsertByJobKey: jest.fn().mockResolvedValue({ id: 'job-1' }),
   };
-  const auditLogRepository = {
+  const defaultAuditLogRepository = {
     create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
   };
+  const settingsRepository =
+    (overrides.settingsRepository as typeof defaultSettingsRepository) ?? defaultSettingsRepository;
+  const modelRegistryService =
+    (overrides.modelRegistryService as typeof defaultModelRegistryService) ??
+    defaultModelRegistryService;
+  const inputService =
+    (overrides.inputService as typeof defaultInputService) ?? defaultInputService;
+  const summaryRepository =
+    (overrides.summaryRepository as typeof defaultSummaryRepository) ?? defaultSummaryRepository;
+  const aiJobRepository =
+    (overrides.aiJobRepository as typeof defaultAiJobRepository) ?? defaultAiJobRepository;
+  const auditLogRepository =
+    (overrides.auditLogRepository as typeof defaultAuditLogRepository) ??
+    defaultAuditLogRepository;
   const service = new ProctoringLlmSummaryService({
     settingsRepository: settingsRepository as any,
     modelRegistryService: modelRegistryService as any,
@@ -84,6 +99,7 @@ describe('ProctoringLlmSummaryService', () => {
       })
     ).rejects.toMatchObject({ code: 'PROCTORING_LLM_SUMMARY_DISABLED' });
     expect(aiJobRepository.insert).not.toHaveBeenCalled();
+    expect(aiJobRepository.upsertByJobKey).not.toHaveBeenCalled();
   });
 
   it('inserts pending summary before enqueueing sanitized generation job', async () => {
@@ -109,9 +125,9 @@ describe('ProctoringLlmSummaryService', () => {
     });
 
     expect(summaryRepository.insertOrFindActive.mock.invocationCallOrder[0]).toBeLessThan(
-      aiJobRepository.insert.mock.invocationCallOrder[0]!
+      aiJobRepository.upsertByJobKey.mock.invocationCallOrder[0]!
     );
-    expect(aiJobRepository.insert).toHaveBeenCalledWith(
+    expect(aiJobRepository.upsertByJobKey).toHaveBeenCalledWith(
       expect.objectContaining({
         jobType: 'llm_summary_generation',
         payloadSchemaVersion: 'proctoring-summary-input-v1',
@@ -123,7 +139,9 @@ describe('ProctoringLlmSummaryService', () => {
         }),
       })
     );
-    expect(JSON.stringify(aiJobRepository.insert.mock.calls[0]![0].payloadJson)).not.toMatch(
+    expect(
+      JSON.stringify(aiJobRepository.upsertByJobKey.mock.calls[0]![0].payloadJson)
+    ).not.toMatch(
       /payloadJson|rawClipboard|sourceCode|rawPrompt|rawProviderResponse/
     );
     expect(result).toEqual({
@@ -175,9 +193,53 @@ describe('ProctoringLlmSummaryService', () => {
         status,
         conflictResolved: true,
       });
-      expect(aiJobRepository.insert).not.toHaveBeenCalled();
+      expect(aiJobRepository.upsertByJobKey).not.toHaveBeenCalled();
       expect(summaryRepository.updateJobId).not.toHaveBeenCalled();
       expect(auditLogRepository.create).not.toHaveBeenCalled();
     }
   );
+
+  it('requeues an existing job key instead of failing when recomputing the same payload', async () => {
+    const { service, aiJobRepository, summaryRepository } = createService({
+      settingsRepository: {
+        findByExamId: jest.fn().mockResolvedValue({
+          llmSummaryEnabled: true,
+          llmSummaryProvider: 'local',
+          llmSummaryModelVersion: 'summary-local-v1',
+          llmSummaryPromptVersion: 'proctoring-summary-v1',
+          llmSummaryJudgeEnabled: true,
+          llmSummaryMinValidationScore: '0.85',
+          llmSummaryRateLimitPerParticipation: 3,
+          llmSummaryRateLimitWindowHours: 24,
+        }),
+      },
+      aiJobRepository: {
+        insert: jest.fn(),
+        upsertByJobKey: jest.fn().mockResolvedValue({ id: 'job-reused-1', status: 'pending' }),
+      },
+    });
+
+    const result = await service.generate({
+      examId: 'exam-1',
+      participationId: 'participation-1',
+      actor: { userId: 'owner-1', role: 'owner' },
+    });
+
+    expect(aiJobRepository.upsertByJobKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobKey:
+          'proctoring-llm-summary:participation-1:' +
+          `${'a'.repeat(64)}:proctoring-summary-v1:summary-local-v1`,
+        attempts: 0,
+        maxAttempts: 3,
+        status: 'pending',
+      })
+    );
+    expect(summaryRepository.updateJobId).toHaveBeenCalledWith('llm-summary-1', 'job-reused-1');
+    expect(result).toEqual({
+      llmSummaryId: 'llm-summary-1',
+      status: 'pending',
+      conflictResolved: false,
+    });
+  });
 });

@@ -27,7 +27,7 @@ type Dependencies = {
   modelRegistryService?: Pick<ProctoringModelRegistryService, 'resolveSummaryModel'>;
   inputService?: Pick<ProctoringLlmSummaryInputService, 'buildInput'>;
   summaryRepository?: Pick<ProctoringLlmSummaryRepository, 'insertOrFindActive' | 'updateJobId' | 'countRecentForParticipation'>;
-  aiJobRepository?: Pick<ProctoringAiJobRepository, 'insert'>;
+  aiJobRepository?: Pick<ProctoringAiJobRepository, 'insert' | 'upsertByJobKey'>;
   auditLogRepository?: Pick<AdminAuditLogRepository, 'create'>;
   metricsService?: Pick<ProctoringMetricsService, 'incrementSummaryRequested' | 'incrementSummaryRateLimited'>;
   nowFactory?: () => Date;
@@ -59,7 +59,7 @@ export class ProctoringLlmSummaryService {
     ProctoringLlmSummaryRepository,
     'insertOrFindActive' | 'updateJobId' | 'countRecentForParticipation'
   >;
-  private readonly aiJobRepository: Pick<ProctoringAiJobRepository, 'insert'>;
+  private readonly aiJobRepository: Pick<ProctoringAiJobRepository, 'insert' | 'upsertByJobKey'>;
   private readonly auditLogRepository: Pick<AdminAuditLogRepository, 'create'>;
   private readonly metricsService: Pick<ProctoringMetricsService, 'incrementSummaryRequested' | 'incrementSummaryRateLimited'>;
   private readonly nowFactory: () => Date;
@@ -160,7 +160,7 @@ export class ProctoringLlmSummaryService {
 
     this.metricsService.incrementSummaryRequested();
 
-    const job = await this.aiJobRepository.insert({
+    const job = await this.aiJobRepository.upsertByJobKey({
       jobKey: [
         'proctoring-llm-summary',
         input.participationId,
