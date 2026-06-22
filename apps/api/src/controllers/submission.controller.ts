@@ -48,6 +48,9 @@ export class SubmissionController {
     const userId = (req as any).user?.userId;
 
     const authHeader = req.headers.authorization as string | undefined;
+
+    // RUN_CODE can finish before the client opens SSE, so warm the subscriber first.
+    this.getSubmissionEventStream();
     const result = await this.submissionService.runCode({ ...runData, userId }, { authHeader });
 
     res.status(200).json(result);
@@ -65,23 +68,35 @@ export class SubmissionController {
       throw new SubmissionNotFoundException();
     }
 
+    const submissionEventStream = this.getSubmissionEventStream();
+    let closed = false;
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
 
     const heartbeat = setInterval(() => {
-      res.write(':\n\n');
+      if (!closed) {
+        res.write(':\n\n');
+      }
     }, 15000);
-    const submissionEventStream = this.getSubmissionEventStream();
 
     const cleanup = () => {
+      if (closed) {
+        return;
+      }
+
+      closed = true;
       clearInterval(heartbeat);
       submissionEventStream.removeListener(`submission_${submissionId}`, onUpdate);
     };
 
     const onUpdate = (data: any) => {
+      if (closed) {
+        return;
+      }
+
       if (data.results && Array.isArray(data.results)) {
         data.results = data.results.map((tc: any) => {
           if (tc.actual_output && tc.actual_output.length > 2048) {
@@ -101,7 +116,14 @@ export class SubmissionController {
         res.end();
       }
     };
+
     submissionEventStream.on(`submission_${submissionId}`, onUpdate);
+    res.flushHeaders();
+
+    const latestEvent = submissionEventStream.getLatestEvent?.(submissionId);
+    if (latestEvent) {
+      onUpdate(latestEvent);
+    }
 
     req.on('close', () => {
       cleanup();

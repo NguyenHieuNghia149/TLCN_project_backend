@@ -233,7 +233,11 @@ export class ProctoringAdminReviewService {
     }
 
     const role = actor.role.toLowerCase();
-    if (role === 'owner' || role === 'admin' || role === 'teacher') {
+    if (role === 'owner' || role === 'admin') {
+      return;
+    }
+
+    if (role === 'teacher' && exam.createdBy === actor.userId) {
       return;
     }
 

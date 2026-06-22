@@ -13,7 +13,10 @@ describe('Submission HTTP integration on post-migration routes', () => {
     jest.restoreAllMocks();
   });
 
-  function loadSubmissionApp(options?: { emitTerminalStreamEvent?: boolean }) {
+  function loadSubmissionApp(options?: {
+    emitTerminalStreamEvent?: boolean;
+    latestEvent?: { status: string; message?: string } | null;
+  }) {
     const submissionEventStream = new EventEmitter();
     const service = {
       getQueueStatus: jest.fn().mockResolvedValue({ queueLength: 3, isHealthy: true }),
@@ -45,7 +48,9 @@ describe('Submission HTTP integration on post-migration routes', () => {
         });
       }
 
-      return submissionEventStream as any;
+      return Object.assign(submissionEventStream, {
+        getLatestEvent: jest.fn(() => options?.latestEvent ?? null),
+      }) as any;
     });
     let createSubmissionRouter!: typeof import('@backend/api/routes/submission.routes').createSubmissionRouter;
 
@@ -125,8 +130,8 @@ describe('Submission HTTP integration on post-migration routes', () => {
     });
   });
 
-  it('keeps run-code auth and forwards the bearer header to the service', async () => {
-    const { app, service } = loadSubmissionApp();
+  it('keeps run-code auth, forwards the bearer header, and warms SSE for run-code', async () => {
+    const { app, service, getSseService } = loadSubmissionApp();
     const token = createAccessToken({
       userId: '14141414-1414-4414-8414-141414141414',
       email: 'run@example.com',
@@ -155,6 +160,42 @@ describe('Submission HTTP integration on post-migration routes', () => {
         authHeader: `Bearer ${token}`,
       },
     );
+    expect(getSseService).toHaveBeenCalledTimes(1);
+  });
+
+  it('warms SSE on run-code and replays the cached terminal event for late stream subscribers', async () => {
+    const latestEvent = {
+      status: 'accepted',
+      message: 'done',
+    };
+    const { app, getSseService, service } = loadSubmissionApp({ latestEvent });
+    const token = createAccessToken({
+      userId: '16161616-1616-4616-8616-161616161616',
+      email: 'late-stream@example.com',
+      role: 'student',
+    });
+
+    const runResponse = await request(app)
+      .post('/api/submissions/run')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        sourceCode: 'print(1)',
+        language: 'python',
+        problemId: PROBLEM_ID,
+      });
+
+    expect(runResponse.status).toBe(200);
+    expect(service.runCode).toHaveBeenCalledTimes(1);
+    expect(getSseService).toHaveBeenCalledTimes(1);
+
+    const streamResponse = await request(app).get(
+      `/api/submissions/stream/${SUBMISSION_ID}?token=${encodeURIComponent(token)}`,
+    );
+
+    expect(streamResponse.status).toBe(200);
+    expect(streamResponse.text).toContain('accepted');
+    expect(streamResponse.text).toContain('done');
+    expect(getSseService).toHaveBeenCalledTimes(2);
   });
 
   it('accepts JWTs from the query string for submission SSE streams', async () => {

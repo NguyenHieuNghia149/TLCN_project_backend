@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 export interface ISubmissionEventStream {
   on(event: string, listener: (data: unknown) => void): ISubmissionEventStream;
   removeListener(event: string, listener: (data: unknown) => void): ISubmissionEventStream;
+  getLatestEvent?(submissionId: string): unknown | null;
 }
 
 interface IRedisSubscriber {
@@ -20,7 +21,9 @@ type SseServiceDependencies = {
 };
 
 class SseService extends EventEmitter implements ISubmissionEventStream {
+  private static readonly LATEST_EVENT_TTL_MS = 60_000;
   private readonly subscriber: IRedisSubscriber;
+  private readonly latestEvents = new Map<string, { data: unknown; expiresAt: number }>();
 
   constructor({ subscriber }: SseServiceDependencies) {
     super();
@@ -39,6 +42,10 @@ class SseService extends EventEmitter implements ISubmissionEventStream {
         try {
           const payload = JSON.parse(message);
           if (payload && payload.submissionId && payload.data) {
+            this.latestEvents.set(payload.submissionId, {
+              data: payload.data,
+              expiresAt: Date.now() + SseService.LATEST_EVENT_TTL_MS,
+            });
             this.emit(`submission_${payload.submissionId}`, payload.data);
           }
         } catch (error) {
@@ -54,6 +61,21 @@ class SseService extends EventEmitter implements ISubmissionEventStream {
 
   public async disconnect(): Promise<void> {
     await this.subscriber.quit();
+  }
+
+  public getLatestEvent(submissionId: string): unknown | null {
+    const cached = this.latestEvents.get(submissionId);
+
+    if (!cached) {
+      return null;
+    }
+
+    if (cached.expiresAt <= Date.now()) {
+      this.latestEvents.delete(submissionId);
+      return null;
+    }
+
+    return cached.data;
   }
 }
 
