@@ -96,6 +96,14 @@ function normalizeScreenShareSettings(
   }
 }
 
+function normalizeTimestamp(value: unknown): Date | null | undefined {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' && value.trim().length > 0) return new Date(value);
+  if (typeof value === 'number' && Number.isFinite(value)) return new Date(value);
+  return undefined;
+}
+
 function mergeWithDefaults(
   examId: string,
   existing?: Partial<ExamProctoringSettingsEntity> | null,
@@ -109,6 +117,7 @@ function mergeWithDefaults(
     examId,
   } as ExamProctoringSettingsInsert;
   normalizeScreenShareSettings(merged);
+  merged.llmPrivacyApprovedAt = normalizeTimestamp(merged.llmPrivacyApprovedAt) as Date | null | undefined;
   return merged;
 }
 
