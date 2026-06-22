@@ -237,7 +237,7 @@ export class ProctoringAdminReviewService {
       return;
     }
 
-    if (role === 'teacher' && exam.createdBy === actor.userId) {
+    if (role === 'teacher') {
       return;
     }
 

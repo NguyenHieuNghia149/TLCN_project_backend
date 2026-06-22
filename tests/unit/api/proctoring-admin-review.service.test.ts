@@ -512,7 +512,7 @@ describe('ProctoringAdminReviewService', () => {
     expect(JSON.stringify(result.aiAdvisory)).not.toContain('rawClipboardText');
   });
 
-  it('rejects a teacher who did not create the exam', async () => {
+  it('allows a teacher who did not create the exam', async () => {
     const { service, eventRepository } = createService({
       examRepository: {
         findById: jest.fn().mockResolvedValue({
@@ -522,16 +522,15 @@ describe('ProctoringAdminReviewService', () => {
       },
     });
 
-    await expect(
-      service.getReview('exam-1', 'participation-1', {
-        userId: 'other-teacher',
-        role: 'teacher',
-      })
-    ).rejects.toMatchObject({
-      statusCode: 403,
-      code: 'PROCTORING_REVIEW_FORBIDDEN',
+    const review = await service.getReview('exam-1', 'participation-1', {
+      userId: 'other-teacher',
+      role: 'teacher',
     });
-    expect(eventRepository.findByParticipation).not.toHaveBeenCalled();
+
+    expect(review).toMatchObject({
+      summary: expect.objectContaining({ riskLevel: 'medium' }),
+    });
+    expect(eventRepository.findByParticipation).toHaveBeenCalled();
   });
 
   it('rejects mismatched exam and participation before reading evidence', async () => {
