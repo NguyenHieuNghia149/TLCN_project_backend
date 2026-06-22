@@ -162,11 +162,11 @@ export const CreateAdminExamSchema = CreateAdminExamBaseSchema.superRefine((data
 
   if (data.registrationCloseAt) {
     const registrationCloseAt = new Date(data.registrationCloseAt);
-    if (registrationCloseAt >= startDate) {
+    if (registrationCloseAt >= endDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['registrationCloseAt'],
-        message: 'Registration close time must be before the exam start time.',
+        message: 'Registration close time must be before the exam end time.',
       });
     }
   }

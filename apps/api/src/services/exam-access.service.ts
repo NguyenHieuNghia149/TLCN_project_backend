@@ -1831,8 +1831,9 @@ export class ExamAccessService {
 
     if (input.registrationCloseAt) {
       const registrationCloseAt = new Date(input.registrationCloseAt);
-      if (registrationCloseAt >= startDate) {
-        throw new ValidationException('Registration close time must be before the exam start time');
+      const endDate = new Date(input.endDate);
+      if (registrationCloseAt >= endDate) {
+        throw new ValidationException('Registration close time must be before the exam end time');
       }
     }
 
