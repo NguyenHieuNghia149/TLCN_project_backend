@@ -22,6 +22,13 @@ function createService() {
         capturedAt: new Date('2026-06-14T10:00:00.000Z'),
         payloadJson: { eventName: 'window_blur', rawProviderResponse: 'nope' },
       },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: `heartbeat-${index + 1}`,
+        type: 'heartbeat',
+        severity: 'info',
+        capturedAt: new Date(`2026-06-14T10:${String(index + 2).padStart(2, '0')}:00.000Z`),
+        payloadJson: { eventName: 'heartbeat' },
+      })),
     ]),
   };
   const summaryRepository = {
@@ -41,6 +48,13 @@ function createService() {
         riskLevel: 'high',
         sourceEventRangeJson: { eventIds: ['event-1', 'event-2'], rawPrompt: 'nope' },
       },
+      ...Array.from({ length: 7 }, (_, index) => ({
+        windowId: `window-extra-${index + 1}`,
+        modelVersion: 'iforest-v1',
+        anomalyScore: 0.2,
+        riskLevel: 'low',
+        sourceEventRangeJson: { eventIds: [`heartbeat-${index + 1}`] },
+      })),
     ]),
   };
   const reviewLabelRepository = {
@@ -71,7 +85,9 @@ describe('ProctoringLlmSummaryInputService', () => {
       participationId: 'participation-1',
     });
 
-    expect(result.input.timeline.map(event => event.eventId)).toEqual(['event-1', 'event-2']);
+    expect(result.input.timeline.map(event => event.eventId)).toContain('event-1');
+    expect(result.input.timeline.map(event => event.eventId)).toContain('event-2');
+    expect(result.input.timeline).toHaveLength(12);
     expect(result.input.timeline[0]).toEqual(
       expect.objectContaining({
         eventName: 'window_blur',
@@ -84,15 +100,25 @@ describe('ProctoringLlmSummaryInputService', () => {
       reviewerDecision: 'needs_re_review',
       reviewLabelOutcome: 'follow_up_required',
     });
-    expect(result.input.anomalyFacts).toEqual([
-      expect.objectContaining({
-        windowId: 'window-1',
-        modelVersion: 'iforest-v1',
-        anomalyScore: 0.82,
-        riskLevel: 'high',
-        sourceEventIds: ['event-1', 'event-2'],
-      }),
-    ]);
+    expect(result.input.anomalyFacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          windowId: 'window-1',
+          modelVersion: 'iforest-v1',
+          anomalyScore: 0.82,
+          riskLevel: 'high',
+          sourceEventIds: ['event-1', 'event-2'],
+        }),
+        expect.objectContaining({
+          windowId: 'window-extra-1',
+          sourceEventIds: expect.any(Array),
+        }),
+      ])
+    );
+    expect(result.input.anomalyFacts).toHaveLength(6);
+    expect(result.input.missingDataNotes).toEqual(
+      expect.arrayContaining(['timeline_truncated', 'anomaly_facts_truncated'])
+    );
     expect(result.inputHash).toBe(second.inputHash);
     expect(JSON.stringify(result.input)).not.toMatch(
       /rawClipboardText|sourceCode|rawProviderResponse|rawPrompt|secret|print/

@@ -48,6 +48,12 @@ type Dependencies = {
   nowFactory?: () => Date;
 };
 
+const MAX_TIMELINE_EVENTS = 12;
+const MAX_ANOMALY_FACTS = 6;
+const MAX_RISK_FACT_EVIDENCE_IDS = 6;
+const LOW_SIGNAL_EVENT_NAMES = new Set(['heartbeat']);
+const LOW_SIGNAL_EVENT_TYPES = new Set(['heartbeat']);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -89,6 +95,55 @@ function canonicalHash(input: ProctoringLlmSummaryInput): string {
   return crypto.createHash('sha256').update(json, 'utf8').digest('hex');
 }
 
+function truncateEvidenceEventIds(eventIds: string[]): string[] {
+  return eventIds.slice(0, MAX_RISK_FACT_EVIDENCE_IDS);
+}
+
+function eventPriority(event: {
+  eventName: string;
+  type: string;
+  severity: string;
+  capturedAt: string | null;
+}): number {
+  const lowSignal =
+    LOW_SIGNAL_EVENT_NAMES.has(event.eventName) || LOW_SIGNAL_EVENT_TYPES.has(event.type);
+  const severityWeight =
+    event.severity === 'critical'
+      ? 3
+      : event.severity === 'warning'
+        ? 2
+        : event.severity === 'info'
+          ? 1
+          : 0;
+  const capturedAtWeight = event.capturedAt ? Date.parse(event.capturedAt) : 0;
+  return (lowSignal ? 0 : 1_000_000_000_000) + severityWeight * 1_000_000_000 + capturedAtWeight;
+}
+
+function selectTimelineEvents<
+  T extends {
+    eventId: string;
+    eventName: string;
+    type: string;
+    severity: string;
+    capturedAt: string | null;
+  },
+>(events: T[]): T[] {
+  if (events.length <= MAX_TIMELINE_EVENTS) {
+    return events;
+  }
+
+  return [...events]
+    .sort((a, b) => {
+      const priority = eventPriority(b) - eventPriority(a);
+      return priority || b.eventId.localeCompare(a.eventId);
+    })
+    .slice(0, MAX_TIMELINE_EVENTS)
+    .sort((a, b) => {
+      const captured = String(a.capturedAt ?? '').localeCompare(String(b.capturedAt ?? ''));
+      return captured || a.eventId.localeCompare(b.eventId);
+    });
+}
+
 export class ProctoringLlmSummaryInputService {
   private readonly eventRepository: Pick<
     ProctoringEventRepository,
@@ -125,7 +180,7 @@ export class ProctoringLlmSummaryInputService {
       this.reviewLabelRepository.findByParticipation(input.participationId),
     ]);
 
-    const timeline = events
+    const fullTimeline = events
       .map(event => {
         const payload = isRecord(event.payloadJson) ? event.payloadJson : {};
         return {
@@ -141,15 +196,19 @@ export class ProctoringLlmSummaryInputService {
         const captured = String(a.capturedAt ?? '').localeCompare(String(b.capturedAt ?? ''));
         return captured || a.eventId.localeCompare(b.eventId);
       });
+    const timeline = selectTimelineEvents(fullTimeline);
+    const includedTimelineEventIds = new Set(timeline.map(event => event.eventId));
 
     const eventCounts = isRecord(summary?.eventCountsJson) ? summary.eventCountsJson : {};
     const riskFacts = Object.entries(eventCounts).map(([type, count]) => ({
       type,
       count: typeof count === 'number' ? count : 0,
       totalDurationMs: 0,
-      evidenceEventIds: timeline
+      evidenceEventIds: truncateEvidenceEventIds(
+        timeline
         .filter(event => event.type === type || event.eventName === type)
-        .map(event => event.eventId),
+        .map(event => event.eventId)
+      ),
     }));
 
     const latestLabel = labels[0] ?? null;
@@ -161,12 +220,16 @@ export class ProctoringLlmSummaryInputService {
       generatedAt: this.nowFactory().toISOString(),
       timeline,
       riskFacts,
-      anomalyFacts: anomalyResults.map(result => ({
+      anomalyFacts: anomalyResults.slice(0, MAX_ANOMALY_FACTS).map(result => ({
         windowId: result.windowId,
         modelVersion: result.modelVersion,
         anomalyScore: Number(result.anomalyScore),
         riskLevel: result.riskLevel,
-        sourceEventIds: eventIdsFromRange(result.sourceEventRangeJson),
+        sourceEventIds: truncateEvidenceEventIds(
+          eventIdsFromRange(result.sourceEventRangeJson).filter(eventId =>
+            includedTimelineEventIds.has(eventId)
+          )
+        ),
       })),
       reviewFacts: {
         finalFlushStatus: summary?.finalFlushStatus ?? null,
@@ -177,6 +240,8 @@ export class ProctoringLlmSummaryInputService {
         ...(events.length === 0 ? ['no_timeline_events'] : []),
         ...(!summary ? ['no_deterministic_summary'] : []),
         ...(anomalyResults.length === 0 ? ['no_anomaly_facts'] : []),
+        ...(fullTimeline.length > timeline.length ? ['timeline_truncated'] : []),
+        ...(anomalyResults.length > MAX_ANOMALY_FACTS ? ['anomaly_facts_truncated'] : []),
       ],
     };
 
