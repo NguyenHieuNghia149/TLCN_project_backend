@@ -461,6 +461,48 @@ describe('ProctoringAiResultWriterService', () => {
     );
   });
 
+  it.each([
+    ['request aborted', 'aborted'],
+    ['axios timeout', 'timeout of 5000ms exceeded'],
+    ['socket hang up', 'socket hang up'],
+  ])('maps %s to a safe typed summary failure code', async (_caseName, reason) => {
+    const llmSummaryRepository = {
+      updateStatus: jest.fn().mockResolvedValue({
+        id: 'llm-summary-1',
+        status: 'dead_letter',
+        validationStatus: 'failed',
+      }),
+    };
+    const writer = new ProctoringAiResultWriterService({
+      anomalyResultRepository: {
+        upsertByWindowModel: jest.fn(),
+        updateExplanationStatus: jest.fn(),
+        resolveStaleExplanations: jest.fn(),
+      } as any,
+      llmSummaryRepository,
+    });
+
+    await writer.markSummaryFailed({
+      job: job({
+        jobType: 'llm_summary_generation',
+        payloadJson: {
+          llmSummaryId: 'llm-summary-1',
+        },
+      }) as any,
+      reason,
+      status: 'dead_letter',
+    });
+
+    expect(llmSummaryRepository.updateStatus).toHaveBeenCalledWith(
+      'llm-summary-1',
+      expect.objectContaining({
+        validationErrorsJson: [
+          reason === 'socket hang up' ? 'provider_failed' : 'provider_timeout',
+        ],
+      })
+    );
+  });
+
   it('resolves stale pending explanations to failed via resolveStaleExplanations', async () => {
     const anomalyResultRepository = {
       upsertByWindowModel: jest.fn(),

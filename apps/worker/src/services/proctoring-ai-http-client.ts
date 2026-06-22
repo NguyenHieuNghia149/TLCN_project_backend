@@ -77,6 +77,7 @@ type ProctoringAiHttpClientOptions = {
   serverAiUrl?: string;
   internalToken?: string;
   timeoutMs?: number;
+  summaryTimeoutMs?: number;
 };
 
 const allowedRiskLevels = new Set(['low', 'medium', 'high', 'critical']);
@@ -93,13 +94,18 @@ export class ProctoringAiHttpClient {
   private readonly serverAiUrl: string;
   private readonly internalToken?: string;
   private readonly timeoutMs: number;
+  private readonly summaryTimeoutMs: number;
 
   constructor(options: ProctoringAiHttpClientOptions = {}) {
     this.serverAiUrl = normalizeBaseUrl(
       options.serverAiUrl ?? process.env.SERVER_AI_URL ?? 'http://localhost:8001'
     );
     this.internalToken = options.internalToken ?? process.env.SERVER_AI_INTERNAL_TOKEN;
-    this.timeoutMs = options.timeoutMs ?? 5000;
+    this.timeoutMs =
+      options.timeoutMs ?? Number(process.env.PROCTORING_AI_REQUEST_TIMEOUT_MS || 5000);
+    this.summaryTimeoutMs =
+      options.summaryTimeoutMs ??
+      Number(process.env.PROCTORING_AI_SUMMARY_TIMEOUT_MS || Math.max(this.timeoutMs, 30000));
   }
 
   async predict(window: ProctoringAiTelemetryWindow): Promise<ProctoringAiPrediction> {
@@ -137,7 +143,7 @@ export class ProctoringAiHttpClient {
         }
       : undefined;
     const response = await axios.post(`${this.serverAiUrl}/summary/generate`, request, {
-      timeout: this.timeoutMs,
+      timeout: this.summaryTimeoutMs,
       headers,
     });
 

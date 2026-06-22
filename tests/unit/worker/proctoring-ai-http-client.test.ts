@@ -169,12 +169,63 @@ describe('ProctoringAiHttpClient', () => {
         timeline: [{ eventId: 'event-1' }],
       },
       {
-        timeout: 5000,
+        timeout: 30000,
         headers: {
           Authorization: 'Bearer secret-token',
         },
       }
     );
     expect(result.validationStatus).toBe('passed');
+  });
+
+  it('allows overriding summary timeout separately from anomaly timeout', async () => {
+    axiosPost.mockResolvedValue({
+      data: {
+        summaryText: '',
+        riskFacts: [],
+        citations: [],
+        missingDataNotes: [],
+        modelNotes: [],
+        guardRailWarnings: [],
+        validationStatus: 'failed',
+        validationErrors: ['non_json_output'],
+        modelVersion: 'summary-local-v1',
+        promptVersion: 'proctoring-summary-v1',
+        outputSchemaVersion: 'proctoring-summary-output-v1',
+      },
+    });
+    const client = new ProctoringAiHttpClient({
+      serverAiUrl: 'http://server-ai:8001/',
+      internalToken: 'secret-token',
+      timeoutMs: 4000,
+      summaryTimeoutMs: 45000,
+    });
+
+    await client.generateSummary({
+      schemaVersion: 'proctoring-summary-input-v1',
+      examId: 'exam-1',
+      participationId: 'participation-1',
+      llmSummaryId: 'llm-summary-1',
+      timeline: [],
+      riskFacts: [],
+      anomalyFacts: [],
+      reviewFacts: {},
+      missingDataNotes: [],
+      modelVersion: 'summary-local-v1',
+      promptVersion: 'proctoring-summary-v1',
+      minValidationScore: 0.85,
+      provider: 'local',
+    } as any);
+
+    expect(axiosPost).toHaveBeenLastCalledWith(
+      'http://server-ai:8001/summary/generate',
+      expect.any(Object),
+      {
+        timeout: 45000,
+        headers: {
+          Authorization: 'Bearer secret-token',
+        },
+      }
+    );
   });
 });

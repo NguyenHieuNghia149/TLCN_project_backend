@@ -44,7 +44,12 @@ function safeSummaryFailureCode(reason: string): string {
   if (normalized.includes('disabled')) {
     return 'provider_disabled';
   }
-  if (normalized.includes('timeout')) {
+  if (
+    normalized.includes('timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('econnaborted') ||
+    normalized.includes('aborted')
+  ) {
     return 'provider_timeout';
   }
   if (
@@ -52,7 +57,8 @@ function safeSummaryFailureCode(reason: string): string {
     normalized.includes('server-ai') ||
     normalized.includes('unavailable') ||
     normalized.includes('network') ||
-    normalized.includes('fetch')
+    normalized.includes('fetch') ||
+    normalized.includes('socket hang up')
   ) {
     return 'provider_failed';
   }
