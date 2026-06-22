@@ -22,29 +22,37 @@ export class AdminProctoringController {
   }
 
   async updateSettings(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const { examId } = req.params as { examId: string };
-    const result = await this.deps.settingsService.updateSettings(
-      examId,
-      req.user?.userId,
-      req.body,
-    );
-    res.status(200).json(result);
+    try {
+      const { examId } = req.params as { examId: string };
+      const result = await this.deps.settingsService.updateSettings(
+        examId,
+        req.user?.userId,
+        req.body,
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
 
   async issueBypassCode(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    const { examId, participationId } = req.params as {
-      examId: string;
-      participationId: string;
-    };
-    const result = await this.deps.bypassService.issueBypassCode(
-      examId,
-      req.user?.userId,
-      {
-        ...req.body,
-        participationId,
-      },
-    );
-    res.status(200).json(result);
+    try {
+      const { examId, participationId } = req.params as {
+        examId: string;
+        participationId: string;
+      };
+      const result = await this.deps.bypassService.issueBypassCode(
+        examId,
+        req.user?.userId,
+        {
+          ...req.body,
+          participationId,
+        },
+      );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
   }
 
   async getReview(req: AuthenticatedRequest, res: Response, next: NextFunction) {
