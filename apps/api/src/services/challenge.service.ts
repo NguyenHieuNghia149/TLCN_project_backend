@@ -18,6 +18,7 @@ import {
 } from '@backend/shared/validations/solution.validation';
 import { FavoriteRepository } from '../repositories/favorite.repository';
 import { SupportedLanguageRepository } from '../repositories/supportedLanguage.repository';
+import { LeaderboardRepository } from '../repositories/leaderboard.repository';
 import { ProblemVisibility } from '@backend/shared/types';
 import { submissionMetadataInvalidator } from './submission-metadata-cache';
 
@@ -31,6 +32,7 @@ type ChallengeServiceDependencies = {
   submissionRepository: SubmissionRepository;
   favoriteRepository: FavoriteRepository;
   supportedLanguageRepository: SupportedLanguageRepository;
+  leaderboardRepository: LeaderboardRepository;
 };
 
 export class ChallengeService {
@@ -43,6 +45,7 @@ export class ChallengeService {
   private submissionRepository: SubmissionRepository;
   private favoriteRepository: FavoriteRepository;
   private supportedLanguageRepository: SupportedLanguageRepository;
+  private leaderboardRepository: LeaderboardRepository;
 
   constructor(deps: ChallengeServiceDependencies) {
     this.topicRepository = deps.topicRepository;
@@ -54,6 +57,7 @@ export class ChallengeService {
     this.submissionRepository = deps.submissionRepository;
     this.favoriteRepository = deps.favoriteRepository;
     this.supportedLanguageRepository = deps.supportedLanguageRepository;
+    this.leaderboardRepository = deps.leaderboardRepository;
   }
 
   async createChallenge(challengeData: ProblemInput): Promise<ChallengeResponse> {
@@ -311,6 +315,8 @@ export class ChallengeService {
       isFavorite: boolean;
     }>;
     nextCursor: { createdAt: string; id: string } | null;
+    rank?: number;
+    rankingPoint?: number;
   }> {
     const { topicId, limit = 10, cursor, userId } = params;
 
@@ -337,6 +343,21 @@ export class ChallengeService {
       favoriteSet = await this.favoriteRepository.getFavoriteProblemIds(userId, problemIds);
     }
 
+    // Fetch user rank and ranking points if userId provided
+    let rank: number | undefined;
+    let rankingPoint: number | undefined;
+    if (userId) {
+      try {
+        const userRank = await this.leaderboardRepository.getUserRank(userId);
+        if (userRank) {
+          rank = userRank.rank;
+          rankingPoint = userRank.rankingPoint;
+        }
+      } catch {
+        // Silently ignore rank fetch errors — rank is non-critical
+      }
+    }
+
     return {
       items: items.map((p: any) => ({
         id: p.id,
@@ -351,6 +372,8 @@ export class ChallengeService {
       nextCursor: nextCursor
         ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
         : null,
+      ...(rank !== undefined ? { rank } : {}),
+      ...(rankingPoint !== undefined ? { rankingPoint } : {}),
     };
   }
 
@@ -647,6 +670,7 @@ export function createChallengeService(): ChallengeService {
     submissionRepository: new SubmissionRepository(),
     favoriteRepository: new FavoriteRepository(),
     supportedLanguageRepository: new SupportedLanguageRepository(),
+    leaderboardRepository: new LeaderboardRepository(),
   });
 }
 

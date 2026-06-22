@@ -2,7 +2,7 @@ import os from 'os';
 
 import { ProctoringBulkInsertResult, ProctoringEventRepository } from '@backend/api/repositories/proctoring/proctoringEvent.repository';
 import { ProctoringFinalFlushRepository } from '@backend/api/repositories/proctoring/proctoringFinalFlush.repository';
-import { ExamProctoringEventInsert } from '@backend/shared/db/schema';
+import { ExamProctoringEventEntity, ExamProctoringEventInsert } from '@backend/shared/db/schema';
 import { logger } from '@backend/shared/utils';
 
 import {
@@ -356,7 +356,7 @@ export class ProctoringTelemetryPersisterService {
         entry => entry.finalFlushReceiptId === receiptId
       ).length;
       const persistedCount = bulkResult.inserted.filter(
-        (row: any) => row.finalFlushReceiptId === receiptId
+        (row: ExamProctoringEventEntity) => row.finalFlushReceiptId === receiptId
       ).length;
       const dedupedCount = acceptedCount - persistedCount;
       await this.finalFlushRepository.transitionStatus({

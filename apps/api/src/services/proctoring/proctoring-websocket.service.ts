@@ -242,6 +242,11 @@ export class ProctoringWebSocketService {
     type: 'telemetry.batch' | 'telemetry.urgent' | 'final_flush.request',
     payload: unknown,
   ): Promise<void> {
+    const nonce =
+      payload && typeof payload === 'object' && !Array.isArray(payload) && typeof (payload as Record<string, unknown>).nonce === 'string'
+        ? (payload as Record<string, unknown>).nonce as string
+        : undefined;
+
     try {
       const context = this.socketContexts.get(socket.id);
       if (!context) {
@@ -270,6 +275,7 @@ export class ProctoringWebSocketService {
         socket.emit('telemetry.retry_required', {
           reason: decision.reason ?? 'batch_rejected',
           lastClientSeq: maxClientSeq,
+          nonce,
         });
         return;
       }
@@ -289,6 +295,7 @@ export class ProctoringWebSocketService {
           socket.emit('telemetry.retry_required', {
             reason: 'stale_buffered_event',
             lastClientSeq: frame.clientSeq,
+            nonce,
           });
           return;
         }
@@ -323,13 +330,14 @@ export class ProctoringWebSocketService {
         dedupedCount,
         redisIds,
         lastClientSeq: maxClientSeq,
+        nonce,
       });
     } catch (error) {
-      this.handleTelemetryFailure(socket, error as Error);
+      this.handleTelemetryFailure(socket, error as Error, nonce);
     }
   }
 
-  private handleTelemetryFailure(socket: ProctoringSocketAdapter, error: Error): void {
+  private handleTelemetryFailure(socket: ProctoringSocketAdapter, error: Error, nonce?: string): void {
     if (error instanceof ProctoringValidationError && error.code === 'FORBIDDEN_TELEMETRY_PAYLOAD') {
       socket.emit('session.suspended', {
         reason: error.message,
@@ -339,6 +347,7 @@ export class ProctoringWebSocketService {
 
     socket.emit('telemetry.retry_required', {
       reason: error.message,
+      nonce,
     });
   }
 
