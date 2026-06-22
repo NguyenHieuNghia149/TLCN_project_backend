@@ -10,6 +10,8 @@ function createMockRepos() {
       deleteRoadmapCascade: jest.fn(),
       listRoadmaps: jest.fn(),
       countRoadmaps: jest.fn(),
+      listUserRoadmaps: jest.fn(),
+      countUserRoadmaps: jest.fn(),
     },
     roadmapItemRepository: {
       getMaxOrderByRoadmap: jest.fn(),
@@ -54,7 +56,12 @@ function createService() {
 
 function createRoadmapDetail(items: Array<Record<string, unknown>>) {
   return {
-    roadmap: { id: 'roadmap-1', title: 'Test Roadmap', createdBy: 'user-1' },
+    roadmap: {
+      id: 'roadmap-1',
+      title: 'Test Roadmap',
+      createdBy: 'user-1',
+      visibility: 'public',
+    },
     items,
   };
 }
@@ -130,6 +137,90 @@ describe('RoadmapService - sequential unlocking', () => {
 
       expect(result.items[1]).toMatchObject({ id: 'item-2', isCompleted: true });
       expect(result.items[2]).toMatchObject({ id: 'item-3', isUnlocked: true });
+    });
+
+    it('rejects private roadmaps', async () => {
+      const { service, repos } = createService();
+      repos.roadmapRepository.getRoadmapDetail.mockResolvedValue({
+        roadmap: {
+          id: 'roadmap-1',
+          title: 'Private Roadmap',
+          createdBy: 'user-1',
+          visibility: 'private',
+        },
+        items: [],
+      });
+
+      await expect(
+        service.getRoadmapDetailWithLockStatus('roadmap-1', 'user-1'),
+      ).rejects.toMatchObject({
+        statusCode: 404,
+        code: 'ROADMAP_NOT_FOUND',
+      });
+    });
+  });
+
+  describe('visibility guards', () => {
+    it('rejects getRoadmapById for private roadmaps', async () => {
+      const { service, repos } = createService();
+      repos.roadmapRepository.getRoadmapDetail.mockResolvedValue({
+        roadmap: {
+          id: 'roadmap-1',
+          title: 'Private Roadmap',
+          createdBy: 'user-1',
+          visibility: 'private',
+        },
+        items: [],
+      });
+
+      await expect(service.getRoadmapById('roadmap-1')).rejects.toMatchObject({
+        statusCode: 404,
+        code: 'ROADMAP_NOT_FOUND',
+      });
+    });
+
+    it('rejects getUserProgress for private roadmaps', async () => {
+      const { service, repos } = createService();
+      repos.roadmapRepository.findById.mockResolvedValue({
+        id: 'roadmap-1',
+        title: 'Private Roadmap',
+        createdBy: 'user-1',
+        visibility: 'private',
+      });
+
+      await expect(service.getUserProgress('user-1', 'roadmap-1')).rejects.toMatchObject({
+        statusCode: 404,
+        code: 'ROADMAP_NOT_FOUND',
+      });
+    });
+
+    it('returns only public user roadmaps', async () => {
+      const { service, repos } = createService();
+      repos.roadmapRepository.listUserRoadmaps.mockResolvedValue([
+        {
+          id: 'roadmap-1',
+          title: 'Public Roadmap',
+          createdBy: 'user-1',
+          visibility: 'public',
+          itemCount: 3,
+        },
+      ]);
+      repos.roadmapRepository.countUserRoadmaps.mockResolvedValue(1);
+
+      await expect(
+        service.listUserRoadmaps({ userId: 'user-1', limit: 20, offset: 0 }),
+      ).resolves.toEqual({
+        roadmaps: [
+          {
+            id: 'roadmap-1',
+            title: 'Public Roadmap',
+            createdBy: 'user-1',
+            visibility: 'public',
+            itemCount: 3,
+          },
+        ],
+        total: 1,
+      });
     });
   });
 
@@ -239,6 +330,26 @@ describe('RoadmapService - sequential unlocking', () => {
       ).rejects.toMatchObject({
         statusCode: 404,
         code: 'ROADMAP_ITEM_NOT_FOUND',
+      });
+    });
+
+    it('rejects completion for private roadmaps', async () => {
+      const { service, repos } = createService();
+      repos.roadmapRepository.getRoadmapDetail.mockResolvedValue({
+        roadmap: {
+          id: 'roadmap-1',
+          title: 'Private Roadmap',
+          createdBy: 'user-1',
+          visibility: 'private',
+        },
+        items: [{ id: 'item-1', order: 1, itemTitle: 'Item 1', itemType: 'lesson' }],
+      });
+
+      await expect(
+        service.completeRoadmapItem('user-1', 'roadmap-1', 'item-1'),
+      ).rejects.toMatchObject({
+        statusCode: 404,
+        code: 'ROADMAP_NOT_FOUND',
       });
     });
   });

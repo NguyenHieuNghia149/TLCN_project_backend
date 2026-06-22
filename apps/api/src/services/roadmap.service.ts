@@ -72,9 +72,7 @@ export class RoadmapService {
    */
   async getRoadmapDetailWithLockStatus(roadmapId: string, userId: string) {
     const roadmapDetail = await this.roadmapRepository.getRoadmapDetail(roadmapId);
-    if (!roadmapDetail?.roadmap) {
-      throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
-    }
+    this.assertPublicRoadmapDetail(roadmapDetail);
 
     // Get user's completed items from BOTH sources to ensure data sync
     // 1. From userItemCompletions (item-level completion tracking)
@@ -117,7 +115,9 @@ export class RoadmapService {
   }
 
   async getRoadmapById(roadmapId: string) {
-    return this.roadmapRepository.getRoadmapDetail(roadmapId);
+    const roadmapDetail = await this.roadmapRepository.getRoadmapDetail(roadmapId);
+    this.assertPublicRoadmapDetail(roadmapDetail);
+    return roadmapDetail;
   }
 
   async updateRoadmap(roadmapId: string, userId: string, input: UpdateRoadmapInput) {
@@ -222,6 +222,7 @@ export class RoadmapService {
   }
 
   async getUserProgress(userId: string, roadmapId: string): Promise<RoadmapProgressStats> {
+    await this.assertPublicRoadmapById(roadmapId);
     return this.roadmapProgressRepository.getCompletionStats(userId, roadmapId);
   }
 
@@ -242,9 +243,7 @@ export class RoadmapService {
   ): Promise<{ item: Record<string, unknown>; unlockedNextItem?: Record<string, unknown> }> {
     // 1. Get roadmap detail with enriched item data (includes itemTitle)
     const roadmapDetail = await this.roadmapRepository.getRoadmapDetail(roadmapId);
-    if (!roadmapDetail) {
-      throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
-    }
+    this.assertPublicRoadmapDetail(roadmapDetail);
 
     const item = roadmapDetail.items.find(i => i.id === itemId);
     if (!item) {
@@ -350,9 +349,7 @@ export class RoadmapService {
     itemType: 'lesson' | 'problem'
   ): Promise<void> {
     const roadmap = await this.roadmapRepository.findById(roadmapId);
-    if (!roadmap) {
-      throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
-    }
+    this.assertPublicRoadmap(roadmap);
     await this.roadmapProgressRepository.markItemCompletedInRoadmap(
       userId,
       contentId,
@@ -410,6 +407,21 @@ export class RoadmapService {
   private ensureOwnerOrAdmin(ownerId: string, userId: string): void {
     if (ownerId !== userId) {
       throw new AppException('Forbidden', 403, 'FORBIDDEN');
+    }
+  }
+
+  private async assertPublicRoadmapById(roadmapId: string): Promise<void> {
+    const roadmap = await this.roadmapRepository.findById(roadmapId);
+    this.assertPublicRoadmap(roadmap);
+  }
+
+  private assertPublicRoadmapDetail(roadmapDetail: { roadmap: { visibility?: string } | null } | null): void {
+    this.assertPublicRoadmap(roadmapDetail?.roadmap ?? null);
+  }
+
+  private assertPublicRoadmap(roadmap: { visibility?: string } | null): void {
+    if (!roadmap || roadmap.visibility !== 'public') {
+      throw new AppException('Roadmap not found', 404, 'ROADMAP_NOT_FOUND');
     }
   }
 }

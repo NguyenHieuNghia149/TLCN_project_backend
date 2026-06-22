@@ -171,10 +171,11 @@ export class RoadmapRepository extends BaseRepository<typeof roadmaps, RoadmapEn
       })
       .from(roadmaps)
       .leftJoin(roadmapItems, eq(roadmapItems.roadmapId, roadmaps.id))
-      .where(inArray(roadmaps.id, roadmapIds))
+      .where(and(inArray(roadmaps.id, roadmapIds), eq(roadmaps.visibility, 'public')))
       .groupBy(roadmaps.id)
       .orderBy(desc(roadmaps.createdAt))
-      .limit(2); // Always show max 2 for continue roadmap
+      .limit(Math.max(1, params.limit))
+      .offset(Math.max(0, params.offset));
 
     return rows.map(row => ({
       ...(row.roadmap as RoadmapEntity),
@@ -183,13 +184,14 @@ export class RoadmapRepository extends BaseRepository<typeof roadmaps, RoadmapEn
   }
 
   async countUserRoadmaps(userId: string): Promise<number> {
-    // Count roadmaps where user has progress
+    // Count public roadmaps where user has progress
     const result = await this.db
-      .selectDistinct({ id: roadmapProgress.roadmapId })
+      .select({ total: sql<number>`count(distinct ${roadmapProgress.roadmapId})` })
       .from(roadmapProgress)
-      .where(eq(roadmapProgress.userId, userId));
+      .innerJoin(roadmaps, eq(roadmaps.id, roadmapProgress.roadmapId))
+      .where(and(eq(roadmapProgress.userId, userId), eq(roadmaps.visibility, 'public')));
 
-    return result.length;
+    return Number(result[0]?.total ?? 0);
   }
 
   async getRoadmapDetail(roadmapId: string): Promise<{
