@@ -145,6 +145,30 @@ function normalizeOffset(value: unknown): number {
   return Math.max(0, Math.trunc(parsed));
 }
 
+function isLegacyDataRequestSchemaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const record = error as {
+    message?: unknown;
+    query?: unknown;
+    cause?: { code?: unknown } | null;
+  };
+
+  if (record.cause?.code !== '42703') {
+    return false;
+  }
+
+  const query = typeof record.query === 'string' ? record.query : '';
+  const message = typeof record.message === 'string' ? record.message : '';
+
+  return (
+    query.includes('"exam_proctoring_data_requests"') ||
+    message.includes('"exam_proctoring_data_requests"')
+  );
+}
+
 export class ProctoringAdminReviewService {
   private readonly examRepository: Pick<ExamRepository, 'findById'>;
   private readonly participationRepository: Pick<ExamParticipationRepository, 'findById'>;
@@ -248,6 +272,17 @@ export class ProctoringAdminReviewService {
     );
   }
 
+  private async findDataRequestsSafely(participationId: string) {
+    try {
+      return await this.dataRequestRepository.findByParticipation(participationId);
+    } catch (error) {
+      if (isLegacyDataRequestSchemaError(error)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
   async getReview(
     examId: string,
     participationId: string,
@@ -268,7 +303,7 @@ export class ProctoringAdminReviewService {
         this.precheckRepository.findByParticipation(participationId),
         this.bypassRepository.findByParticipation(participationId),
         this.finalFlushRepository.findByParticipation(participationId),
-        this.dataRequestRepository.findByParticipation(participationId),
+        this.findDataRequestsSafely(participationId),
         this.reviewLabelRepository.findByParticipation(participationId),
         this.llmSummaryRepository.findLatestByParticipation(participationId),
         this.settingsRepository.findByExamId(examId),
