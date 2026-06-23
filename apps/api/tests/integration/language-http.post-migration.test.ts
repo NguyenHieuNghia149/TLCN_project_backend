@@ -1,6 +1,10 @@
 import request from 'supertest';
 
-import { createAccessToken, createRouteIntegrationApp } from './helpers/route-integration';
+import {
+  createAccessToken,
+  createAccessTokenCookieHeader,
+  createRouteIntegrationApp,
+} from './helpers/route-integration';
 
 describe('Language HTTP integration on post-migration routes', () => {
   beforeEach(() => {
@@ -78,7 +82,7 @@ describe('Language HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .get('/api/admin/languages')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.body.data.items).toHaveLength(3);
@@ -95,7 +99,7 @@ describe('Language HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .put('/api/admin/languages/lang-python')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', createAccessTokenCookieHeader(token))
       .send({ displayName: 'Python', sortOrder: 2, isActive: false });
 
     expect(response.status).toBe(200);

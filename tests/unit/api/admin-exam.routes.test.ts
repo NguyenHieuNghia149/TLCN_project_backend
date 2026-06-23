@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import express, { Router } from 'express';
 import request from 'supertest';
 
@@ -5,6 +6,10 @@ import { JWTUtils } from '@backend/shared/utils';
 
 function createAccessToken(userId: string, role: 'user' | 'teacher' | 'owner') {
   return JWTUtils.generateAccessToken(userId, `${userId}@example.com`, role);
+}
+
+function createAccessTokenCookieHeader(userId: string, role: 'user' | 'teacher' | 'owner') {
+  return [`accessToken=${createAccessToken(userId, role)}`];
 }
 
 async function createAdminExamApp(examAccessService: Record<string, unknown>) {
@@ -27,6 +32,7 @@ async function createAdminExamApp(examAccessService: Record<string, unknown>) {
 
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
   app.use('/api/admin/exams', createAdminExamRouter());
   app.use(errorMiddleware);
 
@@ -64,7 +70,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/admin/exams')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
       .send({
         title: 'Spring Midterm',
         slug: 'spring-midterm',
@@ -119,7 +125,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .get('/api/admin/exams')
-      .set('Authorization', `Bearer ${createAccessToken('user-1', 'user')}`);
+      .set('Cookie', createAccessTokenCookieHeader('user-1', 'user'));
 
     expect(response.status).toBe(403);
     expect(response.body).toMatchObject({
@@ -152,7 +158,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .get('/api/admin/exams?limit=5&offset=10')
-      .set('Authorization', `Bearer ${createAccessToken('owner-1', 'owner')}`);
+      .set('Cookie', createAccessTokenCookieHeader('owner-1', 'owner'));
 
     expect(response.status).toBe(200);
     expect(listAdminExams).toHaveBeenCalledWith({
@@ -189,7 +195,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .get('/api/admin/exams/11111111-1111-4111-8111-111111111111/participants')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'));
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -219,7 +225,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/participants')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
       .send({
         participants: [
           {
@@ -270,7 +276,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/publish')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'));
 
     expect(response.status).toBe(200);
     expect(publishExam).toHaveBeenCalledWith(
@@ -309,7 +315,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/cancel')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'));
 
     expect(response.status).toBe(200);
     expect(cancelExam).toHaveBeenCalledWith(
@@ -349,7 +355,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/archive')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'));
 
     expect(response.status).toBe(200);
     expect(archiveExam).toHaveBeenCalledWith(
@@ -388,7 +394,7 @@ describe('Admin exam HTTP routes', () => {
       .post(
         '/api/admin/exams/11111111-1111-4111-8111-111111111111/participants/22222222-2222-4222-8222-222222222222/approve',
       )
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`);
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'));
 
     expect(response.status).toBe(200);
     expect(approveParticipant).toHaveBeenCalledWith(
@@ -425,7 +431,7 @@ describe('Admin exam HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/admin/exams/11111111-1111-4111-8111-111111111111/participants/merge')
-      .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+      .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
       .send({
         sourceParticipantId: '22222222-2222-4222-8222-222222222222',
         targetParticipantId: '33333333-3333-4333-8333-333333333333',

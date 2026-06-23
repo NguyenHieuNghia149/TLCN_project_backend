@@ -3,7 +3,11 @@ import request from 'supertest';
 import { NotFoundException } from '@backend/api/exceptions/solution.exception';
 import type { FunctionSignature } from '@backend/shared/types';
 
-import { createAccessToken, createRouteIntegrationApp } from './helpers/route-integration';
+import {
+  createAccessToken,
+  createAccessTokenCookieHeader,
+  createRouteIntegrationApp,
+} from './helpers/route-integration';
 
 const PUBLIC_PROBLEM_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PRIVATE_PROBLEM_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -133,7 +137,7 @@ describe('Favorite HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .get('/api/favorites')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -170,7 +174,7 @@ describe('Favorite HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .post('/api/favorites')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', createAccessTokenCookieHeader(token))
       .send({ problemId: PUBLIC_PROBLEM_ID });
 
     expect(response.status).toBe(201);
@@ -192,7 +196,7 @@ describe('Favorite HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .post('/api/favorites')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', createAccessTokenCookieHeader(token))
       .send({ problemId: PRIVATE_PROBLEM_ID });
 
     expect(response.status).toBe(404);
@@ -219,7 +223,7 @@ describe('Favorite HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .put(`/api/favorites/${PRIVATE_PROBLEM_ID}/toggle`)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('NOT_FOUND');

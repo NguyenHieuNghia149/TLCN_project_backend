@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import { JWTUtils } from '@backend/shared/utils/jwt';
 import { errorMiddleware } from '@backend/api/middlewares/error.middleware';
@@ -18,6 +19,7 @@ export function createRouteIntegrationApp(options: {
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
   app.use(responseMiddleware);
   app.use(options.mountPath, options.createRouter());
   app.use((req, res) => {
@@ -39,4 +41,9 @@ export function createRouteIntegrationApp(options: {
 /** Creates a real access token for route integration tests. */
 export function createAccessToken(claims: TestAuthClaims): string {
   return JWTUtils.generateAccessToken(claims.userId, claims.email, claims.role);
+}
+
+/** Creates the auth cookie header expected by cookie-only route middleware. */
+export function createAccessTokenCookieHeader(token: string): string[] {
+  return [`accessToken=${token}`];
 }

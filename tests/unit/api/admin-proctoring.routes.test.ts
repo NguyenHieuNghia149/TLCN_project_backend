@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import express, { Router } from 'express';
 import request from 'supertest';
 
@@ -9,6 +10,13 @@ function passThrough() {
 
 function createAccessToken(userId: string, role: 'user' | 'teacher' | 'owner' | 'admin') {
   return JWTUtils.generateAccessToken(userId, `${userId}@example.com`, role);
+}
+
+function createAccessTokenCookieHeader(
+  userId: string,
+  role: 'user' | 'teacher' | 'owner' | 'admin',
+) {
+  return [`accessToken=${createAccessToken(userId, role)}`];
 }
 
 const examId = '11111111-1111-4111-8111-111111111111';
@@ -72,13 +80,14 @@ describe('admin proctoring review routes', () => {
 
     const app = express();
     app.use(express.json());
+    app.use(cookieParser());
     app.use('/api/admin/exams', createAdminProctoringRouter());
 
     expect(
       await request(app).get(
         `/api/admin/exams/${examId}/participations/${participationId}/proctoring?eventName=clipboard_event&limit=25&offset=5`,
       )
-        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
     ).toMatchObject({ status: 200 });
     expect(reviewService.getReview).toHaveBeenCalledWith(
       examId,
@@ -90,7 +99,7 @@ describe('admin proctoring review routes', () => {
     expect(
       await request(app)
         .post(`/api/admin/exams/${examId}/participations/${participationId}/proctoring/recompute`)
-        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
         .send({ needsReReview: true })
     ).toMatchObject({ status: 200 });
     expect(reviewService.recompute).toHaveBeenCalledWith(
@@ -103,7 +112,7 @@ describe('admin proctoring review routes', () => {
     expect(
       await request(app)
         .post(`/api/admin/exams/${examId}/participations/${participationId}/proctoring/review`)
-        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
         .send({ decision: 'no_action', notes: 'Reviewed.' })
     ).toMatchObject({ status: 200 });
     expect(reviewService.recordReviewDecision).toHaveBeenCalledWith(
@@ -116,7 +125,7 @@ describe('admin proctoring review routes', () => {
     expect(
       await request(app)
         .post(`/api/admin/exams/${examId}/participations/${participationId}/proctoring/labels`)
-        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
         .send({ reviewOutcome: 'policy_review_required', evidenceConfidence: 'high' })
     ).toMatchObject({ status: 200 });
     expect(reviewService.recordReviewLabel).toHaveBeenCalledWith(
@@ -129,7 +138,7 @@ describe('admin proctoring review routes', () => {
     expect(
       await request(app)
         .post(`/api/admin/exams/${examId}/participations/${participationId}/proctoring/llm-summary/translate`)
-        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
         .send({ targetLanguage: 'vi' })
     ).toMatchObject({ status: 200 });
     expect(reviewService.translateLlmSummary).toHaveBeenCalledWith(
@@ -174,11 +183,12 @@ describe('admin proctoring review routes', () => {
 
     const app = express();
     app.use(express.json());
+    app.use(cookieParser());
     app.use('/api/admin/exams', createAdminProctoringRouter());
 
     const response = await request(app)
       .get(`/api/admin/exams/${examId}/participations/${participationId}/proctoring`)
-      .set('Authorization', `Bearer ${createAccessToken('user-1', 'user')}`);
+      .set('Cookie', createAccessTokenCookieHeader('user-1', 'user'));
 
     expect(response.status).toBe(403);
     expect(reviewService.getReview).not.toHaveBeenCalled();
@@ -218,11 +228,12 @@ describe('admin proctoring review routes', () => {
 
     const app = express();
     app.use(express.json());
+    app.use(cookieParser());
     app.use('/api/admin/exams', createAdminProctoringRouter());
 
     const response = await request(app)
       .get(`/api/admin/exams/${examId}/participations/${participationId}/proctoring`)
-      .set('Authorization', `Bearer ${createAccessToken('admin-1', 'admin')}`);
+      .set('Cookie', createAccessTokenCookieHeader('admin-1', 'admin'));
 
     expect(response.status).toBe(200);
     expect(reviewService.getReview).toHaveBeenCalledWith(

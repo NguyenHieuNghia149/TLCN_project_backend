@@ -1,7 +1,11 @@
 import { EventEmitter } from 'node:events';
 import request from 'supertest';
 
-import { createAccessToken, createRouteIntegrationApp } from './helpers/route-integration';
+import {
+  createAccessToken,
+  createAccessTokenCookieHeader,
+  createRouteIntegrationApp,
+} from './helpers/route-integration';
 
 const PROBLEM_ID = '99999999-9999-4999-8999-999999999999';
 const SUBMISSION_ID = '88888888-8888-4888-8888-888888888888';
@@ -108,7 +112,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .post('/api/submissions')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', createAccessTokenCookieHeader(token))
       .send({
         sourceCode: 'print(1)',
         language: 'python',
@@ -130,7 +134,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
     });
   });
 
-  it('keeps run-code auth, forwards the bearer header, and warms SSE for run-code', async () => {
+  it('keeps run-code auth via cookies and warms SSE for run-code', async () => {
     const { app, service, getSseService } = loadSubmissionApp();
     const token = createAccessToken({
       userId: '14141414-1414-4414-8414-141414141414',
@@ -140,7 +144,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .post('/api/submissions/run')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', createAccessTokenCookieHeader(token))
       .send({
         sourceCode: 'print(1)',
         language: 'python',
@@ -157,7 +161,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
         userId: '14141414-1414-4414-8414-141414141414',
       },
       {
-        authHeader: `Bearer ${token}`,
+        authHeader: undefined,
       },
     );
     expect(getSseService).toHaveBeenCalledTimes(1);
@@ -177,7 +181,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
 
     const runResponse = await request(app)
       .post('/api/submissions/run')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', createAccessTokenCookieHeader(token))
       .send({
         sourceCode: 'print(1)',
         language: 'python',
@@ -188,9 +192,9 @@ describe('Submission HTTP integration on post-migration routes', () => {
     expect(service.runCode).toHaveBeenCalledTimes(1);
     expect(getSseService).toHaveBeenCalledTimes(1);
 
-    const streamResponse = await request(app).get(
-      `/api/submissions/stream/${SUBMISSION_ID}?token=${encodeURIComponent(token)}`,
-    );
+    const streamResponse = await request(app)
+      .get(`/api/submissions/stream/${SUBMISSION_ID}`)
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(streamResponse.status).toBe(200);
     expect(streamResponse.text).toContain('accepted');
@@ -198,7 +202,7 @@ describe('Submission HTTP integration on post-migration routes', () => {
     expect(getSseService).toHaveBeenCalledTimes(2);
   });
 
-  it('accepts JWTs from the query string for submission SSE streams', async () => {
+  it('accepts access-token cookies for submission SSE streams', async () => {
     const { app, getSseService } = loadSubmissionApp({ emitTerminalStreamEvent: true });
     const token = createAccessToken({
       userId: '15151515-1515-4515-8515-151515151515',
@@ -206,9 +210,9 @@ describe('Submission HTTP integration on post-migration routes', () => {
       role: 'student',
     });
 
-    const response = await request(app).get(
-      `/api/submissions/stream/${SUBMISSION_ID}?token=${encodeURIComponent(token)}`,
-    );
+    const response = await request(app)
+      .get(`/api/submissions/stream/${SUBMISSION_ID}`)
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('text/event-stream');

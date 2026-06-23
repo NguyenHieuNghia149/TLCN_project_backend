@@ -46,6 +46,7 @@ describe('Judge route composition', () => {
     mockJudgeRouteMiddlewareModules();
     const serviceInstance = {};
     const controllerInstance = createControllerDouble([
+      'listPublicProblems',
       'listProblemsByTopic',
       'getAllTags',
       'getTopicTags',

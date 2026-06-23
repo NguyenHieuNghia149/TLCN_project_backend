@@ -1,6 +1,10 @@
 import request from 'supertest';
 
-import { createAccessToken, createRouteIntegrationApp } from './helpers/route-integration';
+import {
+  createAccessToken,
+  createAccessTokenCookieHeader,
+  createRouteIntegrationApp,
+} from './helpers/route-integration';
 
 describe('Admin Roadmap routes integration', () => {
   beforeEach(() => {
@@ -71,7 +75,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .get('/api/admin/roadmaps')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(403);
     expect(service.listRoadmaps).not.toHaveBeenCalled();
@@ -87,7 +91,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .get('/api/admin/roadmaps')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -113,7 +117,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .get('/api/admin/roadmaps/available-items/list')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(403);
     expect(service.getAvailableItems).not.toHaveBeenCalled();
@@ -124,7 +128,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .get('/api/admin/roadmaps/available-items/list')
-      .set('Authorization', `Bearer ${ownerToken()}`);
+      .set('Cookie', createAccessTokenCookieHeader(ownerToken()));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -138,7 +142,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .patch('/api/admin/roadmaps/22222222-2222-4222-8222-222222222222/visibility')
-      .set('Authorization', `Bearer ${ownerToken()}`)
+      .set('Cookie', createAccessTokenCookieHeader(ownerToken()))
       .send({ visibility: 'invalid-value' });
 
     expect(response.status).toBe(400);
@@ -149,7 +153,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .patch('/api/admin/roadmaps/22222222-2222-4222-8222-222222222222/visibility')
-      .set('Authorization', `Bearer ${ownerToken()}`)
+      .set('Cookie', createAccessTokenCookieHeader(ownerToken()))
       .send({ visibility: 'private' });
 
     expect(response.status).toBe(200);
@@ -163,7 +167,7 @@ describe('Admin Roadmap routes integration', () => {
 
     const response = await request(app)
       .delete('/api/admin/roadmaps/22222222-2222-4222-8222-222222222222')
-      .set('Authorization', `Bearer ${ownerToken()}`);
+      .set('Cookie', createAccessTokenCookieHeader(ownerToken()));
 
     expect(response.status).toBe(200);
     expect(service.deleteRoadmap).toHaveBeenCalled();

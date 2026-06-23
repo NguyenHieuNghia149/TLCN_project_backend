@@ -2,7 +2,11 @@ import request from 'supertest';
 
 import { NotFoundException } from '@backend/api/exceptions/solution.exception';
 
-import { createAccessToken, createRouteIntegrationApp } from './helpers/route-integration';
+import {
+  createAccessToken,
+  createAccessTokenCookieHeader,
+  createRouteIntegrationApp,
+} from './helpers/route-integration';
 
 const PUBLIC_CHALLENGE_ID = '11111111-1111-4111-8111-111111111111';
 const PRIVATE_CHALLENGE_ID = '22222222-2222-4222-8222-222222222222';
@@ -140,7 +144,7 @@ describe('Challenge HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .get(`/api/challenges/${PRIVATE_CHALLENGE_ID}?showAll=true`)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('NOT_FOUND');
@@ -166,7 +170,7 @@ describe('Challenge HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .get(`/api/challenges/${PRIVATE_CHALLENGE_ID}?showAll=true`)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -190,7 +194,7 @@ describe('Challenge HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .get(`/api/challenges/problems/topic/${TOPIC_ID}?limit=5`)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -227,7 +231,7 @@ describe('Challenge HTTP integration on post-migration routes', () => {
 
     const response = await request(app)
       .get('/api/challenges/problems?limit=6')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', createAccessTokenCookieHeader(token));
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
