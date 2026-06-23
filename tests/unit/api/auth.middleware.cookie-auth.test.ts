@@ -7,6 +7,9 @@ import {
 } from '@backend/api/middlewares/auth.middleware';
 import { JWTUtils } from '@backend/shared/utils';
 
+const originalAuthCookieMigrationAllowBearerFallback =
+  process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK;
+
 function createResponse(): Response {
   return {
     status: jest.fn().mockReturnThis(),
@@ -23,8 +26,22 @@ function createAccessToken(userId: string, role: string = 'user') {
 }
 
 describe('auth middleware cookie-first behavior', () => {
+  beforeEach(() => {
+    delete process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK;
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterAll(() => {
+    if (originalAuthCookieMigrationAllowBearerFallback === undefined) {
+      delete process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK;
+      return;
+    }
+
+    process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK =
+      originalAuthCookieMigrationAllowBearerFallback;
   });
 
   it('authenticates using req.cookies.accessToken', () => {
@@ -68,7 +85,30 @@ describe('auth middleware cookie-first behavior', () => {
     });
   });
 
-  it('keeps bearer fallback working when the access cookie is absent', () => {
+  it('rejects bearer auth by default when the access cookie is absent', () => {
+    const req = {
+      cookies: {},
+      headers: {
+        authorization: `Bearer ${createAccessToken('header-user', 'teacher')}`,
+      },
+    } as unknown as AuthenticatedRequest;
+    const res = createResponse();
+    const next = createNext();
+
+    authenticationToken(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'No token provided',
+      code: 'NO_TOKEN',
+    });
+  });
+
+  it('keeps bearer fallback working only when the migration flag is enabled', () => {
+    process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK = 'true';
+
     const req = {
       cookies: {},
       headers: {

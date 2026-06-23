@@ -10,6 +10,8 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+const BEARER_FALLBACK_FLAG = 'AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK';
+
 function getAccessTokenFromRequest(req: AuthenticatedRequest): string | undefined {
   const cookieToken = req.cookies?.accessToken;
   if (typeof cookieToken === 'string' && cookieToken.trim().length > 0) {
@@ -20,6 +22,10 @@ function getAccessTokenFromRequest(req: AuthenticatedRequest): string | undefine
 }
 
 function getTemporaryBearerFallbackToken(req: AuthenticatedRequest): string | undefined {
+  if (process.env[BEARER_FALLBACK_FLAG] !== 'true') {
+    return undefined;
+  }
+
   const authHeader = req.headers.authorization;
   const bearerToken = authHeader && authHeader.split(' ')[1];
   if (typeof bearerToken === 'string' && bearerToken.trim().length > 0) {

@@ -323,7 +323,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/exams/entry-sessions/11111111-1111-4111-8111-111111111111/start')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({ examPassword: 'Exam#1234' });
 
     expect(response.status).toBe(200);
@@ -362,7 +362,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/exams/entry-sessions/11111111-1111-4111-8111-111111111111/start')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`);
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`]);
 
     expect(response.status).toBe(200);
     expect(startEntrySession).toHaveBeenCalledWith(
@@ -392,7 +392,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/exams/entry-sessions/11111111-1111-4111-8111-111111111111/start')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({ examPassword: 'x'.repeat(256) });
 
     expect(response.status).toBe(400);
@@ -419,7 +419,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .put('/api/exams/session/sync')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({
         answers: {
           challengeA: { code: 'print(1)' },
@@ -456,7 +456,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .put('/api/exams/session/sync')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({
         participationId: '11111111-1111-4111-8111-111111111111',
         answers: {
@@ -499,7 +499,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .put('/api/exams/session/sync')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({
         sessionId: 'legacy-session-1',
         answers: {
@@ -545,7 +545,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/exams/spring-midterm/submit')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({});
 
     expect(response.status).toBe(200);
@@ -577,7 +577,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .post('/api/exams/spring-midterm/submit')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({ participationId: 'participation-legacy-1' });
 
     expect(response.status).toBe(200);
