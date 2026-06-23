@@ -14,6 +14,11 @@ import {
 import { UserService } from '@backend/api/services/user.service';
 import { EMailService } from '@backend/api/services/email.service';
 import cloudinary from '@backend/api/config/cloudinary';
+import {
+  clearAuthCookies,
+  setAccessTokenCookie,
+  setRefreshTokenCookie,
+} from '@backend/api/utils/cookie-auth';
 import { Readable } from 'stream';
 
 export class AuthController {
@@ -34,20 +39,12 @@ export class AuthController {
   async googleLogin(req: Request, res: Response, next: NextFunction) {
     const result = await this.authService.loginWithGoogle(req.body as GoogleLoginInput);
 
-    res.cookie('refreshToken', result.tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/api/auth/refresh-token',
-    });
-
-    const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
+    setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
+    setRefreshTokenCookie(res, result.tokens.refreshToken, 30 * 24 * 60 * 60 * 1000);
 
     res.status(200).json({
       message: 'Login with Google successful',
       user: result.user,
-      tokens: tokensWithoutRefresh,
     });
   }
 
@@ -58,20 +55,13 @@ export class AuthController {
       throw new AuthenticationException('User with this email does not exist');
     }
 
-    res.cookie('refreshToken', result.tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/api/auth/refresh-token',
-    });
-
-    const { refreshToken, ...tokensWithoutRefresh } = result.tokens;
+    const rememberMe = (req.body as LoginInput)?.rememberMe === true;
+    setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
+    setRefreshTokenCookie(res, result.tokens.refreshToken, (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000);
 
     res.status(200).json({
       message: 'Login successful',
       user: result.user,
-      tokens: tokensWithoutRefresh,
     });
   }
 
@@ -84,21 +74,12 @@ export class AuthController {
 
     const result = await this.authService.refreshToken({ refreshToken });
 
-    res.cookie('refreshToken', result.tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/api/auth/refresh-token',
-    });
-
-    // Return only access token to client
-    const { refreshToken: _rt, ...tokensWithoutRefresh } = result.tokens as any;
+    setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
+    setRefreshTokenCookie(res, result.tokens.refreshToken, 7 * 24 * 60 * 60 * 1000);
 
     res.status(200).json({
       message: 'Token refreshed successfully',
       user: result.user,
-      tokens: tokensWithoutRefresh,
     });
   }
 
@@ -110,10 +91,7 @@ export class AuthController {
       await this.authService.logout(refreshToken);
     }
 
-    // Clear the refresh token cookie
-    res.clearCookie('refreshToken', {
-      path: '/api/auth/refresh-token',
-    });
+    clearAuthCookies(res);
 
     res.status(200).json({
       message: 'Logout successful',

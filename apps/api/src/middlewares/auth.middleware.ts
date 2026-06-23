@@ -10,18 +10,27 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+function getAccessTokenFromRequest(req: AuthenticatedRequest): string | undefined {
+  const cookieToken = req.cookies?.accessToken;
+  if (typeof cookieToken === 'string' && cookieToken.trim().length > 0) {
+    return cookieToken;
+  }
+
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader && authHeader.split(' ')[1];
+  if (typeof bearerToken === 'string' && bearerToken.trim().length > 0) {
+    return bearerToken;
+  }
+
+  return undefined;
+}
+
 export const authenticationToken = (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): void | Response => {
-  const authHeader = req.headers.authorization;
-  let token = authHeader && authHeader.split(' ')[1];
-
-  // Support JWT from query token for SSE /stream endpoints
-  if (!token && req.query.token && typeof req.query.token === 'string') {
-    token = req.query.token;
-  }
+  const token = getAccessTokenFromRequest(req);
 
   if (!token) {
     return res.status(401).json({
@@ -108,8 +117,7 @@ export const requireTeacherOrOwner = requireRole(['owner', 'teacher']);
 
 // Optional authentication middleware (doesn't fail if no token)
 export const optionalAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = getAccessTokenFromRequest(req);
 
   if (!token) {
     return next();

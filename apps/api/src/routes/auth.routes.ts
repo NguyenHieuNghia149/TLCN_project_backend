@@ -32,6 +32,7 @@ export function createAuthRouter(): Router {
   const authController = new AuthController(authService, userService, emailService);
 
   const authRateLimit = authLimiter;
+  const refreshRateLimit = refreshLimiter;
   const strictRateLimit = strictLimiter;
   const passwordResetLimit = passwordResetLimiter;
   const emailVerificationLimit = emailVerificationLimiter;
@@ -49,7 +50,7 @@ export function createAuthRouter(): Router {
     validate(GoogleLoginSchema),
     authController.googleLogin.bind(authController),
   );
-  router.post('/refresh-token', authRateLimit, authController.refreshToken.bind(authController));
+  router.post('/refresh-token', refreshRateLimit, authController.refreshToken.bind(authController));
 
   router.post('/logout', authController.logout.bind(authController));
 

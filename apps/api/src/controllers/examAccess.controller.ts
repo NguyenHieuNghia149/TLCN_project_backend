@@ -3,6 +3,7 @@ import { NextFunction, Request, Response } from 'express';
 import { ExamAccessService } from '@backend/api/services/exam-access.service';
 import { ExamService } from '@backend/api/services/exam.service';
 import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
+import { setAccessTokenCookie, setRefreshTokenCookie } from '@backend/api/utils/cookie-auth';
 
 export class PublicExamController {
   constructor(private readonly examAccessService: ExamAccessService) {}
@@ -46,24 +47,22 @@ export class PublicExamController {
   async verifyOtp(req: Request, res: Response, next: NextFunction) {
     const { slug } = req.params as { slug: string };
     const result = await this.examAccessService.verifyOtp(slug, req.body);
-    const tokens = result.tokens as { accessToken: string; refreshToken: string } | undefined;
+    const tokens = result.tokens as
+      | { accessToken: string; refreshToken: string; expiresIn?: number }
+      | undefined;
 
+    if (tokens?.accessToken) {
+      setAccessTokenCookie(res, tokens.accessToken, tokens.expiresIn ?? 15 * 60 * 1000);
+    }
     if (tokens?.refreshToken) {
-      res.cookie('refreshToken', tokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        path: '/api/auth/refresh-token',
-      });
+      setRefreshTokenCookie(res, tokens.refreshToken, 7 * 24 * 60 * 60 * 1000);
     }
 
     if (tokens) {
-      const { refreshToken, ...tokensWithoutRefresh } = tokens;
-      res.status(200).json({
-        ...result,
-        tokens: tokensWithoutRefresh,
-      });
+      const { tokens: _tokens, ...resultWithoutTokens } = result as typeof result & {
+        tokens?: typeof tokens;
+      };
+      res.status(200).json(resultWithoutTokens);
       return;
     }
 

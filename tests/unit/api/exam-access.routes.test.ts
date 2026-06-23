@@ -197,7 +197,7 @@ describe('Exam access HTTP routes', () => {
     });
   });
 
-  it('sets the refresh-token cookie and strips it from the verify-otp JSON body', async () => {
+  it('sets both auth cookies and strips tokens from the verify-otp JSON body', async () => {
     const verifyOtp = jest.fn().mockResolvedValue({
       participantId: 'participant-1',
       entrySessionId: 'entry-session-1',
@@ -230,11 +230,12 @@ describe('Exam access HTTP routes', () => {
       otp: '123456',
     });
     expect(response.headers['set-cookie']).toEqual(
-      expect.arrayContaining([expect.stringContaining('refreshToken=refresh-token')]),
+      expect.arrayContaining([
+        expect.stringContaining('accessToken=access-token'),
+        expect.stringContaining('refreshToken=refresh-token'),
+      ]),
     );
-    expect(response.body.tokens).toEqual({
-      accessToken: 'access-token',
-    });
+    expect(response.body.tokens).toBeUndefined();
   });
 
   it('returns an empty access-state for unauthenticated users', async () => {
