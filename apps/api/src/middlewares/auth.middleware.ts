@@ -16,6 +16,10 @@ function getAccessTokenFromRequest(req: AuthenticatedRequest): string | undefine
     return cookieToken;
   }
 
+  return undefined;
+}
+
+function getTemporaryBearerFallbackToken(req: AuthenticatedRequest): string | undefined {
   const authHeader = req.headers.authorization;
   const bearerToken = authHeader && authHeader.split(' ')[1];
   if (typeof bearerToken === 'string' && bearerToken.trim().length > 0) {
@@ -30,7 +34,7 @@ export const authenticationToken = (
   res: Response,
   next: NextFunction
 ): void | Response => {
-  const token = getAccessTokenFromRequest(req);
+  const token = getAccessTokenFromRequest(req) ?? getTemporaryBearerFallbackToken(req);
 
   if (!token) {
     return res.status(401).json({

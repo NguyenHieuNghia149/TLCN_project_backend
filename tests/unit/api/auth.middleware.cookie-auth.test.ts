@@ -127,4 +127,20 @@ describe('auth middleware cookie-first behavior', () => {
       email: 'cookie-user@example.com',
     });
   });
+
+  it('optionalAuth does not use the temporary bearer fallback path', () => {
+    const req = {
+      cookies: {},
+      headers: {
+        authorization: `Bearer ${createAccessToken('header-user', 'teacher')}`,
+      },
+    } as unknown as AuthenticatedRequest;
+    const res = createResponse();
+    const next = createNext();
+
+    optionalAuth(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.user).toBeUndefined();
+  });
 });

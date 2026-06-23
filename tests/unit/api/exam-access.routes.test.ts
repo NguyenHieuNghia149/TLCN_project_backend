@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import express, { Router } from 'express';
 import request from 'supertest';
 
@@ -46,6 +47,7 @@ async function createMountedApp(options: {
 
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
   app.use(options.mountPath, routerFactory());
   app.use(errorMiddleware);
 
@@ -150,7 +152,7 @@ describe('Exam access HTTP routes', () => {
 
     const response = await request(app)
       .get('/api/public/exams/spring')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`);
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`]);
 
     expect(response.status).toBe(200);
     expect(getPublicExamBySlug).toHaveBeenCalledWith('spring', 'user-1');
@@ -182,7 +184,7 @@ describe('Exam access HTTP routes', () => {
 
     const authenticatedResponse = await request(app)
       .post('/api/public/exams/spring/invites/resolve')
-      .set('Authorization', `Bearer ${createAccessToken('user-1')}`)
+      .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({ inviteToken: 'invite-token' });
 
     expect(unauthenticatedResponse.status).toBe(200);

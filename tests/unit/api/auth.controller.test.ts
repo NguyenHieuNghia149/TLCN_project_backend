@@ -130,7 +130,7 @@ describe('AuthController', () => {
     },
   );
 
-  it('passes a non-empty refresh cookie to the auth service and keeps it out of JSON', async () => {
+  it('passes a non-empty refresh cookie to the auth service, sets only the access cookie, and keeps tokens out of JSON', async () => {
     const authService = {
       refreshToken: jest.fn().mockResolvedValue(createAuthResult()),
     } as any;
@@ -153,14 +153,7 @@ describe('AuthController', () => {
         path: '/api',
       }),
     );
-    expect(response.cookie).toHaveBeenCalledWith(
-      'refreshToken',
-      'refresh-token',
-      expect.objectContaining({
-        httpOnly: true,
-        path: '/api/auth',
-      }),
-    );
+    expect(response.cookie).toHaveBeenCalledTimes(1);
     expect(response.json).toHaveBeenCalledWith({
       message: 'Token refreshed successfully',
       user: createAuthResult().user,

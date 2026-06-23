@@ -75,7 +75,6 @@ export class AuthController {
     const result = await this.authService.refreshToken({ refreshToken });
 
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
-    setRefreshTokenCookie(res, result.tokens.refreshToken, 7 * 24 * 60 * 60 * 1000);
 
     res.status(200).json({
       message: 'Token refreshed successfully',
