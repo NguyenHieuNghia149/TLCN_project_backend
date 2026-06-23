@@ -26,6 +26,10 @@ import {
   TranslateProctoringLlmSummaryInput,
 } from '@backend/shared/validations/proctoring.validation';
 import { ProctoringAiHttpClient } from '../../../../worker/src/services/proctoring-ai-http-client';
+import {
+  resolveDisplayLlmSummaryText,
+  translateLlmSummaryTextToVietnamese,
+} from './proctoring-llm-summary-display';
 
 import {
   createProctoringAiJobService,
@@ -351,7 +355,20 @@ export class ProctoringAdminReviewService {
 
     const aiAdvisory = await this.buildAiAdvisory(examId, participationId, settings);
 
-    const llmSummary = this.buildLlmSummary(examId, settings, llmSummaryRecord);
+    const llmSummary = this.buildLlmSummary(
+      examId,
+      participationId,
+      settings,
+      llmSummaryRecord,
+      events.map(event => {
+        const payloadJson = safePayload(event.payloadJson);
+        return {
+          eventId: event.id,
+          eventName: String(payloadJson.eventName ?? event.type),
+          capturedAt: serializeDate(event.capturedAt),
+        };
+      })
+    );
 
     return {
       summary: summary
@@ -466,8 +483,10 @@ export class ProctoringAdminReviewService {
 
   private buildLlmSummary(
     examId: string,
+    participationId: string,
     settings: any,
-    llmSummaryRecord: any
+    llmSummaryRecord: any,
+    timeline: Array<{ eventId: string; eventName: string; capturedAt: string | null }>
   ): Record<string, unknown> | null {
     if (!settings || !settings.llmSummaryEnabled) {
       return {
@@ -512,6 +531,23 @@ export class ProctoringAdminReviewService {
       };
     }
 
+    const citations =
+      llmSummaryRecord.sourceEventIdsJson?.map((sid: string) => ({
+        eventId: sid,
+        reason: 'summary evidence',
+      })) ?? [];
+    const missingDataNotes = llmSummaryRecord.missingDataNotesJson ?? [];
+    const riskFacts = llmSummaryRecord.riskFactsJson ?? [];
+    const summaryText = resolveDisplayLlmSummaryText({
+      examId,
+      participationId,
+      summaryText: llmSummaryRecord.summaryJson?.summaryText ?? '',
+      riskFacts,
+      citations,
+      missingDataNotes,
+      timeline,
+    });
+
     return {
       visible: true,
       status: 'accepted' as const,
@@ -521,13 +557,10 @@ export class ProctoringAdminReviewService {
       promptVersion: llmSummaryRecord.promptVersion,
       validationStatus: llmSummaryRecord.validationStatus,
       validationScore: Number(llmSummaryRecord.validationScore ?? 0),
-      summaryText: llmSummaryRecord.summaryJson?.summaryText ?? '',
-      riskFacts: llmSummaryRecord.riskFactsJson ?? [],
-      citations: llmSummaryRecord.sourceEventIdsJson?.map((sid: string) => ({
-        eventId: sid,
-        reason: 'summary evidence',
-      })) ?? [],
-      missingDataNotes: llmSummaryRecord.missingDataNotesJson ?? [],
+      summaryText,
+      riskFacts,
+      citations,
+      missingDataNotes,
       modelNotes: llmSummaryRecord.modelNotesJson ?? [],
       completedAt: serializeDate(llmSummaryRecord.completedAt),
     };
@@ -728,19 +761,35 @@ export class ProctoringAdminReviewService {
       );
     }
 
-    const summaryText = llmSummaryRecord.summaryJson?.summaryText;
-    if (typeof summaryText !== 'string' || !summaryText.trim()) {
-      throw new AppException(
-        'Accepted LLM summary text is empty.',
-        409,
-        'PROCTORING_LLM_SUMMARY_EMPTY',
-      );
+    const events = await this.eventRepository.findByParticipation(participationId, { limit: 1000 });
+    const summaryText = resolveDisplayLlmSummaryText({
+      examId,
+      participationId,
+      summaryText: llmSummaryRecord.summaryJson?.summaryText ?? '',
+      riskFacts: llmSummaryRecord.riskFactsJson ?? [],
+      citations:
+        llmSummaryRecord.sourceEventIdsJson?.map((sid: string) => ({
+          eventId: sid,
+          reason: 'summary evidence',
+        })) ?? [],
+      missingDataNotes: llmSummaryRecord.missingDataNotesJson ?? [],
+      timeline: events.map(event => {
+        const payloadJson = safePayload(event.payloadJson);
+        return {
+          eventId: event.id,
+          eventName: String(payloadJson.eventName ?? event.type),
+          capturedAt: serializeDate(event.capturedAt),
+        };
+      }),
+    });
+    if (!summaryText.trim()) {
+      throw new AppException('Accepted LLM summary text is empty.', 409, 'PROCTORING_LLM_SUMMARY_EMPTY');
     }
 
-    const result = await this.aiHttpClient.translateSummary({
-      text: summaryText,
+    const result = {
+      translatedText: translateLlmSummaryTextToVietnamese(summaryText),
       targetLanguage: input.targetLanguage,
-    });
+    };
 
     await this.auditLogRepository.create({
       examId,

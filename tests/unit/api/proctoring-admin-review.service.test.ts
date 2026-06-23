@@ -602,14 +602,11 @@ describe('ProctoringAdminReviewService', () => {
       }
     );
 
-    expect(aiHttpClient.translateSummary).toHaveBeenCalledWith({
-      text: 'Review these signals: focus lost x2 and visibility hidden x1.',
-      targetLanguage: 'vi',
-    });
     expect(result).toEqual({
-      translatedText: 'Ban tieng Viet.',
+      translatedText: 'Can xem lai cac tin hieu sau: roi cua so x2 va an tab x1.',
       targetLanguage: 'vi',
     });
+    expect(aiHttpClient.translateSummary).not.toHaveBeenCalled();
     expect(llmSummaryRepository.findLatestByParticipation).toHaveBeenCalledWith(
       'participation-1'
     );
@@ -622,6 +619,58 @@ describe('ProctoringAdminReviewService', () => {
           targetLanguage: 'vi',
         }),
       })
+    );
+  });
+
+  it('rewrites generic accepted summaries into teacher-facing display text', async () => {
+    const llmSummaryRepository = {
+      findLatestByParticipation: jest.fn().mockResolvedValue({
+        id: 'llm-summary-1',
+        status: 'accepted',
+        provider: 'local',
+        modelVersion: 'summary-local-v1',
+        promptVersion: 'proctoring-summary-v1',
+        validationStatus: 'passed',
+        validationScore: '1.0000',
+        summaryJson: {
+          summaryText: "Anomaly facts for the exam with id 'exam-1'.",
+        },
+        riskFactsJson: [
+          {
+            type: 'focus_lost',
+            count: 2,
+            totalDurationMs: 0,
+            evidenceEventIds: ['event-2'],
+          },
+        ],
+        sourceEventIdsJson: ['event-2'],
+        missingDataNotesJson: [],
+        modelNotesJson: [],
+        completedAt: new Date('2026-06-12T10:05:00.000Z'),
+      }),
+    };
+    const { service } = createService({
+      settingsRepository: {
+        findByExamId: jest.fn().mockResolvedValue({
+          aiShadowMode: true,
+          aiAdvisoryVisible: false,
+          aiMinimumEvaluationStatus: 'passed_gate',
+          llmSummaryEnabled: true,
+        }),
+      },
+      llmSummaryRepository,
+    });
+
+    const review = await service.getReview('exam-1', 'participation-1', {
+      userId: 'teacher-1',
+      role: 'teacher',
+    });
+
+    expect((review as any).llmSummary.summaryText).toContain(
+      'Review these signals: focus lost x2.'
+    );
+    expect((review as any).llmSummary.summaryText).toContain(
+      'Timeline highlights: 2026-06-12 10:01 focus lost.'
     );
   });
 });
