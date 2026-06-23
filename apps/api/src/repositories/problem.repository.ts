@@ -247,6 +247,45 @@ export class ProblemRepository extends BaseRepository<
     return { items, nextCursor };
   }
 
+  async findPublicWithCursor(params: {
+    limit: number;
+    cursor?: { createdAt: Date; id: string } | null;
+    direction?: 'forward' | 'backward';
+  }): Promise<{ items: ProblemEntity[]; nextCursor: { createdAt: Date; id: string } | null }> {
+    const { limit, cursor, direction = 'forward' } = params;
+
+    const baseWhere = eq(problems.visibility, ProblemVisibility.PUBLIC);
+
+    const whereClause = cursor
+      ? direction === 'forward'
+        ? or(
+            lt(problems.createdAt, cursor.createdAt),
+            and(eq(problems.createdAt, cursor.createdAt), lt(problems.id, cursor.id))
+          )
+        : or(
+            gt(problems.createdAt, cursor.createdAt),
+            and(eq(problems.createdAt, cursor.createdAt), gt(problems.id, cursor.id))
+          )
+      : undefined;
+
+    const finalWhere = whereClause ? and(baseWhere, whereClause) : baseWhere;
+
+    const rows = await this.db
+      .select()
+      .from(problems)
+      .where(finalWhere)
+      .orderBy(desc(problems.createdAt), desc(problems.id))
+      .limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+
+    const nextCursor = hasMore && last ? { createdAt: last.createdAt as Date, id: last.id } : null;
+
+    return { items, nextCursor };
+  }
+
   async getTagsByTopicId(topicId: string): Promise<string[]> {
     const rows = await this.db
       .select({ tags: problems.tags })

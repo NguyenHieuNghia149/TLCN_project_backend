@@ -50,6 +50,9 @@ describe('admin proctoring review routes', () => {
       recompute: jest.fn().mockResolvedValue({ id: 'summary-1' }),
       recordReviewDecision: jest.fn().mockResolvedValue({ reviewerDecision: 'no_action' }),
       recordReviewLabel: jest.fn().mockResolvedValue({ id: 'label-1' }),
+      translateLlmSummary: jest
+        .fn()
+        .mockResolvedValue({ translatedText: 'Ban dich tieng Viet.', targetLanguage: 'vi' }),
     };
 
     jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
@@ -122,6 +125,19 @@ describe('admin proctoring review routes', () => {
       { userId: 'teacher-1', role: 'teacher' },
       expect.objectContaining({ reviewOutcome: 'policy_review_required' })
     );
+
+    expect(
+      await request(app)
+        .post(`/api/admin/exams/${examId}/participations/${participationId}/proctoring/llm-summary/translate`)
+        .set('Authorization', `Bearer ${createAccessToken('teacher-1', 'teacher')}`)
+        .send({ targetLanguage: 'vi' })
+    ).toMatchObject({ status: 200 });
+    expect(reviewService.translateLlmSummary).toHaveBeenCalledWith(
+      examId,
+      participationId,
+      { userId: 'teacher-1', role: 'teacher' },
+      { targetLanguage: 'vi' }
+    );
   });
 
   it('blocks non-admin roles before the review service runs', async () => {
@@ -139,6 +155,7 @@ describe('admin proctoring review routes', () => {
       recompute: jest.fn(),
       recordReviewDecision: jest.fn(),
       recordReviewLabel: jest.fn(),
+      translateLlmSummary: jest.fn(),
     };
     jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
       createProctoringSettingsService: jest.fn(() => ({ updateSettings: jest.fn() })),
@@ -182,6 +199,7 @@ describe('admin proctoring review routes', () => {
       recompute: jest.fn(),
       recordReviewDecision: jest.fn(),
       recordReviewLabel: jest.fn(),
+      translateLlmSummary: jest.fn(),
     };
     jest.doMock('@backend/api/services/proctoring/proctoring-settings.service', () => ({
       createProctoringSettingsService: jest.fn(() => ({ updateSettings: jest.fn() })),

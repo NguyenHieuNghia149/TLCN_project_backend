@@ -23,7 +23,9 @@ import {
   RecordProctoringReviewLabelInput,
   RecomputeProctoringReviewInput,
   ReviewProctoringDecisionInput,
+  TranslateProctoringLlmSummaryInput,
 } from '@backend/shared/validations/proctoring.validation';
+import { ProctoringAiHttpClient } from '../../../../worker/src/services/proctoring-ai-http-client';
 
 import {
   createProctoringAiJobService,
@@ -67,6 +69,7 @@ type AdminReviewDependencies = {
   aiJobService?: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
   modelRegistryService?: Pick<ProctoringModelRegistryService, 'resolveAnomalyModel'>;
   llmSummaryService?: Pick<ProctoringLlmSummaryService, 'generate'>;
+  aiHttpClient?: Pick<ProctoringAiHttpClient, 'translateSummary'>;
   auditLogRepository?: Pick<ExamAuditLogRepository, 'create'>;
   nowFactory?: () => Date;
 };
@@ -208,6 +211,7 @@ export class ProctoringAdminReviewService {
   private readonly aiJobService: Pick<ProctoringAiJobService, 'enqueueManualRecomputeWindow'>;
   private readonly modelRegistryService: Pick<ProctoringModelRegistryService, 'resolveAnomalyModel'>;
   private readonly llmSummaryService: Pick<ProctoringLlmSummaryService, 'generate'>;
+  private readonly aiHttpClient: Pick<ProctoringAiHttpClient, 'translateSummary'>;
   private readonly auditLogRepository: Pick<ExamAuditLogRepository, 'create'>;
   private readonly nowFactory: () => Date;
 
@@ -234,6 +238,7 @@ export class ProctoringAdminReviewService {
     this.aiJobService = deps.aiJobService ?? createProctoringAiJobService();
     this.modelRegistryService = deps.modelRegistryService ?? createProctoringModelRegistryService();
     this.llmSummaryService = deps.llmSummaryService ?? createProctoringLlmSummaryService();
+    this.aiHttpClient = deps.aiHttpClient ?? new ProctoringAiHttpClient();
     this.auditLogRepository = deps.auditLogRepository ?? new ExamAuditLogRepository();
     this.nowFactory = deps.nowFactory ?? (() => new Date());
   }
@@ -704,6 +709,53 @@ export class ProctoringAdminReviewService {
     });
 
     return label;
+  }
+
+  async translateLlmSummary(
+    examId: string,
+    participationId: string,
+    actor: ProctoringAdminReviewActor,
+    input: TranslateProctoringLlmSummaryInput,
+  ) {
+    await this.assertReviewAccess(examId, participationId, actor);
+
+    const llmSummaryRecord = await this.llmSummaryRepository.findLatestByParticipation(participationId);
+    if (!llmSummaryRecord || llmSummaryRecord.status !== 'accepted') {
+      throw new AppException(
+        'No accepted LLM summary is available for translation.',
+        404,
+        'PROCTORING_LLM_SUMMARY_NOT_FOUND',
+      );
+    }
+
+    const summaryText = llmSummaryRecord.summaryJson?.summaryText;
+    if (typeof summaryText !== 'string' || !summaryText.trim()) {
+      throw new AppException(
+        'Accepted LLM summary text is empty.',
+        409,
+        'PROCTORING_LLM_SUMMARY_EMPTY',
+      );
+    }
+
+    const result = await this.aiHttpClient.translateSummary({
+      text: summaryText,
+      targetLanguage: input.targetLanguage,
+    });
+
+    await this.auditLogRepository.create({
+      examId,
+      actorType: actor.userId ? 'user' : 'system',
+      actorId: actor.userId ?? null,
+      action: 'proctoring_llm_summary_translate',
+      targetType: 'exam_participation',
+      targetId: participationId,
+      metadata: {
+        llmSummaryId: llmSummaryRecord.id,
+        targetLanguage: input.targetLanguage,
+      },
+    });
+
+    return result;
   }
 }
 

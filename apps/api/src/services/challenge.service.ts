@@ -377,6 +377,75 @@ export class ChallengeService {
     };
   }
 
+  async listPublicProblemsInfinite(params: {
+    limit?: number;
+    cursor?: { createdAt: string; id: string } | null;
+    userId?: string;
+  }): Promise<{
+    items: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      difficulty: string;
+      createdAt: Date | string;
+      totalPoints: number;
+      isSolved: boolean;
+      isFavorite: boolean;
+    }>;
+    nextCursor: { createdAt: string; id: string } | null;
+    rank?: number;
+    rankingPoint?: number;
+  }> {
+    const { limit = 10, cursor, userId } = params;
+
+    const { items, nextCursor } = await this.problemRepository.findPublicWithCursor({
+      limit,
+      cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
+    });
+
+    const problemIds = items.map((p: any) => p.id);
+    const pointsMap = await this.testcaseRepository.sumPointsByProblemIds(problemIds);
+
+    let solvedSet: Set<string> = new Set();
+    let favoriteSet: Set<string> = new Set();
+    if (userId) {
+      solvedSet = await this.submissionRepository.getAcceptedProblemIdsByUser(userId, problemIds);
+      favoriteSet = await this.favoriteRepository.getFavoriteProblemIds(userId, problemIds);
+    }
+
+    let rank: number | undefined;
+    let rankingPoint: number | undefined;
+    if (userId) {
+      try {
+        const userRank = await this.leaderboardRepository.getUserRank(userId);
+        if (userRank) {
+          rank = userRank.rank;
+          rankingPoint = userRank.rankingPoint;
+        }
+      } catch {
+        // Silently ignore rank fetch errors — rank is non-critical
+      }
+    }
+
+    return {
+      items: items.map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        difficulty: p.difficult,
+        createdAt: p.createdAt,
+        totalPoints: pointsMap[p.id] ?? 0,
+        isSolved: userId ? solvedSet.has(p.id) : false,
+        isFavorite: userId ? favoriteSet.has(p.id) : false,
+      })),
+      nextCursor: nextCursor
+        ? { createdAt: nextCursor.createdAt.toISOString(), id: nextCursor.id }
+        : null,
+      ...(rank !== undefined ? { rank } : {}),
+      ...(rankingPoint !== undefined ? { rankingPoint } : {}),
+    };
+  }
+
   async getTopicTags(topicId: string): Promise<string[]> {
     const isTopicExisting = await this.topicRepository.findById(topicId);
     if (!isTopicExisting) {

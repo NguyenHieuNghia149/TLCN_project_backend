@@ -170,6 +170,10 @@ export const RecordProctoringReviewLabelSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
+export const TranslateProctoringLlmSummarySchema = z.object({
+  targetLanguage: z.literal('vi'),
+});
+
 export const UpdateProctoringSettingsSchema = z.object({
   enabled: z.boolean().optional(),
   requireCamera: z.boolean().optional(),
@@ -232,5 +236,8 @@ export type AdminProctoringReviewQueryInput = z.infer<typeof AdminProctoringRevi
 export type RecomputeProctoringReviewInput = z.infer<typeof RecomputeProctoringReviewSchema>;
 export type ReviewProctoringDecisionInput = z.infer<typeof ReviewProctoringDecisionSchema>;
 export type RecordProctoringReviewLabelInput = z.infer<typeof RecordProctoringReviewLabelSchema>;
+export type TranslateProctoringLlmSummaryInput = z.infer<
+  typeof TranslateProctoringLlmSummarySchema
+>;
 export type UpdateProctoringSettingsInput = z.infer<typeof UpdateProctoringSettingsSchema>;
 export type IssueProctoringBypassCodeInput = z.infer<typeof IssueProctoringBypassCodeSchema>;

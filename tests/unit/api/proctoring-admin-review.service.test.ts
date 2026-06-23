@@ -86,6 +86,12 @@ describe('ProctoringAdminReviewService', () => {
     const llmSummaryRepository = {
       findLatestByParticipation: jest.fn().mockResolvedValue(null),
     };
+    const aiHttpClient = {
+      translateSummary: jest.fn().mockResolvedValue({
+        translatedText: 'Ban tieng Viet.',
+        targetLanguage: 'vi',
+      }),
+    };
     const summaryService = {
       recomputeForParticipation: jest.fn().mockResolvedValue({
         id: 'summary-1',
@@ -133,6 +139,7 @@ describe('ProctoringAdminReviewService', () => {
       anomalyResultRepository,
       evaluationReportRepository,
       llmSummaryRepository,
+      aiHttpClient,
       summaryService,
       aiJobService,
       modelRegistryService,
@@ -151,6 +158,7 @@ describe('ProctoringAdminReviewService', () => {
       anomalyResultRepository,
       evaluationReportRepository,
       llmSummaryRepository,
+      aiHttpClient,
       auditLogRepository,
       summaryService,
       aiJobService,
@@ -557,5 +565,63 @@ describe('ProctoringAdminReviewService', () => {
       code: 'PROCTORING_REVIEW_NOT_FOUND',
     });
     expect(eventRepository.findByParticipation).not.toHaveBeenCalled();
+  });
+
+  it('translates accepted LLM summary text to Vietnamese without persisting a DB change', async () => {
+    const llmSummaryRepository = {
+      findLatestByParticipation: jest.fn().mockResolvedValue({
+        id: 'llm-summary-1',
+        status: 'accepted',
+        summaryJson: {
+          summaryText:
+            'Review these signals: focus lost x2 and visibility hidden x1.',
+        },
+      }),
+    };
+    const { service, aiHttpClient, auditLogRepository } = createService({
+      settingsRepository: {
+        findByExamId: jest.fn().mockResolvedValue({
+          aiShadowMode: true,
+          aiAdvisoryVisible: false,
+          aiMinimumEvaluationStatus: 'passed_gate',
+          llmSummaryEnabled: true,
+        }),
+      },
+      llmSummaryRepository,
+    });
+
+    const result = await service.translateLlmSummary(
+      'exam-1',
+      'participation-1',
+      {
+        userId: 'teacher-1',
+        role: 'teacher',
+      },
+      {
+        targetLanguage: 'vi',
+      }
+    );
+
+    expect(aiHttpClient.translateSummary).toHaveBeenCalledWith({
+      text: 'Review these signals: focus lost x2 and visibility hidden x1.',
+      targetLanguage: 'vi',
+    });
+    expect(result).toEqual({
+      translatedText: 'Ban tieng Viet.',
+      targetLanguage: 'vi',
+    });
+    expect(llmSummaryRepository.findLatestByParticipation).toHaveBeenCalledWith(
+      'participation-1'
+    );
+    expect(auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'proctoring_llm_summary_translate',
+        targetId: 'participation-1',
+        metadata: expect.objectContaining({
+          llmSummaryId: 'llm-summary-1',
+          targetLanguage: 'vi',
+        }),
+      })
+    );
   });
 });

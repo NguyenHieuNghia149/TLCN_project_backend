@@ -173,6 +173,66 @@ describe('ChallengeService derived testcase display', () => {
     expect(result.items[0]).not.toHaveProperty('difficult');
   });
 
+  it('lists public problems across all topics without requiring a topic id', async () => {
+    const problemRepository = {
+      findPublicWithCursor: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'problem-global',
+            title: 'Global challenge',
+            description: 'desc',
+            difficult: 'easy',
+            createdAt: new Date('2026-01-02T00:00:00.000Z'),
+          },
+        ],
+        nextCursor: null,
+      }),
+    } as any;
+    const testcaseRepository = {
+      sumPointsByProblemIds: jest.fn().mockResolvedValue({ 'problem-global': 45 }),
+    } as any;
+    const submissionRepository = {
+      getAcceptedProblemIdsByUser: jest.fn().mockResolvedValue(new Set<string>(['problem-global'])),
+    } as any;
+    const favoriteRepository = {
+      getFavoriteProblemIds: jest.fn().mockResolvedValue(new Set<string>(['problem-global'])),
+    } as any;
+    const leaderboardRepository = {
+      getUserRank: jest.fn().mockResolvedValue({ rank: 7, rankingPoint: 1234 }),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        problemRepository,
+        testcaseRepository,
+        submissionRepository,
+        favoriteRepository,
+        leaderboardRepository,
+      }),
+    );
+
+    const result = await service.listPublicProblemsInfinite({
+      limit: 6,
+      userId: 'user-1',
+    });
+
+    expect(problemRepository.findPublicWithCursor).toHaveBeenCalledWith({
+      limit: 6,
+      cursor: null,
+    });
+    expect(result.items[0]).toMatchObject({
+      id: 'problem-global',
+      difficulty: 'easy',
+      totalPoints: 45,
+      isSolved: true,
+      isFavorite: true,
+    });
+    expect(result).toMatchObject({
+      nextCursor: null,
+      rank: 7,
+      rankingPoint: 1234,
+    });
+  });
+
   it('derives testcase input and output from JSON instead of cached DB text', () => {
     const service = new ChallengeService(createChallengeDependencies());
     const response = (service as any).mapToChallengeResponse({

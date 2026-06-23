@@ -42,6 +42,11 @@ describe('Challenge HTTP integration on post-migration routes', () => {
 
     const service = {
       getChallengeById: challengeDetail,
+      listPublicProblemsInfinite: jest.fn().mockResolvedValue({
+        items: [{ id: PUBLIC_CHALLENGE_ID, title: 'Public challenge' }],
+        nextCursor: null,
+        hasMore: false,
+      }),
       listProblemsByTopicInfinite: jest.fn().mockResolvedValue({
         items: [{ id: PUBLIC_CHALLENGE_ID, title: 'Public challenge' }],
         nextCursor: null,
@@ -194,6 +199,27 @@ describe('Challenge HTTP integration on post-migration routes', () => {
       limit: 5,
       cursor: null,
       userId: '77777777-7777-4777-8777-777777777777',
+    });
+  });
+
+  it('lists public challenges across all topics for the client challenge page', async () => {
+    const { app, service } = loadChallengeApp();
+    const token = createAccessToken({
+      userId: '88888888-8888-4888-8888-888888888888',
+      email: 'reader-all@example.com',
+      role: 'student',
+    });
+
+    const response = await request(app)
+      .get('/api/challenges/problems?limit=6')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(service.listPublicProblemsInfinite).toHaveBeenCalledWith({
+      limit: 6,
+      cursor: null,
+      userId: '88888888-8888-4888-8888-888888888888',
     });
   });
 

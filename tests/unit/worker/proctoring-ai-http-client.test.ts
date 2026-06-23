@@ -228,4 +228,40 @@ describe('ProctoringAiHttpClient', () => {
       }
     );
   });
+
+  it('posts summary translation requests to the translation endpoint', async () => {
+    axiosPost.mockResolvedValue({
+      data: {
+        translatedText: 'Ban dich tieng Viet.',
+        targetLanguage: 'vi',
+      },
+    });
+    const client = new ProctoringAiHttpClient({
+      serverAiUrl: 'http://server-ai:8001/',
+      internalToken: 'secret-token',
+    });
+
+    const result = await client.translateSummary({
+      text: 'Review these signals: focus lost x2.',
+      targetLanguage: 'vi',
+    });
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://server-ai:8001/summary/translate',
+      {
+        text: 'Review these signals: focus lost x2.',
+        targetLanguage: 'vi',
+      },
+      {
+        timeout: 30000,
+        headers: {
+          Authorization: 'Bearer secret-token',
+        },
+      }
+    );
+    expect(result).toEqual({
+      translatedText: 'Ban dich tieng Viet.',
+      targetLanguage: 'vi',
+    });
+  });
 });

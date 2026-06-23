@@ -109,6 +109,51 @@ export class ChallengeController {
     res.status(200).json(result);
   }
 
+  async listPublicProblems(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void | Response> {
+    const { limit, cursor } = req.query;
+
+    let parsedLimit = 10;
+    if (limit) {
+      const numLimit = parseInt(limit as string, 10);
+      if (isNaN(numLimit) || numLimit < 1) {
+        throw new AppException('Limit must be a positive number', 400, 'INVALID_LIMIT');
+      }
+      if (numLimit > 50) {
+        throw new AppException('Limit cannot exceed 50', 400, 'LIMIT_TOO_LARGE');
+      }
+      parsedLimit = numLimit;
+    }
+
+    let parsedCursor: { createdAt: string; id: string } | null = null;
+    if (cursor) {
+      try {
+        if (typeof cursor === 'string') {
+          parsedCursor = JSON.parse(cursor);
+        } else if (typeof cursor === 'object') {
+          parsedCursor = cursor as { createdAt: string; id: string };
+        }
+
+        if (parsedCursor && (!parsedCursor.createdAt || !parsedCursor.id)) {
+          throw new AppException('Invalid cursor format', 400, 'INVALID_CURSOR');
+        }
+      } catch (parseError) {
+        throw new AppException('Invalid cursor format', 400, 'INVALID_CURSOR');
+      }
+    }
+
+    const result = await this.challengeService.listPublicProblemsInfinite({
+      limit: parsedLimit,
+      cursor: parsedCursor,
+      userId: req.user?.userId,
+    });
+
+    res.status(200).json(result);
+  }
+
   async updateSolutionVisibility(
     req: Request,
     res: Response,

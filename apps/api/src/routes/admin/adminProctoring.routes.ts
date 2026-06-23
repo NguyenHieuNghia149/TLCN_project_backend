@@ -19,6 +19,7 @@ import {
   RecomputeProctoringReviewSchema,
   RecordProctoringReviewLabelSchema,
   ReviewProctoringDecisionSchema,
+  TranslateProctoringLlmSummarySchema,
   UpdateProctoringSettingsSchema,
 } from '@backend/shared/validations/proctoring.validation';
 
@@ -56,6 +57,12 @@ export function createAdminProctoringRouter(): Router {
     validate(ProctoringAdminReviewParamsSchema, 'params'),
     validate(RecordProctoringReviewLabelSchema),
     controller.recordReviewLabel.bind(controller),
+  );
+  router.post(
+    '/:examId/participations/:participationId/proctoring/llm-summary/translate',
+    validate(ProctoringAdminReviewParamsSchema, 'params'),
+    validate(TranslateProctoringLlmSummarySchema),
+    controller.translateLlmSummary.bind(controller),
   );
   router.get(
     '/:examId/participations/:participationId/proctoring',

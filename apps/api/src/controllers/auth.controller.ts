@@ -198,41 +198,35 @@ export class AuthController {
       throw new UserNotFoundException('No file uploaded');
     }
 
-    try {
-      // Upload to Cloudinary
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'avatars',
-        },
-        async (error: any, result?: any) => {
-          if (error || !result) {
-            return next(new Error('Failed to upload image'));
-          }
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'avatars',
+      },
+      (error: any, result?: any) => {
+        if (error || !result) {
+          next(new Error('Failed to upload image'));
+          return;
+        }
 
-          try {
-            // Update user profile with Cloudinary URL
-            const updateData = { avatar: result.secure_url };
-            const profile = await this.userService.updateProfile(userId, updateData);
-
-            return res.status(200).json({
+        // Update user profile with Cloudinary URL after upload succeeds.
+        void this.userService
+          .updateProfile(userId, { avatar: result.secure_url })
+          .then(profile => {
+            res.status(200).json({
               message: 'Avatar updated successfully',
               user: profile,
             });
-          } catch (error) {
-            next(error);
-          }
-        }
-      );
+          })
+          .catch(next);
+      }
+    );
 
-      // Convert buffer to stream and pipe to Cloudinary
-      const fileBuffer = req.file.buffer;
-      const readableStream = new Readable();
-      readableStream.push(fileBuffer);
-      readableStream.push(null);
-      readableStream.pipe(stream);
-    } catch (error) {
-      next(error);
-    }
+    // Convert buffer to stream and pipe to Cloudinary
+    const fileBuffer = req.file.buffer;
+    const readableStream = new Readable();
+    readableStream.push(fileBuffer);
+    readableStream.push(null);
+    readableStream.pipe(stream);
   }
 
   async sendVerificationCode(

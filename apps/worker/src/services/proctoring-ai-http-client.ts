@@ -73,6 +73,11 @@ export type ProctoringLlmSummaryResponse = {
   outputSchemaVersion: 'proctoring-summary-output-v1';
 };
 
+export type ProctoringLlmSummaryTranslationResponse = {
+  translatedText: string;
+  targetLanguage: 'vi';
+};
+
 type ProctoringAiHttpClientOptions = {
   serverAiUrl?: string;
   internalToken?: string;
@@ -148,6 +153,23 @@ export class ProctoringAiHttpClient {
     });
 
     return this.validateSummaryResponse(response.data);
+  }
+
+  async translateSummary(request: {
+    text: string;
+    targetLanguage: 'vi';
+  }): Promise<ProctoringLlmSummaryTranslationResponse> {
+    const headers = this.internalToken
+      ? {
+          Authorization: `Bearer ${this.internalToken}`,
+        }
+      : undefined;
+    const response = await axios.post(`${this.serverAiUrl}/summary/translate`, request, {
+      timeout: this.summaryTimeoutMs,
+      headers,
+    });
+
+    return this.validateSummaryTranslationResponse(response.data);
   }
 
   private validateResponse(value: unknown): ProctoringAiPrediction {
@@ -277,6 +299,23 @@ export class ProctoringAiHttpClient {
         typeof value.judgeModelVersion === 'string' ? value.judgeModelVersion : undefined,
       promptVersion: value.promptVersion,
       outputSchemaVersion: value.outputSchemaVersion,
+    };
+  }
+
+  private validateSummaryTranslationResponse(
+    value: unknown
+  ): ProctoringLlmSummaryTranslationResponse {
+    if (!isRecord(value)) {
+      throw new Error(
+        'Invalid proctoring LLM summary translation response: response must be an object'
+      );
+    }
+    if (typeof value.translatedText !== 'string' || value.targetLanguage !== 'vi') {
+      throw new Error('Invalid proctoring LLM summary translation response');
+    }
+    return {
+      translatedText: value.translatedText,
+      targetLanguage: 'vi',
     };
   }
 }

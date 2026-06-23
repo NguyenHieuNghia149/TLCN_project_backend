@@ -34,6 +34,13 @@ export function createChallengeRouter(): Router {
   });
 
   router.get(
+    '/problems',
+    challengeRateLimit,
+    optionalAuth,
+    challengeController.listPublicProblems.bind(challengeController)
+  );
+
+  router.get(
     '/problems/topic/:topicId',
     challengeRateLimit,
     optionalAuth,
@@ -121,4 +128,3 @@ export function createChallengeRouter(): Router {
 
   return router;
 }
-
