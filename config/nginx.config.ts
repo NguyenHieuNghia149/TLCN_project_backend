@@ -79,8 +79,8 @@ export const nginxConfig: NginxConfig = {
   // Security Configuration
   security: {
     allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
-    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
     maxBodySize: process.env.MAX_BODY_SIZE || '10m',
   },
 
