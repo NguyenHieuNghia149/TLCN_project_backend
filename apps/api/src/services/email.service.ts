@@ -349,8 +349,25 @@ export class EMailService {
   }
 
   private buildExamLandingUrl(slug: string) {
-    const origin = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+    const origin = this.resolveFrontendOrigin();
     return `${origin.replace(/\/$/, '')}/exam/${slug}`;
+  }
+
+  private resolveFrontendOrigin() {
+    const explicitOrigin = process.env.FRONTEND_URL?.trim() || process.env.CLIENT_URL?.trim();
+    if (explicitOrigin) {
+      return explicitOrigin;
+    }
+
+    const configuredOrigins = (process.env.CORS_ORIGIN || '')
+      .split(',')
+      .map(origin => origin.trim())
+      .filter(Boolean);
+    const publicOrigin = configuredOrigins.find(
+      origin => !/^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3})(?::\d+)?$/i.test(origin),
+    );
+
+    return publicOrigin || configuredOrigins[0] || 'http://localhost:3000';
   }
 
   private buildInviteUrl(slug: string, inviteToken: string) {

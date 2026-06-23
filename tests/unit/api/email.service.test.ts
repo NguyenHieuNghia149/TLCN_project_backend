@@ -18,6 +18,9 @@ import { config } from '@backend/api/config/email';
 describe('EMailService', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalAllowTestOtp = process.env.ALLOW_TEST_OTP;
+  const originalFrontendUrl = process.env.FRONTEND_URL;
+  const originalClientUrl = process.env.CLIENT_URL;
+  const originalCorsOrigin = process.env.CORS_ORIGIN;
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -29,6 +32,21 @@ describe('EMailService', () => {
       delete process.env.ALLOW_TEST_OTP;
     } else {
       process.env.ALLOW_TEST_OTP = originalAllowTestOtp;
+    }
+    if (originalFrontendUrl === undefined) {
+      delete process.env.FRONTEND_URL;
+    } else {
+      process.env.FRONTEND_URL = originalFrontendUrl;
+    }
+    if (originalClientUrl === undefined) {
+      delete process.env.CLIENT_URL;
+    } else {
+      process.env.CLIENT_URL = originalClientUrl;
+    }
+    if (originalCorsOrigin === undefined) {
+      delete process.env.CORS_ORIGIN;
+    } else {
+      process.env.CORS_ORIGIN = originalCorsOrigin;
     }
   });
 
@@ -153,6 +171,36 @@ describe('EMailService', () => {
       expect.objectContaining({
         subject: 'Exam rescheduled: Spring Midterm',
         html: expect.stringContaining('2099-05-02T09:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('uses the first non-localhost CORS origin for invite links when frontend-specific env vars are absent', async () => {
+    delete process.env.FRONTEND_URL;
+    delete process.env.CLIENT_URL;
+    process.env.CORS_ORIGIN = 'http://localhost:3000,https://app.virgodapoet.site,http://app.virgodapoet.site';
+
+    const transporter: IEmailTransporter = {
+      sendMail: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new EMailService({ transporter });
+
+    await service.sendExamParticipantInviteEmail({
+      to: 'student@example.com',
+      fullName: 'Exam Student',
+      examTitle: 'Spring Midterm',
+      examSlug: 'spring-midterm',
+      inviteToken: 'invite-token',
+      startDate: new Date('2099-05-01T09:00:00.000Z'),
+      endDate: new Date('2099-05-01T12:00:00.000Z'),
+    });
+
+    expect(transporter.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: 'Invitation to exam: Spring Midterm',
+        html: expect.stringContaining(
+          'https://app.virgodapoet.site/exam/spring-midterm/entry?invite=invite-token',
+        ),
       }),
     );
   });
