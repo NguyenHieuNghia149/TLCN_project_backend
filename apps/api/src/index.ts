@@ -109,6 +109,7 @@ export function createApiApp(): Express {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
+      exposedHeaders: ['X-CSRF-Token'],
       maxAge: 86400, // 24 hours
       preflightContinue: false,
     })

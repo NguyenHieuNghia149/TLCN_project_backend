@@ -25,6 +25,8 @@ import { Readable } from 'stream';
 import { randomBytes } from 'crypto';
 import { CSRF_COOKIE_NAME } from '@backend/api/utils/cookie-auth';
 
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
 function resolveCsrfToken(req: Request): string {
   const cookieValue = req.cookies?.[CSRF_COOKIE_NAME];
 
@@ -35,8 +37,10 @@ function resolveCsrfToken(req: Request): string {
   return randomBytes(32).toString('hex');
 }
 
-function setCsrfCookie(req: Request, res: Response): void {
-  setCsrfTokenCookie(res, resolveCsrfToken(req));
+function resolveAndSetCsrfCookie(req: Request, res: Response): string {
+  const token = resolveCsrfToken(req);
+  setCsrfTokenCookie(res, token);
+  return token;
 }
 
 export class AuthController {
@@ -59,11 +63,12 @@ export class AuthController {
 
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
     setRefreshTokenCookie(res, result.tokens.refreshToken, 30 * 24 * 60 * 60 * 1000);
-    setCsrfCookie(req, res);
+    const csrfToken = resolveAndSetCsrfCookie(req, res);
 
     res.status(200).json({
       message: 'Login with Google successful',
       user: result.user,
+      csrfToken,
     });
   }
 
@@ -77,11 +82,12 @@ export class AuthController {
     const rememberMe = (req.body as LoginInput)?.rememberMe === true;
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
     setRefreshTokenCookie(res, result.tokens.refreshToken, (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000);
-    setCsrfCookie(req, res);
+    const csrfToken = resolveAndSetCsrfCookie(req, res);
 
     res.status(200).json({
       message: 'Login successful',
       user: result.user,
+      csrfToken,
     });
   }
 
@@ -95,11 +101,12 @@ export class AuthController {
     const result = await this.authService.refreshToken({ refreshToken });
 
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
-    setCsrfCookie(req, res);
+    const csrfToken = resolveAndSetCsrfCookie(req, res);
 
     res.status(200).json({
       message: 'Token refreshed successfully',
       user: result.user,
+      csrfToken,
     });
   }
 
@@ -155,6 +162,8 @@ export class AuthController {
     }
 
     const profile = await this.userService.getProfile(userId);
+    const csrfToken = resolveAndSetCsrfCookie(req, res);
+    res.setHeader(CSRF_HEADER_NAME, csrfToken);
 
     res.status(200).json(profile);
   }

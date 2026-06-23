@@ -90,6 +90,7 @@ describe('AuthController', () => {
     expect(response.json).toHaveBeenCalledWith({
       message: 'Login successful',
       user: createAuthResult().user,
+      csrfToken: expect.any(String),
     });
   });
 
@@ -130,6 +131,7 @@ describe('AuthController', () => {
     expect(response.json).toHaveBeenCalledWith({
       message: 'Login with Google successful',
       user: createAuthResult().user,
+      csrfToken: expect.any(String),
     });
   });
 
@@ -192,6 +194,7 @@ describe('AuthController', () => {
     expect(response.json).toHaveBeenCalledWith({
       message: 'Token refreshed successfully',
       user: createAuthResult().user,
+      csrfToken: expect.any(String),
     });
   });
 
