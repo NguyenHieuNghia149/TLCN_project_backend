@@ -25,6 +25,19 @@ const ListProblemsByTopicSchema = z.object({
 export class ChallengeController {
   constructor(private readonly challengeService: ChallengeService) {}
 
+  private parseInfiniteListLimit(limit: unknown): number {
+    if (!limit) {
+      return 10;
+    }
+
+    const numLimit = parseInt(limit as string, 10);
+    if (isNaN(numLimit) || numLimit < 1) {
+      throw new AppException('Limit must be a positive number', 400, 'INVALID_LIMIT');
+    }
+
+    return Math.min(numLimit, 30);
+  }
+
   async createChallenge(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     const challengeData = req.body as ProblemInput;
     const result = await this.challengeService.createChallenge(challengeData);
@@ -67,18 +80,7 @@ export class ChallengeController {
 
     if (!topicId) throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
-    // Validate and parse limit
-    let parsedLimit = 10;
-    if (limit) {
-      const numLimit = parseInt(limit as string, 10);
-      if (isNaN(numLimit) || numLimit < 1) {
-        throw new AppException('Limit must be a positive number', 400, 'INVALID_LIMIT');
-      }
-      if (numLimit > 50) {
-        throw new AppException('Limit cannot exceed 50', 400, 'LIMIT_TOO_LARGE');
-      }
-      parsedLimit = numLimit;
-    }
+    const parsedLimit = this.parseInfiniteListLimit(limit);
 
     // Validate and parse cursor
     let parsedCursor: { createdAt: string; id: string } | null = null;
@@ -116,17 +118,7 @@ export class ChallengeController {
   ): Promise<void | Response> {
     const { limit, cursor } = req.query;
 
-    let parsedLimit = 10;
-    if (limit) {
-      const numLimit = parseInt(limit as string, 10);
-      if (isNaN(numLimit) || numLimit < 1) {
-        throw new AppException('Limit must be a positive number', 400, 'INVALID_LIMIT');
-      }
-      if (numLimit > 50) {
-        throw new AppException('Limit cannot exceed 50', 400, 'LIMIT_TOO_LARGE');
-      }
-      parsedLimit = numLimit;
-    }
+    const parsedLimit = this.parseInfiniteListLimit(limit);
 
     let parsedCursor: { createdAt: string; id: string } | null = null;
     if (cursor) {
@@ -232,8 +224,7 @@ export class ChallengeController {
 
     // Only elevated users can request all testcases on the detail path.
     const showAllTestcases =
-      req.query.showAll === 'true' &&
-      (req.user?.role === 'teacher' || req.user?.role === 'owner');
+      req.query.showAll === 'true' && (req.user?.role === 'teacher' || req.user?.role === 'owner');
 
     const result = await this.challengeService.getChallengeById(
       challengeId as string,
@@ -283,4 +274,3 @@ export {
   ListProblemsByTopicSchema,
   UpdateSolutionVisibilitySchema,
 };
-

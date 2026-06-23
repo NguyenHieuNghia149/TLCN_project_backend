@@ -202,6 +202,21 @@ describe('Challenge HTTP integration on post-migration routes', () => {
     });
   });
 
+  it('clamps topic listing limit to 30 when the request exceeds the maximum', async () => {
+    const { app, service } = loadChallengeApp();
+
+    const response = await request(app).get(`/api/challenges/problems/topic/${TOPIC_ID}?limit=99`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(service.listProblemsByTopicInfinite).toHaveBeenCalledWith({
+      topicId: TOPIC_ID,
+      limit: 30,
+      cursor: null,
+      userId: undefined,
+    });
+  });
+
   it('lists public challenges across all topics for the client challenge page', async () => {
     const { app, service } = loadChallengeApp();
     const token = createAccessToken({
@@ -220,6 +235,20 @@ describe('Challenge HTTP integration on post-migration routes', () => {
       limit: 6,
       cursor: null,
       userId: '88888888-8888-4888-8888-888888888888',
+    });
+  });
+
+  it('clamps public challenge listing limit to 30 when the request exceeds the maximum', async () => {
+    const { app, service } = loadChallengeApp();
+
+    const response = await request(app).get('/api/challenges/problems?limit=99');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(service.listPublicProblemsInfinite).toHaveBeenCalledWith({
+      limit: 30,
+      cursor: null,
+      userId: undefined,
     });
   });
 
