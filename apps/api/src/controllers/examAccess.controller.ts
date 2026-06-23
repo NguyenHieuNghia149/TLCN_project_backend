@@ -3,7 +3,23 @@ import { NextFunction, Request, Response } from 'express';
 import { ExamAccessService } from '@backend/api/services/exam-access.service';
 import { ExamService } from '@backend/api/services/exam.service';
 import { AuthenticatedRequest } from '@backend/api/middlewares/auth.middleware';
-import { setAccessTokenCookie, setRefreshTokenCookie } from '@backend/api/utils/cookie-auth';
+import {
+  CSRF_COOKIE_NAME,
+  setAccessTokenCookie,
+  setCsrfTokenCookie,
+  setRefreshTokenCookie,
+} from '@backend/api/utils/cookie-auth';
+import { randomBytes } from 'crypto';
+
+function resolveCsrfToken(req: Request): string {
+  const cookieValue = req.cookies?.[CSRF_COOKIE_NAME];
+
+  if (typeof cookieValue === 'string' && cookieValue.trim().length > 0) {
+    return cookieValue;
+  }
+
+  return randomBytes(32).toString('hex');
+}
 
 export class PublicExamController {
   constructor(private readonly examAccessService: ExamAccessService) {}
@@ -56,6 +72,9 @@ export class PublicExamController {
     }
     if (tokens?.refreshToken) {
       setRefreshTokenCookie(res, tokens.refreshToken, 7 * 24 * 60 * 60 * 1000);
+    }
+    if (tokens) {
+      setCsrfTokenCookie(res, resolveCsrfToken(req));
     }
 
     if (tokens) {

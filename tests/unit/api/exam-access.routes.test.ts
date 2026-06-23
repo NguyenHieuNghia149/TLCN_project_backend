@@ -233,8 +233,9 @@ describe('Exam access HTTP routes', () => {
     });
     expect(response.headers['set-cookie']).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('accessToken=access-token'),
-        expect.stringContaining('refreshToken=refresh-token'),
+        expect.stringMatching(/accessToken=access-token;.*Path=\/api;.*HttpOnly;.*SameSite=Lax/),
+        expect.stringMatching(/refreshToken=refresh-token;.*Path=\/api\/auth;.*HttpOnly;.*SameSite=Lax/),
+        expect.stringMatching(/csrfToken=.*Path=\/api;.*SameSite=Lax/),
       ]),
     );
     expect(response.body.tokens).toBeUndefined();

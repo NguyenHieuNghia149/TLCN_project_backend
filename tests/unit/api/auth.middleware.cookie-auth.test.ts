@@ -7,9 +7,6 @@ import {
 } from '@backend/api/middlewares/auth.middleware';
 import { JWTUtils } from '@backend/shared/utils';
 
-const originalAuthCookieMigrationAllowBearerFallback =
-  process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK;
-
 function createResponse(): Response {
   return {
     status: jest.fn().mockReturnThis(),
@@ -26,22 +23,8 @@ function createAccessToken(userId: string, role: string = 'user') {
 }
 
 describe('auth middleware cookie-first behavior', () => {
-  beforeEach(() => {
-    delete process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK;
-  });
-
   afterEach(() => {
     jest.clearAllMocks();
-  });
-
-  afterAll(() => {
-    if (originalAuthCookieMigrationAllowBearerFallback === undefined) {
-      delete process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK;
-      return;
-    }
-
-    process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK =
-      originalAuthCookieMigrationAllowBearerFallback;
   });
 
   it('authenticates using req.cookies.accessToken', () => {
@@ -64,7 +47,7 @@ describe('auth middleware cookie-first behavior', () => {
     });
   });
 
-  it('prefers the access-token cookie over the bearer fallback when both are present', () => {
+  it('ignores bearer headers when an access-token cookie is present', () => {
     const req = {
       cookies: {
         accessToken: createAccessToken('cookie-user'),
@@ -72,6 +55,7 @@ describe('auth middleware cookie-first behavior', () => {
       headers: {
         authorization: `Bearer ${createAccessToken('header-user', 'teacher')}`,
       },
+      path: '/api/exams/session/sync',
     } as unknown as AuthenticatedRequest;
     const res = createResponse();
     const next = createNext();
@@ -103,27 +87,6 @@ describe('auth middleware cookie-first behavior', () => {
       success: false,
       message: 'No token provided',
       code: 'NO_TOKEN',
-    });
-  });
-
-  it('keeps bearer fallback working only when the migration flag is enabled', () => {
-    process.env.AUTH_COOKIE_MIGRATION_ALLOW_BEARER_FALLBACK = 'true';
-
-    const req = {
-      cookies: {},
-      headers: {
-        authorization: `Bearer ${createAccessToken('header-user', 'teacher')}`,
-      },
-    } as unknown as AuthenticatedRequest;
-    const res = createResponse();
-    const next = createNext();
-
-    authenticationToken(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(req.user).toMatchObject({
-      userId: 'header-user',
-      role: 'teacher',
     });
   });
 

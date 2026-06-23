@@ -78,7 +78,7 @@ describe('websocket service bootstrap', () => {
     }
   });
 
-  it('tracks authenticate and disconnect events with the injected socket adapter', () => {
+  it('binds socket identity from the handshake cookie and clears it on disconnect', () => {
     const { websocketModule } = loadWebSocketModule();
     resetWebSocketServiceForTesting = websocketModule.resetWebSocketServiceForTesting;
 
@@ -100,27 +100,48 @@ describe('websocket service bootstrap', () => {
     fakeIo.emit = jest.fn().mockReturnValue(true);
     fakeIo.engine = { clientsCount: 2 };
 
-    const socketHandlers: Partial<Record<'authenticate' | 'disconnect', (...args: unknown[]) => void>> = {};
+    const socketHandlers: Partial<Record<'disconnect', (...args: unknown[]) => void>> = {};
     const fakeSocket = {} as {
       id: string;
       on: jest.Mock;
       join: jest.Mock;
+      handshake: {
+        headers: {
+          cookie: string;
+        };
+      };
     };
     fakeSocket.id = 'socket-1';
-    fakeSocket.on = jest.fn((event: 'authenticate' | 'disconnect', listener: (...args: unknown[]) => void) => {
-      socketHandlers[event] = listener;
+    fakeSocket.handshake = {
+      headers: {
+        cookie:
+          'accessToken=' +
+          require('@backend/shared/utils').JWTUtils.generateAccessToken(
+            'user-1',
+            'user-1@example.com',
+            'user',
+          ),
+      },
+    };
+    fakeSocket.on = jest.fn((event: 'disconnect', listener: (...args: unknown[]) => void) => {
+      if (event === 'disconnect') {
+        socketHandlers[event] = listener;
+      }
       return fakeSocket;
     });
     fakeSocket.join = jest.fn();
 
     const service = new websocketModule.WebSocketService({ io: fakeIo as any });
     connectionHandler(fakeSocket);
-    socketHandlers.authenticate?.({ userId: 'user-1' });
 
     expect(fakeSocket.join).toHaveBeenCalledWith('user_user-1');
     expect(service.getUserSockets('user-1')).toEqual(['socket-1']);
     expect(service.getConnectedUsersCount()).toBe(1);
     expect(service.isUserConnected('user-1')).toBe(true);
+    expect(fakeSocket.on).not.toHaveBeenCalledWith(
+      'authenticate',
+      expect.any(Function),
+    );
 
     socketHandlers.disconnect?.();
 
@@ -170,6 +191,7 @@ describe('websocket service bootstrap', () => {
         methods: ['GET', 'POST'],
         credentials: true,
       },
+      path: '/api/socket.io',
       transports: ['websocket', 'polling'],
     });
     expect(ioInstances[0]!.of).toHaveBeenCalledWith('/proctoring');

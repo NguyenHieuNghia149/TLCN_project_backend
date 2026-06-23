@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { AuthController } from '@backend/api/controllers/auth.controller';
 import { AuthenticationException } from '@backend/api/exceptions/auth.exceptions';
 
+const originalAuthCookieSameSite = process.env.AUTH_COOKIE_SAME_SITE;
+
 function createResponse(): Response {
   return {
     cookie: jest.fn().mockReturnThis(),
@@ -33,8 +35,21 @@ function createAuthResult() {
 }
 
 describe('AuthController', () => {
+  beforeEach(() => {
+    delete process.env.AUTH_COOKIE_SAME_SITE;
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterAll(() => {
+    if (originalAuthCookieSameSite === undefined) {
+      delete process.env.AUTH_COOKIE_SAME_SITE;
+      return;
+    }
+
+    process.env.AUTH_COOKIE_SAME_SITE = originalAuthCookieSameSite;
   });
 
   it('sets both auth cookies on login and omits tokens from the JSON body', async () => {
@@ -58,6 +73,8 @@ describe('AuthController', () => {
       expect.objectContaining({
         httpOnly: true,
         path: '/api',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
     expect(response.cookie).toHaveBeenCalledWith(
@@ -66,6 +83,8 @@ describe('AuthController', () => {
       expect.objectContaining({
         httpOnly: true,
         path: '/api/auth',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
     expect(response.json).toHaveBeenCalledWith({
@@ -94,6 +113,8 @@ describe('AuthController', () => {
       expect.objectContaining({
         httpOnly: true,
         path: '/api',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
     expect(response.cookie).toHaveBeenCalledWith(
@@ -102,6 +123,8 @@ describe('AuthController', () => {
       expect.objectContaining({
         httpOnly: true,
         path: '/api/auth',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
     expect(response.json).toHaveBeenCalledWith({
@@ -130,7 +153,7 @@ describe('AuthController', () => {
     },
   );
 
-  it('passes a non-empty refresh cookie to the auth service, sets only the access cookie, and keeps tokens out of JSON', async () => {
+  it('passes a non-empty refresh cookie to the auth service, sets the access and csrf cookies, and keeps tokens out of JSON', async () => {
     const authService = {
       refreshToken: jest.fn().mockResolvedValue(createAuthResult()),
     } as any;
@@ -151,9 +174,21 @@ describe('AuthController', () => {
       expect.objectContaining({
         httpOnly: true,
         path: '/api',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
-    expect(response.cookie).toHaveBeenCalledTimes(1);
+    expect(response.cookie).toHaveBeenCalledWith(
+      'csrfToken',
+      expect.any(String),
+      expect.objectContaining({
+        httpOnly: false,
+        path: '/api',
+        sameSite: 'lax',
+        secure: false,
+      }),
+    );
+    expect(response.cookie).toHaveBeenCalledTimes(2);
     expect(response.json).toHaveBeenCalledWith({
       message: 'Token refreshed successfully',
       user: createAuthResult().user,
@@ -179,16 +214,55 @@ describe('AuthController', () => {
       'accessToken',
       expect.objectContaining({
         path: '/api',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
     expect(response.clearCookie).toHaveBeenCalledWith(
       'refreshToken',
       expect.objectContaining({
         path: '/api/auth',
+        sameSite: 'lax',
+        secure: false,
       }),
     );
     expect(response.json).toHaveBeenCalledWith({
       message: 'Logout successful',
     });
+  });
+
+  it('allows explicit SameSite=None override and forces secure cookies', async () => {
+    process.env.AUTH_COOKIE_SAME_SITE = 'none';
+
+    const authService = {
+      login: jest.fn().mockResolvedValue(createAuthResult()),
+    } as any;
+    const controller = new AuthController(authService, {} as any, {} as any);
+    const response = createResponse();
+    const req = {
+      body: {
+        email: 'login@example.com',
+        password: 'Password#123',
+      },
+    } as unknown as Request;
+
+    await controller.login(req, response, jest.fn());
+
+    expect(response.cookie).toHaveBeenCalledWith(
+      'accessToken',
+      'access-token',
+      expect.objectContaining({
+        sameSite: 'none',
+        secure: true,
+      }),
+    );
+    expect(response.cookie).toHaveBeenCalledWith(
+      'refreshToken',
+      'refresh-token',
+      expect.objectContaining({
+        sameSite: 'none',
+        secure: true,
+      }),
+    );
   });
 });

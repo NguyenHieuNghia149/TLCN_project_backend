@@ -2,16 +2,40 @@ import { CookieOptions, Response } from 'express';
 
 export const ACCESS_TOKEN_COOKIE_NAME = 'accessToken';
 export const REFRESH_TOKEN_COOKIE_NAME = 'refreshToken';
+export const CSRF_COOKIE_NAME = 'csrfToken';
 
 const ACCESS_TOKEN_COOKIE_PATH = '/api';
 const REFRESH_TOKEN_COOKIE_PATH = '/api/auth';
-const AUTH_COOKIE_SAME_SITE: CookieOptions['sameSite'] = 'strict';
+const CSRF_COOKIE_PATH = '/api';
+
+function resolveAuthCookieSameSite(): CookieOptions['sameSite'] {
+  const configuredSameSite = process.env.AUTH_COOKIE_SAME_SITE?.trim().toLowerCase();
+
+  if (configuredSameSite === 'none') {
+    return 'none';
+  }
+
+  return 'lax';
+}
 
 function createBaseAuthCookieOptions(): Pick<CookieOptions, 'httpOnly' | 'sameSite' | 'secure'> {
+  const sameSite = resolveAuthCookieSameSite();
+
   return {
     httpOnly: true,
-    sameSite: AUTH_COOKIE_SAME_SITE,
-    secure: process.env.NODE_ENV === 'production',
+    sameSite,
+    secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
+  };
+}
+
+export function createCsrfCookieOptions(): CookieOptions {
+  const sameSite = resolveAuthCookieSameSite();
+
+  return {
+    httpOnly: false,
+    sameSite,
+    secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
+    path: CSRF_COOKIE_PATH,
   };
 }
 
@@ -72,4 +96,12 @@ export function setRefreshTokenCookie(
 export function clearAuthCookies(res: Response): void {
   res.clearCookie(ACCESS_TOKEN_COOKIE_NAME, createAccessTokenClearCookieOptions());
   res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, createRefreshTokenClearCookieOptions());
+}
+
+export function setCsrfTokenCookie(res: Response, csrfToken: string): void {
+  res.cookie(CSRF_COOKIE_NAME, csrfToken, createCsrfCookieOptions());
+}
+
+export function clearCsrfTokenCookie(res: Response): void {
+  res.clearCookie(CSRF_COOKIE_NAME, createCsrfCookieOptions());
 }

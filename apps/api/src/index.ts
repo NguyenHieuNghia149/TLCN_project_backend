@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import { createServer, Server } from 'http';
 import path from 'path';
 
+import { csrfProtection } from './middlewares/csrf.middleware';
 import { errorMiddleware } from './middlewares/error.middleware';
 import { responseMiddleware } from './middlewares/response.middleware';
 import { registerRoutes } from './routes';
@@ -107,7 +108,7 @@ export function createApiApp(): Express {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
       maxAge: 86400, // 24 hours
       preflightContinue: false,
     })
@@ -116,6 +117,7 @@ export function createApiApp(): Express {
   app.set('trust proxy', 1);
 
   app.use(cookieParser());
+  app.use(csrfProtection);
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(responseMiddleware);

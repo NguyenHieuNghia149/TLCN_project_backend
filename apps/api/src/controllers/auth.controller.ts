@@ -16,10 +16,28 @@ import { EMailService } from '@backend/api/services/email.service';
 import cloudinary from '@backend/api/config/cloudinary';
 import {
   clearAuthCookies,
+  clearCsrfTokenCookie,
   setAccessTokenCookie,
+  setCsrfTokenCookie,
   setRefreshTokenCookie,
 } from '@backend/api/utils/cookie-auth';
 import { Readable } from 'stream';
+import { randomBytes } from 'crypto';
+import { CSRF_COOKIE_NAME } from '@backend/api/utils/cookie-auth';
+
+function resolveCsrfToken(req: Request): string {
+  const cookieValue = req.cookies?.[CSRF_COOKIE_NAME];
+
+  if (typeof cookieValue === 'string' && cookieValue.trim().length > 0) {
+    return cookieValue;
+  }
+
+  return randomBytes(32).toString('hex');
+}
+
+function setCsrfCookie(req: Request, res: Response): void {
+  setCsrfTokenCookie(res, resolveCsrfToken(req));
+}
 
 export class AuthController {
   constructor(
@@ -41,6 +59,7 @@ export class AuthController {
 
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
     setRefreshTokenCookie(res, result.tokens.refreshToken, 30 * 24 * 60 * 60 * 1000);
+    setCsrfCookie(req, res);
 
     res.status(200).json({
       message: 'Login with Google successful',
@@ -58,6 +77,7 @@ export class AuthController {
     const rememberMe = (req.body as LoginInput)?.rememberMe === true;
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
     setRefreshTokenCookie(res, result.tokens.refreshToken, (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000);
+    setCsrfCookie(req, res);
 
     res.status(200).json({
       message: 'Login successful',
@@ -75,6 +95,7 @@ export class AuthController {
     const result = await this.authService.refreshToken({ refreshToken });
 
     setAccessTokenCookie(res, result.tokens.accessToken, result.tokens.expiresIn);
+    setCsrfCookie(req, res);
 
     res.status(200).json({
       message: 'Token refreshed successfully',
@@ -91,6 +112,7 @@ export class AuthController {
     }
 
     clearAuthCookies(res);
+    clearCsrfTokenCookie(res);
 
     res.status(200).json({
       message: 'Logout successful',

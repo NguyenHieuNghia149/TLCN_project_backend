@@ -1,6 +1,7 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 
+import { JWTUtils } from '@backend/shared/utils';
 import { createProctoringWebSocketService } from './proctoring/proctoring-websocket.service';
 
 export interface IWebSocketNotifier {
@@ -10,7 +11,11 @@ export interface IWebSocketNotifier {
 
 interface ISocketIOClientAdapter {
   id: string;
-  on(event: 'authenticate', listener: (data: { userId: string }) => void): this;
+  handshake?: {
+    headers?: {
+      cookie?: string;
+    };
+  };
   on(event: 'disconnect', listener: () => void): this;
   join(room: string): void;
 }
@@ -51,15 +56,14 @@ export class WebSocketService implements IWebSocketNotifier {
 
   private setupEventHandlers(): void {
     this.io.on('connection', socket => {
-      socket.on('authenticate', (data: { userId: string }) => {
-        if (data.userId) {
-          if (!this.connectedClients.has(data.userId)) {
-            this.connectedClients.set(data.userId, new Set());
-          }
-          this.connectedClients.get(data.userId)?.add(socket.id);
-          socket.join(`user_${data.userId}`);
+      const authenticatedUserId = this.getAuthenticatedUserId(socket);
+      if (authenticatedUserId) {
+        if (!this.connectedClients.has(authenticatedUserId)) {
+          this.connectedClients.set(authenticatedUserId, new Set());
         }
-      });
+        this.connectedClients.get(authenticatedUserId)?.add(socket.id);
+        socket.join(`user_${authenticatedUserId}`);
+      }
 
       socket.on('disconnect', () => {
         for (const [userId, socketIds] of this.connectedClients.entries()) {
@@ -73,6 +77,39 @@ export class WebSocketService implements IWebSocketNotifier {
         }
       });
     });
+  }
+
+  private getAuthenticatedUserId(socket: ISocketIOClientAdapter): string | null {
+    const accessToken = this.readCookie(socket.handshake?.headers?.cookie, 'accessToken');
+    if (!accessToken) {
+      return null;
+    }
+
+    try {
+      const payload = JWTUtils.verifyAccessToken(accessToken);
+      return payload.type === 'access' ? payload.userId : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readCookie(cookieHeader: string | undefined, cookieName: string): string | null {
+    if (!cookieHeader) {
+      return null;
+    }
+
+    const cookiePrefix = `${cookieName}=`;
+    const entry = cookieHeader
+      .split(';')
+      .map(part => part.trim())
+      .find(part => part.startsWith(cookiePrefix));
+
+    if (!entry) {
+      return null;
+    }
+
+    const value = entry.slice(cookiePrefix.length);
+    return value ? decodeURIComponent(value) : null;
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {
@@ -125,6 +162,7 @@ export function createWebSocketService(server: HTTPServer): WebSocketService {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+    path: '/api/socket.io',
     transports: ['websocket', 'polling'],
   }) as unknown as ISocketIOAdapter;
 
