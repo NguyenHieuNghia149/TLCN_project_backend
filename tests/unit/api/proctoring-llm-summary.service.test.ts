@@ -43,7 +43,7 @@ function createService(overrides: Record<string, unknown> = {}) {
       promptVersion: 'proctoring-summary-v1',
     }),
     updateJobId: jest.fn().mockResolvedValue(null),
-    countRecentForParticipation: jest.fn().mockResolvedValue(0),
+    countActiveRecentForParticipation: jest.fn().mockResolvedValue(0),
   };
   const defaultAiJobRepository = {
     insert: jest.fn().mockResolvedValue({ id: 'job-1' }),
@@ -174,13 +174,13 @@ describe('ProctoringLlmSummaryService', () => {
               status,
               modelVersion: 'summary-local-v1',
               promptVersion: 'proctoring-summary-v1',
-            },
-            conflictResolved: true,
-          }),
-          updateJobId: jest.fn(),
-          countRecentForParticipation: jest.fn().mockResolvedValue(0),
-        },
-      });
+          },
+          conflictResolved: true,
+        }),
+        updateJobId: jest.fn(),
+        countActiveRecentForParticipation: jest.fn().mockResolvedValue(0),
+      },
+    });
 
       const result = await service.generate({
         examId: 'exam-1',
@@ -238,6 +238,83 @@ describe('ProctoringLlmSummaryService', () => {
     expect(summaryRepository.updateJobId).toHaveBeenCalledWith('llm-summary-1', 'job-reused-1');
     expect(result).toEqual({
       llmSummaryId: 'llm-summary-1',
+      status: 'pending',
+      conflictResolved: false,
+    });
+  });
+
+  it('rate-limits only when active summaries already occupy the participation window', async () => {
+    const { service, aiJobRepository } = createService({
+      settingsRepository: {
+        findByExamId: jest.fn().mockResolvedValue({
+          llmSummaryEnabled: true,
+          llmSummaryProvider: 'local',
+          llmSummaryModelVersion: 'summary-local-v1',
+          llmSummaryPromptVersion: 'proctoring-summary-v1',
+          llmSummaryJudgeEnabled: true,
+          llmSummaryMinValidationScore: '0.85',
+          llmSummaryRateLimitPerParticipation: 3,
+          llmSummaryRateLimitWindowHours: 24,
+        }),
+      },
+      summaryRepository: {
+        insertOrFindActive: jest.fn(),
+        updateJobId: jest.fn(),
+        countActiveRecentForParticipation: jest.fn().mockResolvedValue(3),
+      },
+    });
+
+    await expect(
+      service.generate({
+        examId: 'exam-1',
+        participationId: 'participation-1',
+        actor: { userId: 'owner-1', role: 'owner' },
+      })
+    ).rejects.toMatchObject({ code: 'PROCTORING_LLM_SUMMARY_RATE_LIMITED' });
+    expect(aiJobRepository.upsertByJobKey).not.toHaveBeenCalled();
+  });
+
+  it('allows regeneration after validation-failed history because failed rows are not active blockers', async () => {
+    const { service, summaryRepository, aiJobRepository } = createService({
+      settingsRepository: {
+        findByExamId: jest.fn().mockResolvedValue({
+          llmSummaryEnabled: true,
+          llmSummaryProvider: 'local',
+          llmSummaryModelVersion: 'summary-local-v1',
+          llmSummaryPromptVersion: 'proctoring-summary-v1',
+          llmSummaryJudgeEnabled: true,
+          llmSummaryMinValidationScore: '0.85',
+          llmSummaryRateLimitPerParticipation: 3,
+          llmSummaryRateLimitWindowHours: 24,
+        }),
+      },
+      summaryRepository: {
+        insertOrFindActive: jest.fn().mockResolvedValue({
+          id: 'llm-summary-regenerated',
+          status: 'pending',
+          modelVersion: 'summary-local-v1',
+          promptVersion: 'proctoring-summary-v1',
+        }),
+        updateJobId: jest.fn().mockResolvedValue(null),
+        // Historical validation/provider failures are filtered out in the repository query,
+        // so the service should still be allowed to enqueue a fresh regeneration attempt.
+        countActiveRecentForParticipation: jest.fn().mockResolvedValue(0),
+      },
+    });
+
+    const result = await service.generate({
+      examId: 'exam-1',
+      participationId: 'participation-1',
+      actor: { userId: 'owner-1', role: 'owner' },
+    });
+
+    expect(summaryRepository.countActiveRecentForParticipation).toHaveBeenCalledWith(
+      'participation-1',
+      new Date('2026-06-13T10:00:00.000Z')
+    );
+    expect(aiJobRepository.upsertByJobKey).toHaveBeenCalled();
+    expect(result).toEqual({
+      llmSummaryId: 'llm-summary-regenerated',
       status: 'pending',
       conflictResolved: false,
     });

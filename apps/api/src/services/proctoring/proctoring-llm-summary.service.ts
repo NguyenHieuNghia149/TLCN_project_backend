@@ -26,7 +26,10 @@ type Dependencies = {
   settingsRepository?: Pick<ProctoringSettingsRepository, 'findByExamId'>;
   modelRegistryService?: Pick<ProctoringModelRegistryService, 'resolveSummaryModel'>;
   inputService?: Pick<ProctoringLlmSummaryInputService, 'buildInput'>;
-  summaryRepository?: Pick<ProctoringLlmSummaryRepository, 'insertOrFindActive' | 'updateJobId' | 'countRecentForParticipation'>;
+  summaryRepository?: Pick<
+    ProctoringLlmSummaryRepository,
+    'insertOrFindActive' | 'updateJobId' | 'countActiveRecentForParticipation'
+  >;
   aiJobRepository?: Pick<ProctoringAiJobRepository, 'insert' | 'upsertByJobKey'>;
   auditLogRepository?: Pick<AdminAuditLogRepository, 'create'>;
   metricsService?: Pick<ProctoringMetricsService, 'incrementSummaryRequested' | 'incrementSummaryRateLimited'>;
@@ -57,7 +60,7 @@ export class ProctoringLlmSummaryService {
   private readonly inputService: Pick<ProctoringLlmSummaryInputService, 'buildInput'>;
   private readonly summaryRepository: Pick<
     ProctoringLlmSummaryRepository,
-    'insertOrFindActive' | 'updateJobId' | 'countRecentForParticipation'
+    'insertOrFindActive' | 'updateJobId' | 'countActiveRecentForParticipation'
   >;
   private readonly aiJobRepository: Pick<ProctoringAiJobRepository, 'insert' | 'upsertByJobKey'>;
   private readonly auditLogRepository: Pick<AdminAuditLogRepository, 'create'>;
@@ -111,7 +114,7 @@ export class ProctoringLlmSummaryService {
     const rateLimitWindowHours = settings.llmSummaryRateLimitWindowHours ?? 24;
     const now = this.nowFactory();
     const rateLimitSince = new Date(now.getTime() - rateLimitWindowHours * 60 * 60 * 1000);
-    const recentCount = await this.summaryRepository.countRecentForParticipation(
+    const recentCount = await this.summaryRepository.countActiveRecentForParticipation(
       input.participationId,
       rateLimitSince
     );

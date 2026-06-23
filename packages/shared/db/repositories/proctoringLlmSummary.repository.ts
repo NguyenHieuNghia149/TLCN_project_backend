@@ -42,7 +42,7 @@ export class ProctoringLlmSummaryRepository {
     return { row: existing, conflictResolved: true };
   }
 
-  async countRecentForParticipation(
+  async countActiveRecentForParticipation(
     participationId: string,
     since: Date
   ): Promise<number> {
@@ -53,7 +53,7 @@ export class ProctoringLlmSummaryRepository {
         and(
           eq(examProctoringLlmSummaries.participationId, participationId),
           gte(examProctoringLlmSummaries.createdAt, since),
-          inArray(examProctoringLlmSummaries.status, ['pending', 'accepted', 'validation_failed'])
+          inArray(examProctoringLlmSummaries.status, ['pending', 'accepted'])
         )
       );
     return result?.total ?? 0;
