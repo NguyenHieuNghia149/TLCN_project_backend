@@ -6,7 +6,12 @@ export const CSRF_COOKIE_NAME = 'csrfToken';
 
 const ACCESS_TOKEN_COOKIE_PATH = '/api';
 const REFRESH_TOKEN_COOKIE_PATH = '/api/auth';
-const CSRF_COOKIE_PATH = '/api';
+const CSRF_COOKIE_PATH = '/';
+
+function resolveCookieDomain(): string | undefined {
+  const domain = process.env.COOKIE_DOMAIN?.trim();
+  return domain && domain.length > 0 ? domain : undefined;
+}
 
 function resolveAuthCookieSameSite(): CookieOptions['sameSite'] {
   const configuredSameSite = process.env.AUTH_COOKIE_SAME_SITE?.trim().toLowerCase();
@@ -30,13 +35,20 @@ function createBaseAuthCookieOptions(): Pick<CookieOptions, 'httpOnly' | 'sameSi
 
 export function createCsrfCookieOptions(): CookieOptions {
   const sameSite = resolveAuthCookieSameSite();
+  const domain = resolveCookieDomain();
 
-  return {
+  const opts: CookieOptions = {
     httpOnly: false,
     sameSite,
     secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
     path: CSRF_COOKIE_PATH,
   };
+
+  if (domain) {
+    opts.domain = domain;
+  }
+
+  return opts;
 }
 
 export function createAccessTokenCookieOptions(maxAge: number): CookieOptions {

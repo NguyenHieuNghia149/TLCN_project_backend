@@ -184,7 +184,7 @@ describe('AuthController CSRF cookie issuance', () => {
       expect.any(String),
       expect.objectContaining({
         httpOnly: false,
-        path: '/api',
+        path: '/',
         sameSite: 'lax',
         secure: false,
       }),
@@ -214,7 +214,7 @@ describe('AuthController CSRF cookie issuance', () => {
       'existing-csrf-token',
       expect.objectContaining({
         httpOnly: false,
-        path: '/api',
+        path: '/',
         sameSite: 'lax',
         secure: false,
       }),
@@ -239,7 +239,7 @@ describe('AuthController CSRF cookie issuance', () => {
       'csrfToken',
       expect.objectContaining({
         httpOnly: false,
-        path: '/api',
+        path: '/',
         sameSite: 'lax',
         secure: false,
       }),

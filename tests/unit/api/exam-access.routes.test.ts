@@ -235,7 +235,7 @@ describe('Exam access HTTP routes', () => {
       expect.arrayContaining([
         expect.stringMatching(/accessToken=access-token;.*Path=\/api;.*HttpOnly;.*SameSite=Lax/),
         expect.stringMatching(/refreshToken=refresh-token;.*Path=\/api\/auth;.*HttpOnly;.*SameSite=Lax/),
-        expect.stringMatching(/csrfToken=.*Path=\/api;.*SameSite=Lax/),
+        expect.stringMatching(/csrfToken=.*Path=\/;.*SameSite=Lax/),
       ]),
     );
     expect(response.body.tokens).toBeUndefined();
