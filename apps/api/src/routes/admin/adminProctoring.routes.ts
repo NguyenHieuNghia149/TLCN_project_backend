@@ -76,6 +76,12 @@ export function createAdminProctoringRouter(): Router {
     validate(UpdateProctoringSettingsSchema),
     controller.updateSettings.bind(controller),
   );
+  router.put(
+    '/:examId/proctoring/settings',
+    validate(ProctoringExamIdParamsSchema, 'params'),
+    validate(UpdateProctoringSettingsSchema),
+    controller.updateSettings.bind(controller),
+  );
   router.post(
     '/:examId/participations/:participationId/proctoring/bypass-codes',
     validate(ProctoringAdminBypassParamsSchema, 'params'),

@@ -147,7 +147,19 @@ describe('admin proctoring review routes', () => {
       { userId: 'teacher-1', role: 'teacher' },
       { targetLanguage: 'vi' }
     );
-  });
+
+    expect(
+      await request(app)
+        .put(`/api/admin/exams/${examId}/proctoring/settings`)
+        .set('Cookie', createAccessTokenCookieHeader('teacher-1', 'teacher'))
+        .send({ enabled: true, aiShadowMode: false })
+    ).toMatchObject({ status: 200 });
+    expect(settingsService.updateSettings).toHaveBeenCalledWith(
+      examId,
+      'teacher-1',
+      expect.objectContaining({ enabled: true, aiShadowMode: false })
+    );
+  }, 20000);
 
   it('blocks non-admin roles before the review service runs', async () => {
     const middleware = passThrough();
