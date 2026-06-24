@@ -173,6 +173,84 @@ describe('ChallengeService derived testcase display', () => {
     expect(result.items[0]).not.toHaveProperty('difficult');
   });
 
+  it('passes topic search, difficulty, and tag filters through to the repository', async () => {
+    const topicRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'topic-1' }),
+    } as any;
+    const problemRepository = {
+      findByTopicWithCursor: jest.fn().mockResolvedValue({
+        items: [],
+        nextCursor: null,
+      }),
+    } as any;
+    const testcaseRepository = {
+      sumPointsByProblemIds: jest.fn().mockResolvedValue({}),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        topicRepository,
+        problemRepository,
+        testcaseRepository,
+      }),
+    );
+
+    await service.listProblemsByTopicInfinite({
+      topicId: 'topic-1',
+      limit: 5,
+      search: 'tree',
+      difficulties: ['medium', 'hard'],
+      tags: ['array', 'tree'],
+      userId: undefined,
+    });
+
+    expect(problemRepository.findByTopicWithCursor).toHaveBeenCalledWith({
+      topicId: 'topic-1',
+      limit: 5,
+      cursor: null,
+      search: 'tree',
+      difficulties: ['medium', 'hard'],
+      tags: ['array', 'tree'],
+    });
+  });
+
+  it('passes filtered-topic difficulty and tag filters through to the repository', async () => {
+    const topicRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'topic-1' }),
+    } as any;
+    const problemRepository = {
+      findByTopicWithTagsCursor: jest.fn().mockResolvedValue({
+        items: [],
+        nextCursor: null,
+      }),
+    } as any;
+    const testcaseRepository = {
+      sumPointsByProblemIds: jest.fn().mockResolvedValue({}),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        topicRepository,
+        problemRepository,
+        testcaseRepository,
+      }),
+    );
+
+    await service.listProblemsByTopicAndTags({
+      topicId: 'topic-1',
+      tags: ['array', 'tree'],
+      difficulties: ['medium'],
+      limit: 5,
+      userId: undefined,
+    } as any);
+
+    expect(problemRepository.findByTopicWithTagsCursor).toHaveBeenCalledWith({
+      topicId: 'topic-1',
+      tags: ['array', 'tree'],
+      difficulties: ['medium'],
+      limit: 5,
+      cursor: null,
+    });
+  });
+
   it('lists public problems across all topics without requiring a topic id', async () => {
     const problemRepository = {
       findPublicWithCursor: jest.fn().mockResolvedValue({
@@ -231,6 +309,32 @@ describe('ChallengeService derived testcase display', () => {
       rank: 7,
       rankingPoint: 1234,
     });
+  });
+
+  it('passes admin challenge search, difficulty, and tag filters through to the repository', async () => {
+    const problemRepository = {
+      findAllProblems: jest.fn().mockResolvedValue({
+        data: [],
+        total: 0,
+      }),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        problemRepository,
+      }),
+    );
+
+    await service.getAllChallenges(2, 20, 'tree', 'medium', ['array'], 'title', 'asc');
+
+    expect(problemRepository.findAllProblems).toHaveBeenCalledWith(
+      2,
+      20,
+      'tree',
+      'medium',
+      ['array'],
+      'title',
+      'asc',
+    );
   });
 
   it('derives testcase input and output from JSON instead of cached DB text', () => {

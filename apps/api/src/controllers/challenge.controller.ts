@@ -25,6 +25,24 @@ const ListProblemsByTopicSchema = z.object({
 export class ChallengeController {
   constructor(private readonly challengeService: ChallengeService) {}
 
+  private parseCsvQueryParam(value: unknown): string[] {
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .flatMap(item => (typeof item === 'string' ? item.split(',') : []))
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    return [];
+  }
+
   private parseInfiniteListLimit(limit: unknown): number {
     if (!limit) {
       return 10;
@@ -56,6 +74,8 @@ export class ChallengeController {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.q as string) || undefined;
+    const difficulty = typeof req.query.difficulty === 'string' ? req.query.difficulty : undefined;
+    const tags = this.parseCsvQueryParam(req.query.tags);
     const sortField = (req.query.sortField as string) || undefined;
     const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || undefined;
 
@@ -63,6 +83,8 @@ export class ChallengeController {
       page,
       limit,
       search,
+      difficulty,
+      tags,
       sortField,
       sortOrder
     );
@@ -76,7 +98,7 @@ export class ChallengeController {
     next: NextFunction
   ): Promise<void | Response> {
     const { topicId } = req.params as { topicId: string };
-    const { limit, cursor } = req.query;
+    const { limit, cursor, q, difficulty, tags } = req.query;
 
     if (!topicId) throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
@@ -105,6 +127,9 @@ export class ChallengeController {
       topicId: topicId as string,
       limit: parsedLimit,
       cursor: parsedCursor,
+      search: typeof q === 'string' ? q.trim() || undefined : undefined,
+      difficulties: this.parseCsvQueryParam(difficulty),
+      tags: this.parseCsvQueryParam(tags),
       userId: req.user?.userId,
     });
 
@@ -186,23 +211,18 @@ export class ChallengeController {
     next: NextFunction
   ): Promise<void | Response> {
     const { topicId } = req.params;
-    const { tags, limit, cursor } = req.query;
+    const { tags, difficulty, limit, cursor } = req.query;
 
     if (!topicId) throw new AppException('Topic ID is required', 400, 'MISSING_TOPIC_ID');
 
     const tagsArray =
-      typeof tags === 'string'
-        ? tags
-            .split(',')
-            .map(t => t.trim())
-            .filter(Boolean)
-        : Array.isArray(tags)
-          ? (tags as string[])
-          : [];
+      this.parseCsvQueryParam(tags);
+    const difficultyArray = this.parseCsvQueryParam(difficulty);
 
     const result = await this.challengeService.listProblemsByTopicAndTags({
       topicId: topicId as string,
       tags: tagsArray,
+      difficulties: difficultyArray,
       limit: limit ? parseInt(limit as string) : 10,
       cursor: cursor ? JSON.parse(cursor as string) : null,
       userId: req.user?.userId,

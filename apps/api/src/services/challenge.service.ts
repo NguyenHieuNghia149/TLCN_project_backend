@@ -302,6 +302,9 @@ export class ChallengeService {
     topicId: string;
     limit?: number;
     cursor?: { createdAt: string; id: string } | null;
+    search?: string;
+    difficulties?: string[];
+    tags?: string[];
     userId?: string;
   }): Promise<{
     items: Array<{
@@ -318,7 +321,15 @@ export class ChallengeService {
     rank?: number;
     rankingPoint?: number;
   }> {
-    const { topicId, limit = 10, cursor, userId } = params;
+    const {
+      topicId,
+      limit = 10,
+      cursor,
+      search,
+      difficulties = [],
+      tags = [],
+      userId,
+    } = params;
 
     const isTopicExisting = await this.topicRepository.findById(topicId);
     if (!isTopicExisting) {
@@ -329,6 +340,9 @@ export class ChallengeService {
       topicId,
       limit,
       cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
+      search,
+      difficulties,
+      tags,
     });
 
     // Batch sum points
@@ -461,6 +475,7 @@ export class ChallengeService {
   async listProblemsByTopicAndTags(params: {
     topicId: string;
     tags: string[];
+    difficulties?: string[];
     limit?: number;
     cursor?: { createdAt: string; id: string } | null;
     userId?: string;
@@ -477,7 +492,7 @@ export class ChallengeService {
     }>;
     nextCursor: { createdAt: string; id: string } | null;
   }> {
-    const { topicId, tags, limit = 10, cursor, userId } = params;
+    const { topicId, tags, difficulties = [], limit = 10, cursor, userId } = params;
 
     const isTopicExisting = await this.topicRepository.findById(topicId);
     if (!isTopicExisting) {
@@ -487,6 +502,7 @@ export class ChallengeService {
     const { items, nextCursor } = await this.problemRepository.findByTopicWithTagsCursor({
       topicId,
       tags,
+      difficulties,
       limit,
       cursor: cursor ? { createdAt: new Date(cursor.createdAt), id: cursor.id } : null,
     });
@@ -524,6 +540,8 @@ export class ChallengeService {
     page: number,
     limit: number,
     search?: string,
+    difficulty?: string,
+    tags: string[] = [],
     sortField?: string,
     sortOrder?: 'asc' | 'desc'
   ): Promise<{
@@ -544,6 +562,8 @@ export class ChallengeService {
       page,
       limit,
       search,
+      difficulty,
+      tags,
       sortField,
       sortOrder
     );

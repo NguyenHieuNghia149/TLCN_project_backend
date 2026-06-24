@@ -208,14 +208,48 @@ export class ProblemRepository extends BaseRepository<
     topicId: string;
     limit: number;
     cursor?: { createdAt: Date; id: string } | null;
+    search?: string;
+    difficulties?: string[];
+    tags?: string[];
     direction?: 'forward' | 'backward';
   }): Promise<{ items: ProblemEntity[]; nextCursor: { createdAt: Date; id: string } | null }> {
-    const { topicId, limit, cursor, direction = 'forward' } = params;
+    const {
+      topicId,
+      limit,
+      cursor,
+      search,
+      difficulties = [],
+      tags = [],
+      direction = 'forward',
+    } = params;
 
-    const baseWhere = and(
-      eq(problems.topicId, topicId),
-      eq(problems.visibility, ProblemVisibility.PUBLIC)
+    const normalizedDifficulties = Array.from(
+      new Set(
+        difficulties
+          .map(value => value.trim().toLowerCase())
+          .filter(value => value === 'easy' || value === 'medium' || value === 'hard'),
+      ),
     );
+    const tagConditions = tags
+      .map(tag => tag.trim())
+      .filter(Boolean)
+      .map(tag => ilike(problems.tags, `%${tag}%`));
+    const filterConditions = [
+      eq(problems.topicId, topicId),
+      eq(problems.visibility, ProblemVisibility.PUBLIC),
+      search ? ilike(problems.title, `%${search}%`) : undefined,
+      normalizedDifficulties.length > 0
+        ? inArray(problems.difficult, normalizedDifficulties as Array<'easy' | 'medium' | 'hard'>)
+        : undefined,
+      tagConditions.length === 1
+        ? tagConditions[0]
+        : tagConditions.length > 1
+          ? or(...tagConditions)
+          : undefined,
+    ].filter(Boolean);
+
+    const baseWhere =
+      filterConditions.length === 1 ? filterConditions[0]! : and(...(filterConditions as any[]));
 
     const whereClause = cursor
       ? direction === 'forward'
@@ -325,15 +359,28 @@ export class ProblemRepository extends BaseRepository<
   async findByTopicWithTagsCursor(params: {
     topicId: string;
     tags: string[];
+    difficulties?: string[];
     limit: number;
     cursor?: { createdAt: Date; id: string } | null;
   }): Promise<{ items: ProblemEntity[]; nextCursor: { createdAt: Date; id: string } | null }> {
-    const { topicId, tags, limit, cursor } = params;
+    const { topicId, tags, difficulties = [], limit, cursor } = params;
 
-    const baseWhere = and(
-      eq(problems.topicId, topicId),
-      eq(problems.visibility, ProblemVisibility.PUBLIC)
+    const normalizedDifficulties = Array.from(
+      new Set(
+        difficulties
+          .map(value => value.trim().toLowerCase())
+          .filter(value => value === 'easy' || value === 'medium' || value === 'hard'),
+      ),
     );
+    const baseConditions = [
+      eq(problems.topicId, topicId),
+      eq(problems.visibility, ProblemVisibility.PUBLIC),
+      normalizedDifficulties.length > 0
+        ? inArray(problems.difficult, normalizedDifficulties as Array<'easy' | 'medium' | 'hard'>)
+        : undefined,
+    ].filter(Boolean) as any[];
+    const baseWhere =
+      baseConditions.length === 1 ? baseConditions[0] : and(...baseConditions);
 
     // Build OR conditions for tags using ILIKE on CSV column
     const tagConds = tags.filter(Boolean).map(tag => ilike(problems.tags, `%${tag}%`));
@@ -375,15 +422,32 @@ export class ProblemRepository extends BaseRepository<
     page: number = 1,
     limit: number = 10,
     search?: string,
+    difficulty?: string,
+    tags: string[] = [],
     sortField: string = 'createdAt',
     sortOrder: 'asc' | 'desc' = 'desc'
   ): Promise<{ data: any[]; total: number }> {
     const offset = (page - 1) * limit;
 
     // Build conditions
-    const conditions = [];
+    const conditions = [] as any[];
     if (search) {
       conditions.push(ilike(problems.title, `%${search}%`));
+    }
+    if (difficulty) {
+      const normalizedDifficulty = difficulty.trim().toLowerCase();
+      if (normalizedDifficulty === 'easy' || normalizedDifficulty === 'medium' || normalizedDifficulty === 'hard') {
+        conditions.push(eq(problems.difficult, normalizedDifficulty as 'easy' | 'medium' | 'hard'));
+      }
+    }
+    const tagConditions = tags
+      .map(tag => tag.trim())
+      .filter(Boolean)
+      .map(tag => ilike(problems.tags, `%${tag}%`));
+    if (tagConditions.length === 1) {
+      conditions.push(tagConditions[0]);
+    } else if (tagConditions.length > 1) {
+      conditions.push(or(...tagConditions));
     }
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

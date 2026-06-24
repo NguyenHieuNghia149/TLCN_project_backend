@@ -64,7 +64,10 @@ describe('Challenge HTTP integration on post-migration routes', () => {
         hasMore: false,
       }),
       createChallenge: jest.fn(),
-      getAllChallenges: jest.fn(),
+      getAllChallenges: jest.fn().mockResolvedValue({
+        items: [{ id: PUBLIC_CHALLENGE_ID, title: 'Admin challenge' }],
+        total: 1,
+      }),
       updateChallenge: jest.fn(),
       deleteChallenge: jest.fn(),
       updateSolutionVisibility: jest.fn(),
@@ -202,6 +205,9 @@ describe('Challenge HTTP integration on post-migration routes', () => {
       topicId: TOPIC_ID,
       limit: 5,
       cursor: null,
+      search: undefined,
+      difficulties: [],
+      tags: [],
       userId: '77777777-7777-4777-8777-777777777777',
     });
   });
@@ -217,6 +223,29 @@ describe('Challenge HTTP integration on post-migration routes', () => {
       topicId: TOPIC_ID,
       limit: 30,
       cursor: null,
+      search: undefined,
+      difficulties: [],
+      tags: [],
+      userId: undefined,
+    });
+  });
+
+  it('passes search, difficulty, and tag filters into topic listing requests', async () => {
+    const { app, service } = loadChallengeApp();
+
+    const response = await request(app).get(
+      `/api/challenges/problems/topic/${TOPIC_ID}?limit=5&q=tree&difficulty=medium,hard&tags=array,tree`
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(service.listProblemsByTopicInfinite).toHaveBeenCalledWith({
+      topicId: TOPIC_ID,
+      limit: 5,
+      cursor: null,
+      search: 'tree',
+      difficulties: ['medium', 'hard'],
+      tags: ['array', 'tree'],
       userId: undefined,
     });
   });
@@ -273,9 +302,46 @@ describe('Challenge HTTP integration on post-migration routes', () => {
     expect(service.listProblemsByTopicAndTags).toHaveBeenCalledWith({
       topicId: TOPIC_ID,
       tags: ['array', 'tree'],
+      difficulties: [],
       limit: 10,
       cursor: null,
       userId: undefined,
     });
+  });
+
+  it('passes difficulty filters into the filtered-topic route', async () => {
+    const { app, service } = loadChallengeApp();
+
+    const response = await request(app).get(
+      `/api/challenges/topics/${TOPIC_ID}/problems?tags=array,tree&difficulty=medium,hard`
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(service.listProblemsByTopicAndTags).toHaveBeenCalledWith({
+      topicId: TOPIC_ID,
+      tags: ['array', 'tree'],
+      difficulties: ['medium', 'hard'],
+      limit: 10,
+      cursor: null,
+      userId: undefined,
+    });
+  });
+
+  it('passes search, difficulty, and tag filters into admin challenge listing requests', async () => {
+    const { app, service } = loadChallengeApp();
+    const token = createAccessToken({
+      userId: '99999999-9999-4999-8999-999999999999',
+      email: 'teacher@example.com',
+      role: 'teacher',
+    });
+
+    const response = await request(app)
+      .get('/api/challenges/all?page=2&limit=20&q=tree&difficulty=medium&tags=array')
+      .set('Cookie', createAccessTokenCookieHeader(token));
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(service.getAllChallenges).toHaveBeenCalledWith(2, 20, 'tree', 'medium', ['array'], undefined, undefined);
   });
 });
