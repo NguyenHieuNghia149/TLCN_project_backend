@@ -673,4 +673,46 @@ describe('ProctoringAdminReviewService', () => {
       'Timeline highlights: 2026-06-12 10:01 focus lost.'
     );
   });
+
+  it('returns validation failure reason codes for non-accepted LLM summaries', async () => {
+    const llmSummaryRepository = {
+      findLatestByParticipation: jest.fn().mockResolvedValue({
+        id: 'llm-summary-1',
+        status: 'validation_failed',
+        provider: 'local',
+        modelVersion: 'summary-local-v1',
+        promptVersion: 'proctoring-summary-v1',
+        validationStatus: 'failed',
+        validationScore: '0.41',
+        validationErrorsJson: ['below_validation_threshold'],
+        missingDataNotesJson: [],
+        modelNotesJson: [],
+        completedAt: new Date('2026-06-12T10:05:00.000Z'),
+      }),
+    };
+    const { service } = createService({
+      settingsRepository: {
+        findByExamId: jest.fn().mockResolvedValue({
+          aiShadowMode: true,
+          aiAdvisoryVisible: false,
+          aiMinimumEvaluationStatus: 'passed_gate',
+          llmSummaryEnabled: true,
+        }),
+      },
+      llmSummaryRepository,
+    });
+
+    const review = await service.getReview('exam-1', 'participation-1', {
+      userId: 'teacher-1',
+      role: 'teacher',
+    });
+
+    expect((review as any).llmSummary).toMatchObject({
+      visible: false,
+      status: 'validation_failed',
+      validationStatus: 'failed',
+      validationScore: 0.41,
+      validationErrors: ['below_validation_threshold'],
+    });
+  });
 });

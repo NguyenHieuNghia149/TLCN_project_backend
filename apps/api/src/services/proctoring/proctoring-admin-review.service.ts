@@ -514,6 +514,9 @@ export class ProctoringAdminReviewService {
             llmSummaryRecord.validationScore === undefined
               ? null
               : Number(llmSummaryRecord.validationScore),
+          validationErrors: Array.isArray(llmSummaryRecord.validationErrorsJson)
+            ? llmSummaryRecord.validationErrorsJson
+            : [],
           riskFacts: [] as string[],
           citations: [] as string[],
           missingDataNotes: llmSummaryRecord.missingDataNotesJson ?? [],
