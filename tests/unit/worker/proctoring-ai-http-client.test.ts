@@ -12,6 +12,33 @@ import { ProctoringAiHttpClient } from '../../../apps/worker/src/services/procto
 describe('ProctoringAiHttpClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.SERVER_AI_URL;
+  });
+
+  it('defaults to the compose server-ai hostname when no URL is configured', async () => {
+    axiosPost.mockResolvedValue({
+      data: {
+        windowId: 'window-1',
+        examId: 'exam-1',
+        participationId: 'participation-1',
+        modelVersion: 'iforest-v1',
+        anomalyScore: 0.42,
+        rawScore: 1.2,
+        riskLevel: 'medium',
+      },
+    });
+    const client = new ProctoringAiHttpClient();
+
+    await client.predict({ windowId: 'window-1' } as any);
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://server-ai:8001/anomaly/predict',
+      { windowId: 'window-1' },
+      {
+        timeout: 5000,
+        headers: undefined,
+      }
+    );
   });
 
   it('posts telemetry windows with optional service auth header', async () => {

@@ -103,7 +103,7 @@ export class ProctoringAiHttpClient {
 
   constructor(options: ProctoringAiHttpClientOptions = {}) {
     this.serverAiUrl = normalizeBaseUrl(
-      options.serverAiUrl ?? process.env.SERVER_AI_URL ?? 'http://localhost:8001'
+      options.serverAiUrl ?? process.env.SERVER_AI_URL ?? 'http://server-ai:8001'
     );
     this.internalToken = options.internalToken ?? process.env.SERVER_AI_INTERNAL_TOKEN;
     this.timeoutMs =
