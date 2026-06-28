@@ -591,7 +591,7 @@ export class ExamService {
       ...challengeResponse.problem,
       orderIndex: challengeInExam.orderIndex,
       testcases: challengeResponse.testcases,
-      solution: challengeResponse.solution,
+      solution: null,
     };
   }
 
@@ -709,10 +709,6 @@ export class ExamService {
       options.status = 'published';
     }
 
-    const userParticipations =
-      userId && typeof this.examParticipationRepository.findByUserId === 'function'
-        ? await this.examParticipationRepository.findByUserId(userId)
-        : [];
     const participationSummaryByExamId = new Map<
       string,
       {
@@ -736,46 +732,54 @@ export class ExamService {
       Object.values(EExamParticipationStatus)
     );
 
-    for (const participation of userParticipations) {
-      const examId = (participation as any).examId;
-      if (!examId) continue;
+    const addParticipationSummaries = (participations: any[]) => {
+      for (const participation of participations) {
+        const examId = (participation as any).examId;
+        if (!examId) continue;
 
-      const rawStatus = (participation as any).status;
-      const status = validParticipationStatuses.has(rawStatus)
-        ? (rawStatus as EExamParticipationStatus)
-        : null;
-      const startedAt = toTime(
-        (participation as any).startTime ?? (participation as any).createdAt
-      );
-      const summary =
-        participationSummaryByExamId.get(examId) ??
-        {
-          attemptsUsed: 0,
-          latestParticipationStatus: null,
-          latestStartedAt: Number.NEGATIVE_INFINITY,
-          hasInProgressParticipation: false,
-          hasCompletedParticipation: false,
-        };
+        const rawStatus = (participation as any).status;
+        const status = validParticipationStatuses.has(rawStatus)
+          ? (rawStatus as EExamParticipationStatus)
+          : null;
+        const startedAt = toTime(
+          (participation as any).startTime ?? (participation as any).createdAt
+        );
+        const summary =
+          participationSummaryByExamId.get(examId) ??
+          {
+            attemptsUsed: 0,
+            latestParticipationStatus: null,
+            latestStartedAt: Number.NEGATIVE_INFINITY,
+            hasInProgressParticipation: false,
+            hasCompletedParticipation: false,
+          };
 
-      summary.attemptsUsed += 1;
-      if (startedAt > summary.latestStartedAt) {
-        summary.latestParticipationStatus = status;
-        summary.latestStartedAt = startedAt;
+        summary.attemptsUsed += 1;
+        if (startedAt > summary.latestStartedAt) {
+          summary.latestParticipationStatus = status;
+          summary.latestStartedAt = startedAt;
+        }
+        if (status === EExamParticipationStatus.IN_PROGRESS) {
+          summary.hasInProgressParticipation = true;
+        }
+        if (
+          status === EExamParticipationStatus.SUBMITTED ||
+          status === EExamParticipationStatus.EXPIRED
+        ) {
+          summary.hasCompletedParticipation = true;
+        }
+        participationSummaryByExamId.set(examId, summary);
       }
-      if (status === EExamParticipationStatus.IN_PROGRESS) {
-        summary.hasInProgressParticipation = true;
-      }
-      if (
-        status === EExamParticipationStatus.SUBMITTED ||
-        status === EExamParticipationStatus.EXPIRED
-      ) {
-        summary.hasCompletedParticipation = true;
-      }
-      participationSummaryByExamId.set(examId, summary);
-    }
+    };
 
     // If filterType is 'participated' and userId provided, get exam ids participated by user
     if (filterType === 'participated' && userId) {
+      const userParticipations =
+        typeof this.examParticipationRepository.findByUserId === 'function'
+          ? await this.examParticipationRepository.findByUserId(userId)
+          : [];
+      addParticipationSummaries(userParticipations);
+
       const examIds = Array.from(participationSummaryByExamId.keys());
       if (examIds.length === 0) {
         return { data: [], total: 0 };
@@ -794,6 +798,19 @@ export class ExamService {
     // which is not present in the current schema. Keep client-side 'my' behavior for now.
 
     const { items, total } = await this.examRepository.getExamsPaginated(limit, offset, options);
+
+    if (userId && filterType !== 'participated' && items.length > 0) {
+      const pageExamIds = items.map((item: any) => item.id).filter(Boolean);
+      const pageParticipations =
+        typeof this.examParticipationRepository.findByUserIdAndExamIds === 'function'
+          ? await this.examParticipationRepository.findByUserIdAndExamIds(userId, pageExamIds)
+          : typeof this.examParticipationRepository.findByUserId === 'function'
+            ? (await this.examParticipationRepository.findByUserId(userId)).filter((participation) =>
+                pageExamIds.includes((participation as any).examId)
+              )
+            : [];
+      addParticipationSummaries(pageParticipations);
+    }
 
     const examsData: ExamResponse[] = (items || []).map((examData: any) => {
       const participationSummary = participationSummaryByExamId.get(examData.id);

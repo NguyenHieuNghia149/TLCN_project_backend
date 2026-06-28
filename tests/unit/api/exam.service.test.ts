@@ -123,7 +123,10 @@ describe('ExamService dependency injection', () => {
       getChallengeById: jest.fn().mockResolvedValue({
         problem: { id: 'challenge-1', title: 'Two Sum' },
         testcases: [],
-        solution: null,
+        solution: {
+          id: 'solution-1',
+          description: 'Do not expose this during an exam.',
+        },
       }),
     } as any;
     const service = new ExamService(
@@ -141,6 +144,7 @@ describe('ExamService dependency injection', () => {
       id: 'challenge-1',
       title: 'Two Sum',
       orderIndex: 2,
+      solution: null,
     });
   });
 
@@ -974,7 +978,8 @@ describe('ExamService dependency injection', () => {
       }),
     } as any;
     const examParticipationRepository = {
-      findByUserId: jest.fn().mockResolvedValue([
+      findByUserId: jest.fn(),
+      findByUserIdAndExamIds: jest.fn().mockResolvedValue([
         {
           id: 'participation-1',
           examId: 'exam-1',
@@ -990,7 +995,10 @@ describe('ExamService dependency injection', () => {
 
     const result = await service.getExams(10, 0, undefined, 'all', 'user-1', true, 'user');
 
-    expect(examParticipationRepository.findByUserId).toHaveBeenCalledWith('user-1');
+    expect(examParticipationRepository.findByUserIdAndExamIds).toHaveBeenCalledWith('user-1', [
+      'exam-1',
+    ]);
+    expect(examParticipationRepository.findByUserId).not.toHaveBeenCalled();
     expect(result.data[0]).toMatchObject({
       attemptsUsed: 1,
       latestParticipationStatus: 'SUBMITTED',

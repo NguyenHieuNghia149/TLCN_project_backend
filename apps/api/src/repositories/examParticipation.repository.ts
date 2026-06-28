@@ -202,6 +202,21 @@ export class ExamParticipationRepository extends BaseRepository<
       .orderBy(desc(examParticipations.startTime));
   }
 
+  async findByUserIdAndExamIds(
+    userId: string,
+    examIds: string[]
+  ): Promise<ExamParticipationEntity[]> {
+    if (examIds.length === 0) {
+      return [];
+    }
+
+    return this.db
+      .select()
+      .from(examParticipations)
+      .where(and(eq(examParticipations.userId, userId), inArray(examParticipations.examId, examIds)))
+      .orderBy(desc(examParticipations.startTime));
+  }
+
   async findIncompleteParticipations(examId: string): Promise<ExamParticipationEntity[]> {
     return this.db
       .select()
