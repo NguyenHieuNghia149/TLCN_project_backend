@@ -260,11 +260,13 @@ export const ExamEntrySessionStartBodySchema = z.preprocess(
 
 export const ExamSubmitBodySchema = z.preprocess(
   value => value ?? {},
-  z.object({
-    participationId: z.string().min(1, 'Participation ID is required.').optional(),
-    submitAttemptId: z.string().min(1).max(100).optional(),
-    finalFlushReceiptId: z.string().uuid('Invalid final flush receipt ID format.').optional(),
-  }),
+  z
+    .object({
+      submitAttemptId: z.string().min(1).max(100).optional(),
+      finalFlushReceiptId: z.string().uuid('Invalid final flush receipt ID format.').optional(),
+      answers: z.record(z.string(), z.unknown()).optional(),
+    })
+    .strict(),
 );
 
 export const ExamSessionSyncSchema = z.union([

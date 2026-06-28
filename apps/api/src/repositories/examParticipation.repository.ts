@@ -258,27 +258,74 @@ export class ExamParticipationRepository extends BaseRepository<
     data: {
       currentAnswers: Record<string, any>;
       lastSyncedAt: Date;
+      expectedLastSyncedAt?: Date | null;
     },
   ): Promise<boolean> {
+    const conditions = [
+      eq(examParticipations.id, participationId),
+      eq(examParticipations.status, EExamParticipationStatus.IN_PROGRESS),
+      or(
+        isNull(examParticipations.expiresAt),
+        gte(examParticipations.expiresAt, data.lastSyncedAt),
+      ),
+    ];
+
+    if (data.expectedLastSyncedAt) {
+      conditions.push(eq(examParticipations.lastSyncedAt, data.expectedLastSyncedAt));
+    } else {
+      conditions.push(isNull(examParticipations.lastSyncedAt));
+    }
+
     const rows = await this.db
       .update(examParticipations)
       .set({
         currentAnswers: data.currentAnswers,
         lastSyncedAt: data.lastSyncedAt,
       })
-      .where(
-        and(
-          eq(examParticipations.id, participationId),
-          eq(examParticipations.status, EExamParticipationStatus.IN_PROGRESS),
-          or(
-            isNull(examParticipations.expiresAt),
-            gte(examParticipations.expiresAt, data.lastSyncedAt),
-          ),
-        ),
-      )
+      .where(and(...conditions))
       .returning({ id: examParticipations.id });
 
     return rows.length === 1;
+  }
+
+  async submitActiveParticipation(
+    participationId: string,
+    data: {
+      currentAnswers: Record<string, any>;
+      submittedAnswersSnapshot: Record<string, any>;
+      submittedAt: Date;
+      endTime: Date;
+      answersLockedAt: Date;
+      scoreStatus: string;
+      expectedLastSyncedAt?: Date | null;
+    },
+  ): Promise<ExamParticipationEntity | null> {
+    const conditions = [
+      eq(examParticipations.id, participationId),
+      eq(examParticipations.status, EExamParticipationStatus.IN_PROGRESS),
+    ];
+
+    if (data.expectedLastSyncedAt) {
+      conditions.push(eq(examParticipations.lastSyncedAt, data.expectedLastSyncedAt));
+    } else {
+      conditions.push(isNull(examParticipations.lastSyncedAt));
+    }
+
+    const [updated] = await this.db
+      .update(examParticipations)
+      .set({
+        status: EExamParticipationStatus.SUBMITTED,
+        submittedAt: data.submittedAt,
+        endTime: data.endTime,
+        currentAnswers: data.currentAnswers,
+        submittedAnswersSnapshot: data.submittedAnswersSnapshot,
+        answersLockedAt: data.answersLockedAt,
+        scoreStatus: data.scoreStatus,
+      })
+      .where(and(...conditions))
+      .returning();
+
+    return updated || null;
   }
 
   async reassignParticipant(sourceParticipantId: string, targetParticipantId: string): Promise<void> {

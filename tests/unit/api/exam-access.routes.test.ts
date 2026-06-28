@@ -547,14 +547,28 @@ describe('Exam access HTTP routes', () => {
     const response = await request(app)
       .post('/api/exams/spring-midterm/submit')
       .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
-      .send({});
+      .send({
+        answers: {
+          challengeA: {
+            sourceCode: 'print(1)',
+            language: 'python',
+          },
+        },
+      });
 
     expect(response.status).toBe(200);
-    expect(submitActiveParticipation).toHaveBeenCalledWith('spring-midterm', 'user-1');
+    expect(submitActiveParticipation).toHaveBeenCalledWith('spring-midterm', 'user-1', {
+      answers: {
+        challengeA: {
+          sourceCode: 'print(1)',
+          language: 'python',
+        },
+      },
+    });
     expect(submitExam).not.toHaveBeenCalled();
   });
 
-  it('routes legacy submit payloads with participationId to the legacy exam service', async () => {
+  it('rejects legacy participationId payloads on the slug-based submit contract', async () => {
     const submitExam = jest.fn().mockResolvedValue({
       participationId: 'participation-legacy-1',
       submittedAt: '2026-04-03T08:00:00.000Z',
@@ -581,9 +595,15 @@ describe('Exam access HTTP routes', () => {
       .set('Cookie', [`accessToken=${createAccessToken('user-1')}`])
       .send({ participationId: 'participation-legacy-1' });
 
-    expect(response.status).toBe(200);
-    expect(submitExam).toHaveBeenCalledWith('participation-legacy-1', 'user-1');
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      message: 'Validation error',
+      errors: {
+        formErrors: ['Unrecognized key: "participationId"'],
+      },
+    });
     expect(submitActiveParticipation).not.toHaveBeenCalled();
+    expect(submitExam).not.toHaveBeenCalled();
   });
 
   it('returns 400 MALFORMED_JSON when request body is invalid JSON', async () => {

@@ -78,7 +78,9 @@ type StartEntrySessionBodyInput = ProctoringStartInput & {
   examPassword?: string;
 };
 
-type SubmitActiveParticipationInput = Omit<ProctoringSubmitGuardInput, 'participationId'>;
+type SubmitActiveParticipationInput = Omit<ProctoringSubmitGuardInput, 'participationId'> & {
+  answers?: Record<string, unknown>;
+};
 
 const OTP_RESEND_COOLDOWN_MS = 60_000;
 const REGISTRATION_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -1610,58 +1612,79 @@ export class ExamAccessService {
   }
 
   async syncParticipation(userId: string, input: SyncParticipationInput) {
-    const participation = await this.deps.examParticipationRepository.findById(input.participationId);
+    let participation = await this.deps.examParticipationRepository.findById(input.participationId);
     if (!participation || participation.userId !== userId) {
       throw new ExamParticipationNotFoundException('Participation not found');
     }
 
-    if (`${participation.status}`.toUpperCase() === 'REVOKED') {
-      throw new AuthorizationException('Participant access has been revoked');
-    }
+    while (true) {
+      const now = new Date();
 
-    if (participation.participantId && this.deps.examParticipantRepository.findById) {
-      const participant = await this.deps.examParticipantRepository.findById(
-        participation.participantId,
-      );
-      if (participant?.accessStatus === 'revoked') {
+      if (`${participation.status}`.toUpperCase() === 'REVOKED') {
         throw new AuthorizationException('Participant access has been revoked');
       }
+
+      if (participation.participantId && this.deps.examParticipantRepository.findById) {
+        const participant = await this.deps.examParticipantRepository.findById(
+          participation.participantId,
+        );
+        if (participant?.accessStatus === 'revoked') {
+          throw new AuthorizationException('Participant access has been revoked');
+        }
+      }
+
+      if (participation.status === EExamParticipationStatus.SUBMITTED) {
+        return {
+          synced: false,
+          lastSyncedAt: this.asIsoString(participation.lastSyncedAt ?? now),
+          participationExpiresAt: this.asIsoString(participation.expiresAt),
+          status: 'submitted' as const,
+        };
+      }
+
+      if (participation.expiresAt && now > new Date(participation.expiresAt)) {
+        await this.finalizeExpiredParticipation(participation.id);
+        return {
+          synced: false,
+          lastSyncedAt: this.asIsoString(now),
+          participationExpiresAt: this.asIsoString(participation.expiresAt),
+          status: 'expired' as const,
+        };
+      }
+
+      const synced = this.deps.examParticipationRepository.updateSyncState
+        ? await this.deps.examParticipationRepository.updateSyncState(participation.id, {
+            currentAnswers: this.mergeAnswers(participation.currentAnswers || {}, input.answers || {}),
+            lastSyncedAt: now,
+            expectedLastSyncedAt: participation.lastSyncedAt ?? null,
+          })
+        : Boolean(
+            await this.deps.examParticipationRepository.updateParticipation(participation.id, {
+              currentAnswers: this.mergeAnswers(participation.currentAnswers || {}, input.answers || {}),
+              lastSyncedAt: now,
+            }),
+          );
+
+      if (synced) {
+        return {
+          synced: true,
+          lastSyncedAt: this.asIsoString(now),
+          participationExpiresAt: this.asIsoString(participation.expiresAt),
+          status: 'active' as const,
+        };
+      }
+
+      const latestParticipation = await this.deps.examParticipationRepository.findById(participation.id);
+      if (!latestParticipation) {
+        throw new ExamParticipationNotFoundException('Participation not found');
+      }
+
+      if (latestParticipation.userId !== userId) {
+        throw new ExamParticipationNotFoundException('Participation not found');
+      }
+
+      participation = latestParticipation;
     }
-
-    if (participation.status === EExamParticipationStatus.SUBMITTED) {
-      return {
-        synced: false,
-        lastSyncedAt: this.asIsoString(participation.lastSyncedAt ?? new Date()),
-        participationExpiresAt: this.asIsoString(participation.expiresAt),
-        status: 'submitted' as const,
-      };
-    }
-
-    const now = new Date();
-    if (participation.expiresAt && now > new Date(participation.expiresAt)) {
-      await this.finalizeExpiredParticipation(participation.id);
-      return {
-        synced: false,
-        lastSyncedAt: this.asIsoString(now),
-        participationExpiresAt: this.asIsoString(participation.expiresAt),
-        status: 'expired' as const,
-      };
-    }
-
-    await this.deps.examParticipationRepository.updateParticipation(participation.id, {
-      currentAnswers: {
-        ...(participation.currentAnswers || {}),
-        ...input.answers,
-      },
-      lastSyncedAt: now,
-    });
-
-    return {
-      synced: true,
-      lastSyncedAt: this.asIsoString(now),
-      participationExpiresAt: this.asIsoString(participation.expiresAt),
-      status: 'active' as const,
-    };
   }
 
   async submitActiveParticipation(
@@ -1730,19 +1753,75 @@ export class ExamAccessService {
           })
         : null;
 
-    const submittedAt = new Date();
-    await this.deps.examParticipationRepository.updateParticipation(activeParticipation.id, {
-      status: EExamParticipationStatus.SUBMITTED,
-      submittedAt,
-      endTime: submittedAt,
-      submittedAnswersSnapshot: activeParticipation.currentAnswers || {},
-      answersLockedAt: submittedAt,
-      scoreStatus: 'pending',
-    });
+    let finalizedParticipation = null;
+    let latestParticipation =
+      (await this.deps.examParticipationRepository.findById(activeParticipation.id)) ??
+      activeParticipation;
+
+    while (!finalizedParticipation) {
+      if (!this.isParticipationInProgress(latestParticipation)) {
+        if (`${latestParticipation.status}`.toUpperCase() === EExamParticipationStatus.SUBMITTED) {
+          const result = {
+            participationId: latestParticipation.id,
+            submittedAt: this.asIsoString(latestParticipation.submittedAt ?? new Date()),
+            scoreStatus: latestParticipation.scoreStatus ?? 'pending',
+          };
+          if (submitAttemptKey) {
+            this.submitAttemptResults.set(submitAttemptKey, result);
+          }
+          return result;
+        }
+
+        throw new ExamParticipationNotFoundException('Active participation not found');
+      }
+
+      const submittedAt = new Date();
+      const finalAnswers = this.mergeAnswers(
+        latestParticipation.currentAnswers || {},
+        proctoringInput?.answers || {},
+      );
+      finalizedParticipation =
+        this.deps.examParticipationRepository.submitActiveParticipation
+          ? await this.deps.examParticipationRepository.submitActiveParticipation(
+              latestParticipation.id,
+              {
+                currentAnswers: finalAnswers,
+                submittedAnswersSnapshot: finalAnswers,
+                submittedAt,
+                endTime: submittedAt,
+                answersLockedAt: submittedAt,
+                scoreStatus: 'pending',
+                expectedLastSyncedAt: latestParticipation.lastSyncedAt ?? null,
+              },
+            )
+          : await this.deps.examParticipationRepository.updateParticipation(latestParticipation.id, {
+              status: EExamParticipationStatus.SUBMITTED,
+              submittedAt,
+              endTime: submittedAt,
+              currentAnswers: finalAnswers,
+              submittedAnswersSnapshot: finalAnswers,
+              answersLockedAt: submittedAt,
+              scoreStatus: 'pending',
+            });
+
+      if (finalizedParticipation) {
+        latestParticipation = finalizedParticipation;
+        break;
+      }
+
+      const reloadedParticipation = await this.deps.examParticipationRepository.findById(
+        activeParticipation.id,
+      );
+      if (!reloadedParticipation) {
+        throw new ExamParticipationNotFoundException('Active participation not found');
+      }
+      latestParticipation = reloadedParticipation;
+    }
 
     const attemptsUsed = participations.length;
+    const finalSubmittedAt = finalizedParticipation.submittedAt ?? new Date();
     const nextAccessStatus =
-      attemptsUsed >= exam.maxAttempts || submittedAt > new Date(exam.endDate)
+      attemptsUsed >= exam.maxAttempts || finalSubmittedAt > new Date(exam.endDate)
         ? 'completed'
         : 'eligible';
     await this.deps.examParticipantRepository.updateAccessStatus(participant.id, nextAccessStatus);
@@ -1753,7 +1832,7 @@ export class ExamAccessService {
       actorId: userId,
       action: 'submit_participation',
       targetType: 'exam_participation',
-      targetId: activeParticipation.id,
+      targetId: finalizedParticipation.id,
       metadata: {
         scoreStatus: 'pending',
         finalFlushReceiptId: finalFlushResult?.receiptId ?? null,
@@ -1762,9 +1841,9 @@ export class ExamAccessService {
     });
 
     const result = {
-      participationId: activeParticipation.id,
-      submittedAt: submittedAt.toISOString(),
-      scoreStatus: 'pending',
+      participationId: finalizedParticipation.id,
+      submittedAt: this.asIsoString(finalSubmittedAt),
+      scoreStatus: finalizedParticipation.scoreStatus ?? 'pending',
     };
     if (submitAttemptKey) {
       this.submitAttemptResults.set(submitAttemptKey, result);
@@ -2529,6 +2608,56 @@ export class ExamAccessService {
     }
 
     return updated;
+  }
+
+  private mergeAnswers(existingAnswers: any, incomingAnswers: any): any {
+    const merged: Record<string, any> = { ...existingAnswers };
+
+    for (const key of Object.keys(incomingAnswers || {})) {
+      try {
+        const incomingItem = incomingAnswers[key] || {};
+        const existingItem = existingAnswers[key] || {};
+
+        const incomingUpdated = this.parseTimestamp(
+          incomingItem.updatedAt ||
+            incomingItem.updated_at ||
+            incomingItem.ts ||
+            incomingItem.clientTimestamp
+        );
+        const existingUpdated = this.parseTimestamp(
+          existingItem.updatedAt ||
+            existingItem.updated_at ||
+            existingItem.ts ||
+            existingItem.clientTimestamp
+        );
+
+        const accept =
+          incomingUpdated > 0
+            ? incomingUpdated >= existingUpdated
+            : existingUpdated === 0;
+
+        if (accept) {
+          merged[key] = {
+            ...existingItem,
+            ...incomingItem,
+          };
+        }
+      } catch {
+        merged[key] = existingAnswers[key] || incomingAnswers[key];
+      }
+    }
+
+    return merged;
+  }
+
+  private parseTimestamp(v: unknown): number {
+    if (!v) return 0;
+    const s = String(v);
+    const n = Number(s);
+    if (!Number.isNaN(n) && isFinite(n)) return n;
+    const p = Date.parse(s);
+    if (!Number.isNaN(p)) return p;
+    return 0;
   }
 
   private async writeAuditLog(input: {

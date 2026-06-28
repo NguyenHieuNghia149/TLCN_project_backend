@@ -1786,6 +1786,193 @@ describe('ExamAccessService', () => {
     expect(examParticipationRepository.updateParticipation).toHaveBeenCalled();
   });
 
+  it('retries sync against the latest answers when another sync updates the row first', async () => {
+    const examParticipationRepository = {
+      findById: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'participation-1',
+          examId: 'exam-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          expiresAt: new Date('2099-05-01T10:30:00.000Z'),
+          currentAnswers: {
+            challengeA: {
+              sourceCode: 'print("old")',
+              language: 'python',
+              updatedAt: '2026-06-01T09:00:00.000Z',
+            },
+          },
+          lastSyncedAt: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'participation-1',
+          examId: 'exam-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          expiresAt: new Date('2099-05-01T10:30:00.000Z'),
+          currentAnswers: {
+            challengeB: {
+              sourceCode: 'print("other-tab")',
+              language: 'python',
+              updatedAt: '2026-06-01T09:01:00.000Z',
+            },
+          },
+          lastSyncedAt: new Date('2026-06-01T09:01:00.000Z'),
+        }),
+      updateSyncState: jest
+        .fn()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        accessStatus: 'active',
+      }),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examParticipationRepository,
+        examParticipantRepository,
+      }),
+    );
+
+    const result = await service.syncParticipation('user-1', {
+      participationId: 'participation-1',
+      answers: {
+        challengeA: {
+          sourceCode: 'print("mine")',
+          language: 'python',
+          updatedAt: '2026-06-01T09:02:00.000Z',
+        },
+      },
+    });
+
+    expect(examParticipationRepository.updateSyncState).toHaveBeenNthCalledWith(
+      1,
+      'participation-1',
+      expect.objectContaining({
+        expectedLastSyncedAt: null,
+        currentAnswers: {
+          challengeA: {
+            sourceCode: 'print("mine")',
+            language: 'python',
+            updatedAt: '2026-06-01T09:02:00.000Z',
+          },
+        },
+      }),
+    );
+    expect(examParticipationRepository.updateSyncState).toHaveBeenNthCalledWith(
+      2,
+      'participation-1',
+      expect.objectContaining({
+        expectedLastSyncedAt: new Date('2026-06-01T09:01:00.000Z'),
+        currentAnswers: {
+          challengeA: {
+            sourceCode: 'print("mine")',
+            language: 'python',
+            updatedAt: '2026-06-01T09:02:00.000Z',
+          },
+          challengeB: {
+            sourceCode: 'print("other-tab")',
+            language: 'python',
+            updatedAt: '2026-06-01T09:01:00.000Z',
+          },
+        },
+      }),
+    );
+    expect(result).toMatchObject({
+      synced: true,
+      status: 'active',
+    });
+  });
+
+  it('stops a retried sync when the participation expires before the next CAS attempt', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-01T09:00:00.000Z'));
+
+    const examParticipationRepository = {
+      findById: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'participation-1',
+          examId: 'exam-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          expiresAt: new Date('2026-06-01T09:00:01.000Z'),
+          currentAnswers: {},
+          lastSyncedAt: null,
+        })
+        .mockImplementationOnce(async () => {
+          jest.setSystemTime(new Date('2026-06-01T09:00:02.000Z'));
+          return {
+            id: 'participation-1',
+            examId: 'exam-1',
+            participantId: 'participant-1',
+            userId: 'user-1',
+            status: 'IN_PROGRESS',
+            expiresAt: new Date('2026-06-01T09:00:01.000Z'),
+            currentAnswers: {},
+            lastSyncedAt: new Date('2026-06-01T09:00:00.500Z'),
+          };
+        }),
+      updateSyncState: jest
+        .fn()
+        .mockResolvedValueOnce(false),
+      updateParticipation: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        status: 'EXPIRED',
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        accessStatus: 'active',
+      }),
+      updateAccessStatus: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const examRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        title: 'Expired Exam',
+        duration: 90,
+        startDate: new Date('2020-05-01T09:00:00.000Z'),
+        endDate: new Date('2099-05-01T12:00:00.000Z'),
+      }),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examParticipationRepository,
+        examParticipantRepository,
+        examRepository,
+        examAuditLogRepository,
+      }),
+    );
+
+    const result = await service.syncParticipation('user-1', {
+      participationId: 'participation-1',
+      answers: {
+        challengeA: {
+          sourceCode: 'print("mine")',
+          language: 'python',
+          updatedAt: '2026-06-01T09:00:00.000Z',
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      synced: false,
+      status: 'expired',
+    });
+    expect(examParticipationRepository.updateSyncState).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects starting a new session when another eligible session was already used by a concurrent tab', async () => {
     const examEntrySessionRepository = {
       findById: jest.fn().mockResolvedValue({

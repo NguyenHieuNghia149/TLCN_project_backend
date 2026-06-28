@@ -138,9 +138,26 @@ describe('ExamAccessService proctoring submit guard', () => {
           userId: 'user-1',
           status: 'IN_PROGRESS',
           currentAnswers: {},
+          lastSyncedAt: null,
         },
       ]),
-      updateParticipation: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        currentAnswers: {},
+        lastSyncedAt: null,
+      }),
+      submitActiveParticipation: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'SUBMITTED',
+        currentAnswers: {},
+        submittedAt: new Date('2026-06-11T10:00:00.000Z'),
+        scoreStatus: 'pending',
+      }),
     } as any;
     const examAuditLogRepository = {
       create: jest.fn().mockResolvedValue(undefined),
@@ -167,10 +184,10 @@ describe('ExamAccessService proctoring submit guard', () => {
         finalFlushReceiptId: 'receipt-1',
       })
     );
-    expect(examParticipationRepository.updateParticipation).toHaveBeenCalledWith(
+    expect(examParticipationRepository.submitActiveParticipation).toHaveBeenCalledWith(
       'participation-1',
       expect.objectContaining({
-        status: 'SUBMITTED',
+        scoreStatus: 'pending',
       })
     );
     expect(result).toMatchObject({
@@ -210,9 +227,26 @@ describe('ExamAccessService proctoring submit guard', () => {
           userId: 'user-1',
           status: 'IN_PROGRESS',
           currentAnswers: {},
+          lastSyncedAt: null,
         },
       ]),
-      updateParticipation: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        currentAnswers: {},
+        lastSyncedAt: null,
+      }),
+      submitActiveParticipation: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'SUBMITTED',
+        currentAnswers: {},
+        submittedAt: new Date('2026-06-11T10:00:00.000Z'),
+        scoreStatus: 'pending',
+      }),
     } as any;
     const examAuditLogRepository = {
       create: jest.fn().mockResolvedValue(undefined),
@@ -233,10 +267,10 @@ describe('ExamAccessService proctoring submit guard', () => {
     });
 
     expect(proctoringSubmitGuardService.awaitFinalFlushReceipt).toHaveBeenCalledTimes(1);
-    expect(examParticipationRepository.updateParticipation).toHaveBeenCalledWith(
+    expect(examParticipationRepository.submitActiveParticipation).toHaveBeenCalledWith(
       'participation-1',
       expect.objectContaining({
-        status: 'SUBMITTED',
+        scoreStatus: 'pending',
       })
     );
     expect(result).toMatchObject({
@@ -284,6 +318,7 @@ describe('ExamAccessService proctoring submit guard', () => {
             userId: 'user-1',
             status: 'IN_PROGRESS',
             currentAnswers: {},
+            lastSyncedAt: null,
           },
         ])
         .mockResolvedValueOnce([
@@ -296,7 +331,23 @@ describe('ExamAccessService proctoring submit guard', () => {
             currentAnswers: {},
           },
         ]),
-      updateParticipation: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn().mockResolvedValueOnce({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        currentAnswers: {},
+        lastSyncedAt: null,
+      }),
+      submitActiveParticipation: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'SUBMITTED',
+        currentAnswers: {},
+        submittedAt: new Date('2026-06-11T10:00:01.000Z'),
+        scoreStatus: 'pending',
+      }),
     } as any;
     const examAuditLogRepository = {
       create: jest.fn().mockResolvedValue(undefined),
@@ -320,7 +371,252 @@ describe('ExamAccessService proctoring submit guard', () => {
       finalFlushReceiptId: 'receipt-1',
     });
 
-    expect(examParticipationRepository.updateParticipation).toHaveBeenCalledTimes(1);
+    expect(examParticipationRepository.submitActiveParticipation).toHaveBeenCalledTimes(1);
     expect(first).toEqual(second);
+  });
+
+  it('retries submit with the latest synced answers when a sync lands between reload and finalize', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        maxAttempts: 1,
+        endDate: new Date('2026-06-11T12:00:00.000Z'),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+      }),
+      updateAccessStatus: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const examParticipationRepository = {
+      findByParticipantId: jest.fn().mockResolvedValue([
+        {
+          id: 'participation-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          currentAnswers: {
+            challengeA: {
+              sourceCode: 'print(\"old\")',
+              language: 'python',
+              updatedAt: '2026-06-11T09:59:00.000Z',
+            },
+          },
+          lastSyncedAt: null,
+        },
+      ]),
+      findById: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'participation-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          currentAnswers: {
+            challengeA: {
+              sourceCode: 'print(\"old\")',
+              language: 'python',
+              updatedAt: '2026-06-11T09:59:00.000Z',
+            },
+          },
+          lastSyncedAt: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'participation-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          currentAnswers: {
+            challengeA: {
+              sourceCode: 'print(\"synced\")',
+              language: 'python',
+              updatedAt: '2026-06-11T10:00:30.000Z',
+            },
+          },
+          lastSyncedAt: new Date('2026-06-11T10:00:30.000Z'),
+        }),
+      submitActiveParticipation: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 'participation-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'SUBMITTED',
+          currentAnswers: {
+            challengeA: {
+              sourceCode: 'print(\"final\")',
+              language: 'python',
+              updatedAt: '2026-06-11T10:01:00.000Z',
+            },
+          },
+          submittedAt: new Date('2026-06-11T10:01:00.000Z'),
+          scoreStatus: 'pending',
+        }),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examParticipationRepository,
+        examAuditLogRepository,
+      })
+    );
+
+    const result = await (service as any).submitActiveParticipation('spring-midterm', 'user-1', {
+      answers: {
+        challengeA: {
+          sourceCode: 'print(\"final\")',
+          language: 'python',
+          updatedAt: '2026-06-11T10:01:00.000Z',
+        },
+      },
+    });
+
+    expect(examParticipationRepository.submitActiveParticipation).toHaveBeenNthCalledWith(
+      1,
+      'participation-1',
+      expect.objectContaining({
+        expectedLastSyncedAt: null,
+        submittedAnswersSnapshot: {
+          challengeA: {
+            sourceCode: 'print("final")',
+            language: 'python',
+            updatedAt: '2026-06-11T10:01:00.000Z',
+          },
+        },
+      }),
+    );
+    expect(examParticipationRepository.submitActiveParticipation).toHaveBeenNthCalledWith(
+      2,
+      'participation-1',
+      expect.objectContaining({
+        expectedLastSyncedAt: new Date('2026-06-11T10:00:30.000Z'),
+        submittedAnswersSnapshot: {
+          challengeA: {
+            sourceCode: 'print("final")',
+            language: 'python',
+            updatedAt: '2026-06-11T10:01:00.000Z',
+          },
+        },
+      }),
+    );
+    expect(result).toMatchObject({
+      participationId: 'participation-1',
+      scoreStatus: 'pending',
+    });
+  });
+
+  it('does not let timestamp-less submit answers overwrite fresher persisted answers', async () => {
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue({
+        id: 'exam-1',
+        slug: 'spring-midterm',
+        maxAttempts: 1,
+        endDate: new Date('2026-06-11T12:00:00.000Z'),
+      }),
+    } as any;
+    const examParticipantRepository = {
+      findByExamAndIdentity: jest.fn().mockResolvedValue({
+        id: 'participant-1',
+        examId: 'exam-1',
+        userId: 'user-1',
+      }),
+      updateAccessStatus: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const examParticipationRepository = {
+      findByParticipantId: jest.fn().mockResolvedValue([
+        {
+          id: 'participation-1',
+          participantId: 'participant-1',
+          userId: 'user-1',
+          status: 'IN_PROGRESS',
+          currentAnswers: {
+            challengeA: {
+              sourceCode: 'print("fresh-server")',
+              language: 'python',
+              updatedAt: '2026-06-11T10:02:00.000Z',
+            },
+          },
+          lastSyncedAt: new Date('2026-06-11T10:02:00.000Z'),
+        },
+      ]),
+      findById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        currentAnswers: {
+          challengeA: {
+            sourceCode: 'print("fresh-server")',
+            language: 'python',
+            updatedAt: '2026-06-11T10:02:00.000Z',
+          },
+        },
+        lastSyncedAt: new Date('2026-06-11T10:02:00.000Z'),
+      }),
+      submitActiveParticipation: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        participantId: 'participant-1',
+        userId: 'user-1',
+        status: 'SUBMITTED',
+        currentAnswers: {
+          challengeA: {
+            sourceCode: 'print("fresh-server")',
+            language: 'python',
+            updatedAt: '2026-06-11T10:02:00.000Z',
+          },
+        },
+        submittedAnswersSnapshot: {
+          challengeA: {
+            sourceCode: 'print("fresh-server")',
+            language: 'python',
+            updatedAt: '2026-06-11T10:02:00.000Z',
+          },
+        },
+        submittedAt: new Date('2026-06-11T10:03:00.000Z'),
+        scoreStatus: 'pending',
+      }),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examParticipantRepository,
+        examParticipationRepository,
+        examAuditLogRepository,
+      })
+    );
+
+    await (service as any).submitActiveParticipation('spring-midterm', 'user-1', {
+      answers: {
+        challengeA: {
+          sourceCode: 'print("stale-client")',
+          language: 'python',
+        },
+      },
+    });
+
+    expect(examParticipationRepository.submitActiveParticipation).toHaveBeenCalledWith(
+      'participation-1',
+      expect.objectContaining({
+        submittedAnswersSnapshot: {
+          challengeA: {
+            sourceCode: 'print("fresh-server")',
+            language: 'python',
+            updatedAt: '2026-06-11T10:02:00.000Z',
+          },
+        },
+      }),
+    );
   });
 });

@@ -153,16 +153,15 @@ export class ExamAccessController {
     }
 
     const { slug } = req.params as { slug: string };
-    if (req.body?.participationId) {
-      const result = await this.legacyExamService.submitExam(req.body.participationId, userId);
-      res.status(200).json(result);
-      return;
-    }
-
     const proctoringSubmitInput = this.extractProctoringSubmitInput(req.body);
     const result = proctoringSubmitInput
-      ? await this.examAccessService.submitActiveParticipation(slug, userId, proctoringSubmitInput)
-      : await this.examAccessService.submitActiveParticipation(slug, userId);
+      ? await this.examAccessService.submitActiveParticipation(slug, userId, {
+          ...proctoringSubmitInput,
+          answers: req.body.answers,
+        })
+      : await this.examAccessService.submitActiveParticipation(slug, userId, {
+          answers: req.body.answers,
+        });
     res.status(200).json(result);
   }
 
