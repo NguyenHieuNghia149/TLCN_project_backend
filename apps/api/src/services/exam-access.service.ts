@@ -2637,6 +2637,11 @@ export class ExamAccessService {
             : existingUpdated === 0;
 
         if (accept) {
+          if (incomingItem.deleted === true || incomingItem._deleted === true) {
+            delete merged[key];
+            continue;
+          }
+
           merged[key] = {
             ...existingItem,
             ...incomingItem,

@@ -750,6 +750,51 @@ describe('ExamService dependency injection', () => {
     jest.useRealTimers();
   });
 
+  it('removes stale session answers when sync receives a deletion tombstone', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2025-01-01T00:05:00.000Z'));
+    const examParticipationRepository = {
+      findSyncStateById: jest.fn().mockResolvedValue({
+        id: 'participation-1',
+        userId: 'user-1',
+        status: 'IN_PROGRESS',
+        expiresAt: new Date('2025-01-01T00:30:00.000Z'),
+        currentAnswers: {
+          problemA: {
+            sourceCode: 'starter-code',
+            language: 'javascript',
+            updatedAt: '2025-01-01T00:00:00.000Z',
+          },
+          problemB: {
+            sourceCode: 'real-answer',
+            language: 'python',
+            updatedAt: '2025-01-01T00:01:00.000Z',
+          },
+        },
+      }),
+      updateSyncState: jest.fn().mockResolvedValue(true),
+    } as any;
+    const service = new ExamService(createExamDependencies({ examParticipationRepository }));
+
+    await service.syncSession('participation-1', {
+      problemA: {
+        deleted: true,
+        updatedAt: '2025-01-01T00:04:00.000Z',
+      },
+    });
+
+    expect(examParticipationRepository.updateSyncState).toHaveBeenCalledWith('participation-1', {
+      currentAnswers: {
+        problemB: {
+          sourceCode: 'real-answer',
+          language: 'python',
+          updatedAt: '2025-01-01T00:01:00.000Z',
+        },
+      },
+      lastSyncedAt: new Date('2025-01-01T00:05:00.000Z'),
+    });
+    jest.useRealTimers();
+  });
+
   it('throws when sync state is missing', async () => {
     const examParticipationRepository = {
       findSyncStateById: jest.fn().mockResolvedValue(null),

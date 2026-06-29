@@ -250,6 +250,11 @@ export class ExamService {
         const accept = incomingUpdated === 0 || incomingUpdated >= existingUpdated;
 
         if (accept) {
+          if (incomingItem.deleted === true || incomingItem._deleted === true) {
+            delete merged[key];
+            continue;
+          }
+
           merged[key] = {
             ...existingItem,
             ...incomingItem,
