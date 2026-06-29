@@ -41,6 +41,72 @@ describe('ExamAccessService', () => {
     jest.useRealTimers();
   });
 
+  it('notifies users when an admin creates a visible exam', async () => {
+    const createdExam = {
+      id: '11111111-1111-4111-8111-111111111111',
+      title: 'Visible Midterm',
+      slug: 'visible-midterm',
+      duration: 90,
+      startDate: new Date('2099-05-01T09:00:00.000Z'),
+      endDate: new Date('2099-05-01T12:00:00.000Z'),
+      isVisible: true,
+      maxAttempts: 1,
+      createdBy: 'teacher-1',
+      status: 'published',
+      accessMode: 'invite_only',
+      selfRegistrationApprovalMode: null,
+      selfRegistrationPasswordRequired: false,
+      allowExternalCandidates: false,
+      registrationOpenAt: null,
+      registrationCloseAt: null,
+      createdAt: new Date('2099-04-01T09:00:00.000Z'),
+      updatedAt: new Date('2099-04-01T09:00:00.000Z'),
+    };
+    const examRepository = {
+      findBySlug: jest.fn().mockResolvedValue(null),
+      createExamWithChallenges: jest.fn().mockResolvedValue(createdExam.id),
+      findById: jest.fn().mockResolvedValue(createdExam),
+    } as any;
+    const examToProblemsRepository = {
+      findByExamId: jest.fn().mockResolvedValue([]),
+    } as any;
+    const examAuditLogRepository = {
+      create: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const notificationService = {
+      notifyAllUsers: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new ExamAccessService(
+      createDependencies({
+        examRepository,
+        examToProblemsRepository,
+        examAuditLogRepository,
+        notificationService,
+      }),
+    );
+
+    await service.createAdminExam('teacher-1', {
+      title: 'Visible Midterm',
+      slug: 'visible-midterm',
+      duration: 90,
+      startDate: '2099-05-01T09:00:00.000Z',
+      endDate: '2099-05-01T12:00:00.000Z',
+      isVisible: true,
+      accessMode: 'invite_only',
+      challenges: [],
+    });
+
+    expect(notificationService.notifyAllUsers).toHaveBeenCalledWith(
+      'NEW_EXAM',
+      'New Exam: Visible Midterm',
+      expect.stringContaining('A new exam has been created.'),
+      {
+        examId: createdExam.id,
+        link: '/exam/visible-midterm',
+      },
+    );
+  });
+
   it('allows toggling visibility for legacy self-registration exams with null approval mode', async () => {
     const examRepository = {
       findById: jest

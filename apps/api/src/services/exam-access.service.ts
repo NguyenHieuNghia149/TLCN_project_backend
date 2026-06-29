@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 
 import { createEMailService } from './email.service';
+import { createNotificationService } from './notification.service';
 import { AppException } from '../exceptions/base.exception';
 import {
   AuthorizationException,
@@ -37,6 +38,7 @@ import {
 import { EExamParticipationStatus } from '@backend/shared/types';
 import {
   JWTUtils,
+  logger,
   PasswordUtils,
   RateLimitUtils,
   SanitizationUtils,
@@ -54,6 +56,9 @@ type ExamAccessServiceDependencies = {
   userRepository: UserRepository | any;
   tokenRepository: TokenRepository | any;
   emailService: any;
+  notificationService?: {
+    notifyAllUsers(type: string, title: string, message: string, metadata?: unknown): Promise<void>;
+  };
   proctoringStartGateService?: ProctoringStartGateService | any;
   proctoringSubmitGuardService?: ProctoringSubmitGuardService | any;
 };
@@ -183,7 +188,16 @@ export class ExamAccessService {
       metadata: { accessMode: input.accessMode },
     });
 
-    return this.getAdminExamById(createdExamId);
+    const createdExam = await this.deps.examRepository.findById(createdExamId);
+    if (!createdExam) {
+      throw new ExamNotFoundException();
+    }
+
+    if (createdExam.isVisible) {
+      await this.notifyUsersAboutVisibleExam(createdExam);
+    }
+
+    return this.mapAdminExam(createdExam);
   }
 
   async updateAdminExam(
@@ -349,6 +363,14 @@ export class ExamAccessService {
       }
     }
 
+    if (input.isVisible === true && !currentExam.isVisible) {
+      const updatedExam = await this.deps.examRepository.findById(examId);
+      if (updatedExam) {
+        await this.notifyUsersAboutVisibleExam(updatedExam);
+        return this.mapAdminExam(updatedExam);
+      }
+    }
+
     return this.getAdminExamById(examId);
   }
 
@@ -436,6 +458,8 @@ export class ExamAccessService {
         newStatus: 'published',
       },
     });
+
+    await this.notifyUsersAboutVisibleExam(updated);
 
     return this.mapAdminExam(updated);
   }
@@ -2063,6 +2087,26 @@ export class ExamAccessService {
     );
   }
 
+  private async notifyUsersAboutVisibleExam(exam: any) {
+    if (!this.deps.notificationService?.notifyAllUsers) {
+      return;
+    }
+
+    try {
+      await this.deps.notificationService.notifyAllUsers(
+        'NEW_EXAM',
+        `New Exam: ${exam.title}`,
+        `A new exam has been created. Start: ${new Date(exam.startDate).toLocaleString()}`,
+        { examId: exam.id, link: `/exam/${exam.slug ?? exam.id}` },
+      );
+    } catch (error) {
+      logger.error('Failed to send visible exam notification', {
+        examId: exam.id,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+  }
+
   private async sendParticipantInviteEmail(exam: any, participant: any, inviteToken: string) {
     await this.deps.emailService?.sendExamParticipantInviteEmail?.({
       to: participant.normalizedEmail,
@@ -2706,6 +2750,7 @@ export function createExamAccessService() {
     userRepository: new UserRepository(),
     tokenRepository: new TokenRepository(),
     emailService: createEMailService(),
+    notificationService: createNotificationService(),
     proctoringStartGateService: createProctoringStartGateService(),
     proctoringSubmitGuardService: createProctoringSubmitGuardService(),
   });
