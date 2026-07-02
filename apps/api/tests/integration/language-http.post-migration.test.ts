@@ -89,29 +89,52 @@ describe('Language HTTP integration on post-migration routes', () => {
     expect(service.listAllLanguages).toHaveBeenCalledTimes(1);
   });
 
-  it('updates a catalog entry through PUT /admin/languages/:id', async () => {
-    const { app, service } = loadLanguageApp();
-    const token = createAccessToken({
-      userId: '11111111-1111-4111-8111-111111111111',
-      email: 'teacher@example.com',
-      role: 'teacher',
-    });
+  it.each(['admin', 'instructor'] as const)(
+    'returns the full catalog from GET /admin/languages for %s users',
+    async (role) => {
+      const { app, service } = loadLanguageApp();
+      const token = createAccessToken({
+        userId: '11111111-1111-4111-8111-111111111111',
+        email: `${role}@example.com`,
+        role,
+      });
 
-    const response = await request(app)
-      .put('/api/admin/languages/lang-python')
-      .set('Cookie', createAccessTokenCookieHeader(token))
-      .send({ displayName: 'Python', sortOrder: 2, isActive: false });
+      const response = await request(app)
+        .get('/api/admin/languages')
+        .set('Cookie', createAccessTokenCookieHeader(token));
 
-    expect(response.status).toBe(200);
-    expect(response.body.data).toMatchObject({
-      id: 'lang-python',
-      key: 'python',
-      isActive: false,
-    });
-    expect(service.updateLanguage).toHaveBeenCalledWith('lang-python', {
-      displayName: 'Python',
-      sortOrder: 2,
-      isActive: false,
-    });
-  });
+      expect(response.status).toBe(200);
+      expect(response.body.data.items).toHaveLength(3);
+      expect(service.listAllLanguages).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['teacher', 'admin', 'instructor'] as const)(
+    'updates a catalog entry through PUT /admin/languages/:id for %s users',
+    async (role) => {
+      const { app, service } = loadLanguageApp();
+      const token = createAccessToken({
+        userId: '11111111-1111-4111-8111-111111111111',
+        email: `${role}@example.com`,
+        role,
+      });
+
+      const response = await request(app)
+        .put('/api/admin/languages/lang-python')
+        .set('Cookie', createAccessTokenCookieHeader(token))
+        .send({ displayName: 'Python', sortOrder: 2, isActive: false });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({
+        id: 'lang-python',
+        key: 'python',
+        isActive: false,
+      });
+      expect(service.updateLanguage).toHaveBeenCalledWith('lang-python', {
+        displayName: 'Python',
+        sortOrder: 2,
+        isActive: false,
+      });
+    },
+  );
 });

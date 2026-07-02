@@ -50,7 +50,7 @@ export class CommentRepository extends BaseRepository<
       .from(this.table)
       .leftJoin(users, eq(this.table.userId, users.id))
       .where(and(eq(this.table.lessonId, lessonId), isNull(this.table.parentCommentId)))
-      .orderBy(desc(this.table.createdAt));
+      .orderBy(desc(this.table.isPinned), desc(this.table.pinnedAt), desc(this.table.createdAt));
 
     const repliesByParentId = await this.getRepliesByParentIds(rows.map(row => row.comment.id));
 
@@ -76,7 +76,7 @@ export class CommentRepository extends BaseRepository<
       .from(this.table)
       .leftJoin(users, eq(this.table.userId, users.id))
       .where(and(eq(this.table.problemId, problemId), isNull(this.table.parentCommentId)))
-      .orderBy(desc(this.table.createdAt));
+      .orderBy(desc(this.table.isPinned), desc(this.table.pinnedAt), desc(this.table.createdAt));
 
     const repliesByParentId = await this.getRepliesByParentIds(rows.map(row => row.comment.id));
 

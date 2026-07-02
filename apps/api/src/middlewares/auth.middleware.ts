@@ -106,8 +106,8 @@ export const requireTeacher = requireRole('teacher');
 // Owner only middleware
 export const requireOwner = requireRole('owner');
 
-// Owner or Teacher middleware
-export const requireTeacherOrOwner = requireRole(['owner', 'teacher']);
+// Admin-side management roles used by the migrated frontend admin surface.
+export const requireTeacherOrOwner = requireRole(['owner', 'admin', 'instructor', 'teacher']);
 
 // Optional authentication middleware (doesn't fail if no token)
 export const optionalAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {

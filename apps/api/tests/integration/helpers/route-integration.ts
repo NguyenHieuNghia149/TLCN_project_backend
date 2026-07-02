@@ -7,7 +7,7 @@ import { responseMiddleware } from '@backend/api/middlewares/response.middleware
 export type TestAuthClaims = {
   userId: string;
   email: string;
-  role: 'student' | 'teacher' | 'owner';
+  role: 'student' | 'teacher' | 'owner' | 'admin' | 'instructor';
 };
 
 /** Creates a minimal in-process app that mounts a real route factory with the standard API middleware. */
