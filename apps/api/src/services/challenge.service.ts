@@ -201,6 +201,7 @@ export class ChallengeService {
         difficulty: problem.difficult,
         constraint: problem.constraint ?? '',
         tags: (problem.tags ?? '').split(',').filter(Boolean),
+        visibility: problem.visibility,
         lessonId: problem.lessonId ?? '',
         topicId: problem.topicId ?? '',
         totalPoints,
@@ -681,8 +682,6 @@ export class ChallengeService {
     };
 
     // Remove fields that shouldn't be updated directly
-    delete dbUpdateData.topicId;
-    delete dbUpdateData.lessonId;
     delete dbUpdateData.difficulty;
     delete dbUpdateData.testcases;
     delete dbUpdateData.solution;

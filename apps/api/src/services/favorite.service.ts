@@ -221,6 +221,7 @@ export class FavoriteService {
       topicId: string | null;
       createdAt: Date | string | null;
       updatedAt: Date | string | null;
+      visibility?: string | null;
       functionSignature?: FunctionSignature | null;
     } | null,
     totalPoints: number,
@@ -275,6 +276,7 @@ export class FavoriteService {
       topicId: string | null;
       createdAt: Date | string | null;
       updatedAt: Date | string | null;
+      visibility?: string | null;
       functionSignature?: FunctionSignature | null;
     },
     totalPoints: number,
@@ -308,6 +310,7 @@ export class FavoriteService {
         .split(',')
         .map((tag: any) => tag.trim())
         .filter(Boolean),
+      visibility: problem.visibility === 'private' ? 'private' : 'public',
       lessonId: problem.lessonId ?? '',
       topicId: problem.topicId ?? '',
       totalPoints,

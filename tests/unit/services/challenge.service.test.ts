@@ -902,6 +902,54 @@ describe('ChallengeService multilingual solution approach support', () => {
     expect(invalidateCallOrder).toBeLessThan(getChallengeCallOrder);
   });
 
+  it('persists topic and lesson changes during challenge update', async () => {
+    const problemRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'problem-1',
+        title: 'Two Sum',
+        functionSignature: baseSignature,
+      }),
+      update: jest.fn().mockResolvedValue({ id: 'problem-1' }),
+    } as any;
+    const submissionRepository = {
+      findByProblemId: jest.fn().mockResolvedValue({ data: [] }),
+    } as any;
+    const topicRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'topic-2' }),
+    } as any;
+    const lessonRepository = {
+      findById: jest.fn().mockResolvedValue({ id: 'lesson-2' }),
+    } as any;
+    const service = new ChallengeService(
+      createChallengeDependencies({
+        problemRepository,
+        submissionRepository,
+        topicRepository,
+        lessonRepository,
+      }) as any,
+    );
+    jest.spyOn(service as any, 'getChallengeById').mockResolvedValue({
+      problem: {},
+      testcases: [],
+      solution: null,
+    });
+
+    await service.updateChallenge('problem-1', {
+      topicId: 'topic-2',
+      lessonId: 'lesson-2',
+    } as any);
+
+    expect(topicRepository.findById).toHaveBeenCalledWith('topic-2');
+    expect(lessonRepository.findById).toHaveBeenCalledWith('lesson-2');
+    expect(problemRepository.update).toHaveBeenCalledWith(
+      'problem-1',
+      expect.objectContaining({
+        topicId: 'topic-2',
+        lessonId: 'lesson-2',
+      }),
+    );
+  });
+
   it('invalidates submission problem metadata after a successful challenge delete', async () => {
     const problemRepository = {
       findById: jest.fn().mockResolvedValue({

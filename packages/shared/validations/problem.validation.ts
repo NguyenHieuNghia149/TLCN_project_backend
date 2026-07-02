@@ -174,6 +174,7 @@ export const ProblemResponseSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard']),
   constraint: z.string(),
   tags: z.array(z.string()),
+  visibility: z.enum(['public', 'private']),
   lessonId: z.string(),
   topicId: z.string(),
   totalPoints: z.number().default(0),

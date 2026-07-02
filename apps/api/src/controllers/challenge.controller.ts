@@ -242,9 +242,14 @@ export class ChallengeController {
       throw new AppException('Challenge ID is required', 400, 'MISSING_CHALLENGE_ID');
     }
 
-    // Only elevated users can request all testcases on the detail path.
+    // Match the challenge management route guard so edit forms never load partial testcase data.
+    const canManageChallenges =
+      req.user?.role === 'teacher' ||
+      req.user?.role === 'owner' ||
+      req.user?.role === 'admin' ||
+      req.user?.role === 'instructor';
     const showAllTestcases =
-      req.query.showAll === 'true' && (req.user?.role === 'teacher' || req.user?.role === 'owner');
+      req.query.showAll === 'true' && canManageChallenges;
 
     const result = await this.challengeService.getChallengeById(
       challengeId as string,

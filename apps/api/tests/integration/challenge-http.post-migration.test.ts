@@ -163,6 +163,8 @@ describe('Challenge HTTP integration on post-migration routes', () => {
   it.each([
     ['teacher', '55555555-5555-4555-8555-555555555555'],
     ['owner', '66666666-6666-4666-8666-666666666666'],
+    ['admin', '88888888-8888-4888-8888-888888888888'],
+    ['instructor', '99999999-9999-4999-8999-999999999999'],
   ] as const)('allows %s requests to load private challenge detail with showAll=true', async (role, userId) => {
     const { app, service } = loadChallengeApp();
     const token = createAccessToken({
